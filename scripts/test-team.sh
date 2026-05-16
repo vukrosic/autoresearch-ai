@@ -20,12 +20,12 @@ test -f "$tmp_repo/.researchloop/team/workers/04-docs-onboarding.md"
 test -f "$tmp_repo/.researchloop/team/workers/05-tests-ci.md"
 test -f "$tmp_repo/.researchloop/team/workers/06-release-publishing.md"
 
-grep -q "ResearchLoop development team written" /tmp/researchloop-team.log
+grep -q "AutoResearch-AI development team written" /tmp/researchloop-team.log
 grep -q "workers: 6" /tmp/researchloop-team.log
 grep -q "orchestrator" "$tmp_repo/.researchloop/team/README.md"
 grep -q "human: release direction and final merge gate" "$tmp_repo/.researchloop/team/summary.md"
 grep -q "CLI and runtime" "$tmp_repo/.researchloop/team/board.md"
 grep -q "Dashboard and state API" "$tmp_repo/.researchloop/team/workers/02-dashboard.md"
-grep -q "git worktree add -b codex/researchloop-cli-runtime" "$tmp_repo/.researchloop/team/setup.sh"
+grep -q "git worktree add -b codex/autoresearch-cli-runtime" "$tmp_repo/.researchloop/team/setup.sh"
 
-echo "researchloop test:team passed"
+echo "autoresearch test:team passed"

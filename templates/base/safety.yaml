@@ -1,0 +1,32 @@
+# Safety policy for command runners.
+# Keep this file small and explicit so the CLI can load it without a YAML dependency.
+
+allow_prefixes:
+  - python
+  - python3
+  - bash
+  - sh
+  - node
+  - npm
+  - npx
+  - uv
+  - make
+  - pytest
+  - printf
+  - echo
+  - sleep
+  - false
+  - true
+
+deny_substrings:
+  - rm -rf
+  - sudo
+  - curl
+  - wget
+  - mkfs
+  - shutdown
+  - reboot
+  - poweroff
+
+max_minutes_per_run: 60
+max_cost_usd_per_run: 0

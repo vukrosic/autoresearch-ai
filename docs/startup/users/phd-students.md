@@ -10,8 +10,8 @@ Likely pain:
 
 Useful product angle:
 
-ResearchLoop gives your coding agent a research notebook and experiment protocol inside the repo.
+AutoResearch-AI gives your coding agent a research notebook and experiment protocol inside the repo.
 
 First demo:
 
-Install ResearchLoop in a small training repo, generate the Codex prompt, create one idea file, run a tiny ablation, and produce a report.
+Install AutoResearch-AI in a small training repo, generate the Codex prompt, create one idea file, run a tiny ablation, and produce a report.

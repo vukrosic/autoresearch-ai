@@ -12,7 +12,7 @@ npm run test:prompts
 
 ## Checks
 
-- `researchloop` prompt includes the goal and the durable working-memory instructions.
+- `autoresearch` prompt includes the goal and the durable working-memory instructions.
 - the prompt includes the repo-memory and experiment-history instructions.
 - the prompt includes realistic time-band guidance.
 - the prompt includes exactly one upfront time-budget question when missing.

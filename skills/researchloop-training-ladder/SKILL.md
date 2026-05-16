@@ -3,7 +3,7 @@ name: researchloop-training-ladder
 description: Use when planning a staged training ladder that starts with many small runs, prunes the worst, and then lengthens the surviving runs over 3-4 rounds.
 ---
 
-# ResearchLoop Training Ladder
+# AutoResearch-AI Training Ladder
 
 Use this when the user wants a separate training mode, not the default experiment loop.
 
@@ -27,4 +27,4 @@ Then:
 5. Give the user a realistic time range for each stage.
 6. Keep the history, pruning, and reproduction rules explicit.
 
-Use with `researchloop prompt --focus training-ladder` when the user wants the staged mode as a prompt overlay.
+Use with `autoresearch prompt --focus training-ladder` when the user wants the staged mode as a prompt overlay.

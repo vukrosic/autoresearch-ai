@@ -1,4 +1,4 @@
-# ResearchLoop Hub
+# AutoResearch-AI Hub
 
 This folder is the working home base for the startup.
 
@@ -12,7 +12,7 @@ Canonical pieces:
 Current status:
 
 - The site is served on localhost.
-- The `researchloop` CLI initializes the harness, inspects a repo, prints an agent prompt, runs a doctor check, and summarizes the run ledger.
+- The `autoresearch` CLI initializes the harness, inspects a repo, prints an agent prompt, runs a doctor check, and summarizes the run ledger.
 - The MacBook-safe runtime branch in `llm-research-kit` can run a tiny smoke training loop on MPS.
 
 What still matters:
@@ -25,11 +25,11 @@ What still matters:
 
 Verified end to end on this machine:
 
-1. `researchloop init --agent codex`
-2. `researchloop inspect`
-3. `researchloop prompt --agent codex --goal "improve validation loss"`
-4. `researchloop doctor --python /Users/vukrosic/miniconda3/bin/python3`
-5. `researchloop report`
+1. `autoresearch init --agent codex`
+2. `autoresearch inspect`
+3. `autoresearch prompt --agent codex --goal "improve validation loss"`
+4. `autoresearch doctor --python /Users/vukrosic/miniconda3/bin/python3`
+5. `autoresearch report`
 
 The CLI created the harness files, detected the generic adapter in a blank repo, printed a usable prompt, and confirmed local Python / torch / MPS support.
 
@@ -69,4 +69,4 @@ What to look for:
 
 Next proof:
 
-- Run ResearchLoop on a real small repo and write down the first useful experiment idea.
+- Run AutoResearch-AI on a real small repo and write down the first useful experiment idea.

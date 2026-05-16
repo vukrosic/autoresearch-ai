@@ -1,10 +1,10 @@
 # Deploy Helpers
 
-These helpers are for testing the current local ResearchLoop build.
+These helpers are for testing the current local AutoResearch-AI build.
 
 ## Preferred install flow
 
-1. Pack the current `researchloop` checkout.
+1. Pack the current `autoresearch-ai` checkout.
 2. Install the tarball into the test environment.
 3. Launch a fresh agent in an empty lab folder.
 4. Use the onboarding prompt from `../prompts/onboarding.md`.

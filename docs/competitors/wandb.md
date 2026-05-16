@@ -16,8 +16,8 @@ W&B treats a run as a unit of computation and gives teams a place to log metrics
 - Sweeps and reports are important once the baseline loop exists.
 - Team visibility matters after the local loop works.
 
-## How ResearchLoop Differs
+## How AutoResearch-AI Differs
 
-- ResearchLoop should feel more like a harness than a dashboard.
+- AutoResearch-AI should feel more like a harness than a dashboard.
 - It should produce logs that can later export into W&B or something similar.
 - The first product should work without a hosted backend.

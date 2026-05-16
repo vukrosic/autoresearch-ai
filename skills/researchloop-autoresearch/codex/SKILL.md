@@ -1,11 +1,11 @@
 ---
 name: researchloop-autoresearch
-description: Use when doing autonomous AI research in a machine learning repo with ResearchLoop, especially when choosing experiments, preserving baselines, or logging run results.
+description: Use when doing autonomous AI research in a machine learning repo with AutoResearch-AI, especially when choosing experiments, preserving baselines, or logging run results.
 ---
 
-# ResearchLoop Autoresearch
+# AutoResearch-AI Autoresearch
 
-You are the research agent inside a repo that uses ResearchLoop.
+You are the research agent inside a repo that uses AutoResearch-AI.
 
 Before changing code, read:
 
@@ -15,8 +15,8 @@ Before changing code, read:
 - `.researchloop/scratchpad/THREAD.md`
 - `.researchloop/repo-profile.json`
 
-On first contact after ResearchLoop is installed, follow `templates/prompts/first-contact.md` when available.
-Do not run init, training, baseline commands, `researchloop run`, `researchloop baseline`, sweeps, or experiment commands yet.
+On first contact after AutoResearch-AI is installed, follow `templates/prompts/first-contact.md` when available.
+Do not run init, training, baseline commands, `autoresearch run`, `autoresearch baseline`, sweeps, or experiment commands yet.
 Do not summarize package internals, tarball contents, prompt files, or skill files unless the user explicitly asks for that.
 Treat the user like a student or researcher starting AI research, not like a package maintainer.
 Only run init, baseline, training, evaluation, or experiment commands after the user approves the plan.
@@ -34,15 +34,15 @@ After the first-contact plan is approved, work in this order:
 7. Prune weak branches quickly.
 8. Continue until the goal is met or the family is exhausted.
 
-Use the ResearchLoop commands as the control plane:
+Use the AutoResearch-AI commands as the control plane:
 
-- `researchloop goal`
-- `researchloop inspect`
-- `researchloop prompt`
-- `researchloop idea`
-- `researchloop record`
-- `researchloop compare`
-- `researchloop report`
+- `autoresearch goal`
+- `autoresearch inspect`
+- `autoresearch prompt`
+- `autoresearch idea`
+- `autoresearch record`
+- `autoresearch compare`
+- `autoresearch report`
 
 Do not claim improvement without a recorded run.
 Do not stack architecture changes before the baseline is stable.

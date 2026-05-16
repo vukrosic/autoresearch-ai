@@ -1,6 +1,6 @@
 # Users And Customer Discovery
 
-This folder tracks people who might use ResearchLoop.
+This folder tracks people who might use AutoResearch-AI.
 
 The goal is not to sell too early. The goal is to learn how real researchers run experiments and where the agent harness saves time.
 

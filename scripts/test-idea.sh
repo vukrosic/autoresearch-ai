@@ -26,6 +26,8 @@ node ./bin/researchloop.js idea --dir "$tmp_llm" >/tmp/researchloop-idea-llm.log
 grep -q "Research Idea Chat" /tmp/researchloop-idea-blank.log
 grep -q "Ask exactly one question first" /tmp/researchloop-idea-blank.log
 grep -q "How long do you usually want a typical experiment to run?" /tmp/researchloop-idea-blank.log
+grep -q "baseline.md" /tmp/researchloop-idea-blank.log
+grep -q "propose, novel, or autonomous" /tmp/researchloop-idea-blank.log
 grep -q "Idea chat prompt written to" /tmp/researchloop-idea-blank.log
 test -f "$tmp_blank/.researchloop/scratchpad/ideas/"*.md
 
@@ -34,9 +36,10 @@ grep -q "System:" /tmp/researchloop-idea-llm.log
 grep -q "Recent runs:" /tmp/researchloop-idea-llm.log
 grep -q "llm-baseline" /tmp/researchloop-idea-llm.log
 grep -q "llm-alt" /tmp/researchloop-idea-llm.log
-grep -q "3-5 actual research ideas" /tmp/researchloop-idea-llm.log
+grep -q "2-4 grounded next experiments" /tmp/researchloop-idea-llm.log
 grep -q "Do not default to generic learning-rate or hyperparameter sweeps" /tmp/researchloop-idea-llm.log
 grep -q "How long do you usually want a typical experiment to run?" /tmp/researchloop-idea-llm.log
+grep -q "genuinely different hypotheses" /tmp/researchloop-idea-llm.log
 
 tmp_papers="$(mktemp -d)"
 trap 'rm -rf "$tmp_blank" "$tmp_llm" "$tmp_papers"' EXIT
@@ -49,4 +52,4 @@ grep -q "Recent papers:" /tmp/researchloop-idea-papers.log
 grep -q "2503.12345v1" /tmp/researchloop-idea-papers.log
 grep -q "You are preparing research ideas by talking with the user" /tmp/researchloop-idea-papers.log
 
-echo "researchloop test:idea passed"
+echo "autoresearch test:idea passed"

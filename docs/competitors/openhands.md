@@ -15,8 +15,8 @@ OpenHands offers a broader agentic development stack: SDK, CLI, local GUI, cloud
 - A local GUI can help onboard users, but the CLI is the core trust anchor.
 - Enterprise/cloud layers should be additive, not required for the first useful run.
 
-## How ResearchLoop Differs
+## How AutoResearch-AI Differs
 
-- ResearchLoop starts with research workflow files and experiment logs.
+- AutoResearch-AI starts with research workflow files and experiment logs.
 - It should be lighter and more opinionated about autonomous research.
 - The hosted layer can come later if the open source loop is strong.

@@ -16,8 +16,8 @@ LangSmith covers evaluation across the lifecycle: offline benchmarking, unit/reg
 - Give users a way to compare variants systematically.
 - Treat evaluation as a workflow, not a one-off script.
 
-## How ResearchLoop Differs
+## How AutoResearch-AI Differs
 
-- ResearchLoop is narrower and more file-based.
+- AutoResearch-AI is narrower and more file-based.
 - It should install into any repo and generate the workflow skeleton.
 - It can borrow the evaluation ideas, but not the full platform surface.

@@ -14,8 +14,8 @@ SWE-agent is built around taking a GitHub issue and trying to automatically fix 
 - Benchmark-first and issue-driven workflows are easy to understand.
 - Clear success/fail criteria matter more than vague autonomy.
 
-## How ResearchLoop Differs
+## How AutoResearch-AI Differs
 
-- ResearchLoop is not just issue fixing.
+- AutoResearch-AI is not just issue fixing.
 - It needs support for experimental loops, baselines, and research logs.
 - But the same clarity about metrics and outcome boundaries should apply.

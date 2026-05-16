@@ -43,7 +43,7 @@ fi
 state="$(curl -s "$url/api/state")"
 page="$(curl -s "$url/")"
 
-grep -q 'ResearchLoop Dashboard' <<<"$page"
+grep -q 'AutoResearch-AI Dashboard' <<<"$page"
 grep -q 'Loss comparison' <<<"$page"
 grep -q 'Experiments' <<<"$page"
 grep -q '"primaryMetric": "val_loss"' <<<"$state"
@@ -56,4 +56,4 @@ grep -q '3.1' <<<"$state"
 grep -q '2.95' <<<"$state"
 grep -q '2.7' <<<"$state"
 
-echo "researchloop test:dashboard passed"
+echo "autoresearch test:dashboard passed"

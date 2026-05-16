@@ -1,6 +1,6 @@
 # Orchestrator
 
-You are the orchestrator for ResearchLoop development.
+You are the orchestrator for AutoResearch-AI development.
 
 Goal:
 {{GOAL}}

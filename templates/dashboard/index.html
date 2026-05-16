@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ResearchLoop Dashboard</title>
+    <title>AutoResearch-AI Dashboard</title>
     <meta
       name="description"
       content="Local dashboard for autonomous AI research runs. No auth, no accounts, localhost only."
@@ -565,7 +565,7 @@
         <div class="brand">
           <div class="brand-mark">R</div>
           <div>
-            <h1>ResearchLoop · Dashboard</h1>
+            <h1>AutoResearch-AI · Dashboard</h1>
             <p id="brandSub">Autonomous AI research — local experiment tracking.</p>
           </div>
         </div>
@@ -704,7 +704,7 @@
             </div>
             <div class="panel-body">
               <div class="log-tail" id="logTail">
-                <span style="color:var(--muted)">No log to tail yet. Run something with <code>researchloop run "&lt;cmd&gt;"</code>.</span>
+                <span style="color:var(--muted)">No log to tail yet. Run something with <code>autoresearch run "&lt;cmd&gt;"</code>.</span>
               </div>
             </div>
           </article>
@@ -721,7 +721,7 @@
               </div>
             </div>
             <div class="panel-body">
-              <div class="goal-title" id="goalTitle">Set a goal with <code>researchloop goal</code>.</div>
+              <div class="goal-title" id="goalTitle">Set a goal with <code>autoresearch goal</code>.</div>
               <div class="meta-row" id="goalMeta"></div>
               <div class="goal-progress">
                 <div class="bar" id="goalBar"><span style="width:0%"></span></div>
@@ -823,7 +823,7 @@
                 </div>
               </div>
               <p style="color:var(--muted); font-size:12px; margin: 12px 0 0">
-                When <code>researchloop sweep</code> lands (G09/G10), this will read the live queue and
+                When <code>autoresearch sweep</code> lands (G09/G10), this will read the live queue and
                 show in-flight + planned runs with their hyperparams and ETAs.
               </p>
             </div>
@@ -1230,7 +1230,7 @@
                 </div>
               </div>
               <p style="color:var(--muted); font-size:12px; margin:10px 0 0">
-                Wire to <code>researchloop scan-papers</code> output; promote any item into the idea pipeline.
+                Wire to <code>autoresearch scan-papers</code> output; promote any item into the idea pipeline.
               </p>
             </div>
           </article>
@@ -1519,7 +1519,7 @@
         const metricKey = state.primaryMetric || "";
         const traces = state.traces || [];
         if (!traces.length) {
-          return '<div class="empty">No experiments recorded yet. Use <code>researchloop run "&lt;cmd&gt;"</code> to add curves.</div>';
+          return '<div class="empty">No experiments recorded yet. Use <code>autoresearch run "&lt;cmd&gt;"</code> to add curves.</div>';
         }
         const bestId = state.comparison?.bestFinal?.trace?.id;
         const bestDeltaId = state.comparison?.bestImprovement?.trace?.id;
@@ -1588,7 +1588,7 @@
         $("filterCount").textContent = `${sorted.length} shown · ${rows.length} total`;
 
         if (!sorted.length) {
-          $("runsTbody").innerHTML = `<tr><td colspan="6"><div class="empty">${rows.length ? "No runs match the filter." : "No runs yet. Use <code>researchloop run \"&lt;cmd&gt;\"</code>."}</div></td></tr>`;
+          $("runsTbody").innerHTML = `<tr><td colspan="6"><div class="empty">${rows.length ? "No runs match the filter." : "No runs yet. Use <code>autoresearch run \"&lt;cmd&gt;\"</code>."}</div></td></tr>`;
           return;
         }
 
@@ -1783,7 +1783,7 @@
         const g = state.goal || {};
         $("goalTitle").innerHTML = g.goal
           ? escapeHtml(g.goal)
-          : 'Set a goal with <code>researchloop goal</code>.';
+          : 'Set a goal with <code>autoresearch goal</code>.';
         $("primaryMetricPill").textContent = state.primaryMetric
           ? `Metric: ${state.primaryMetric}`
           : "Metric: not set";
@@ -1861,7 +1861,7 @@
 
         $("trendLabel").textContent = state.primaryMetric
           ? `Comparing ${state.primaryMetric} across ${(state.traces || []).length} experiments.`
-          : "No numeric metric found yet — record one with `researchloop record`.";
+          : "No numeric metric found yet — record one with `autoresearch record`.";
         $("trendRange").textContent = state.traces?.length ? `${state.traces.length} experiments` : "";
         $("chartMount").innerHTML = multiTraceChart(state.traces, state.preferHigher);
         $("legendMount").innerHTML = renderLegend(state);

@@ -6,10 +6,14 @@ New:
 
 - Renamed the npm package from `researchloop` to `autoresearch-ai`.
 - Updated the README and local install examples to use the new package/repo name.
+- Added `templates/prompts/topic-intake.md` for baseline-aware research topics like query/key architecture work.
+- Added `.researchloop/baseline.md` to new harness installs.
 
 Improved:
 
 - README, getting-started, site copy, and onboarding prompts now point to `npm install -g autoresearch-ai`.
+- Research idea prompts now offer `propose`, `novel`, and `autonomous` modes after the baseline is clear.
+- Topic recommendations now require grounded hypotheses with mechanisms and failure modes instead of random tweak menus.
 
 ## 0.3.1
 

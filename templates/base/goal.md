@@ -19,4 +19,4 @@ Unknown.
 
 ## Notes
 
-Use `researchloop inspect` to generate a repo profile, then ask an agent to fill in the missing benchmark details.
+Use `autoresearch inspect` to generate a repo profile, then ask an agent to fill in the missing benchmark details.

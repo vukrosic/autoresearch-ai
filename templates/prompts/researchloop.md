@@ -18,7 +18,14 @@ Use that history first. If the repo already has experiments, anchor suggestions 
 If there is no history yet, ask the user for the real target repo or research dir before guessing. Propose actual research questions from the repo surface, not generic learning-rate or hyperparameter sweeps. Mention sweeps only when the history or repo shape makes them a plausible follow-up.
 If `.researchloop/plan.md` does not already contain a time budget, ask exactly one question first: "How long do you usually want a typical experiment to run?" Save the answer in the plan under `Time Budget`, then use it to shape later suggestions.
 
-Do not lead with skill names or prompt names. Mention ResearchLoop skills only if the user asks what tools or modes are available.
+When the user names a research topic, follow the topic-intake rules above:
+- use an existing baseline if one is already documented
+- if no baseline markdown note exists, propose creating or updating `.researchloop/baseline.md` first
+- offer `propose`, `novel`, and `autonomous` modes after the baseline is clear
+- make paper search optional unless the user asks for it or autonomous mode needs it
+- generate genuinely different hypotheses with mechanisms and failure modes, not just plausible parameter changes
+
+Do not lead with skill names or prompt names. Mention AutoResearch-AI skills only if the user asks what tools or modes are available.
 
 Good examples:
 

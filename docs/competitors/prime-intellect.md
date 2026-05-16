@@ -24,7 +24,7 @@ Their blog describes:
 - Public scratchpads are a powerful trust and learning signal.
 - The loop should preserve evidence, not just outcomes.
 
-## What ResearchLoop Should Do Differently
+## What AutoResearch-AI Should Do Differently
 
 - Stay smaller and easier to install.
 - Target repo onboarding, not only benchmark runs.

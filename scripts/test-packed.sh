@@ -43,24 +43,30 @@ if tar tzf "$tarball" | grep -qE "^package/docs/startup/"; then
 fi
 
 npm install --prefix "$prefix" "$tarball" >/tmp/researchloop-packed-install.log 2>&1
-bin="$prefix/node_modules/.bin/researchloop"
+bin="$prefix/node_modules/.bin/autoresearch"
+legacy_bin="$prefix/node_modules/.bin/researchloop"
+package_bin="$prefix/node_modules/.bin/autoresearch-ai"
 
 if [ ! -x "$bin" ]; then
-  echo "researchloop binary not installed at $bin" >&2
+  echo "autoresearch binary not installed at $bin" >&2
   ls -la "$prefix/node_modules/.bin/" >&2 || true
   exit 1
 fi
+test -x "$legacy_bin"
+test -x "$package_bin"
 
 "$bin" --version >/tmp/researchloop-packed-version.log
 local_version="$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync("'"$repo_root"'/package.json","utf8")).version)')"
 grep -q "^$local_version$" /tmp/researchloop-packed-version.log
 
 "$bin" --help >/tmp/researchloop-packed-help.log
-grep -q "Research Loop" /tmp/researchloop-packed-help.log
-grep -q "researchloop init" /tmp/researchloop-packed-help.log
+grep -q "AutoResearch-AI" /tmp/researchloop-packed-help.log
+grep -q "autoresearch init" /tmp/researchloop-packed-help.log
+grep -q "researchloop    legacy alias" /tmp/researchloop-packed-help.log
 
 "$bin" init --agent codex --dir "$lab" >/tmp/researchloop-packed-init.log
 test -f "$lab/.researchloop/AGENTS.md"
+test -f "$lab/.researchloop/baseline.md"
 test -f "$lab/.researchloop/goal.md"
 test -f "$lab/.researchloop/plan.md"
 test -f "$lab/.researchloop/scratchpad/runs.jsonl"
@@ -76,7 +82,7 @@ grep -q "ask for approval before running any init" "$lab/.researchloop/AGENTS.md
 grep -q "lower validation loss" /tmp/researchloop-packed-prompt.log
 grep -q "# First Contact" /tmp/researchloop-packed-prompt.log
 grep -q "Do not install Docker" /tmp/researchloop-packed-prompt.log
-grep -q "Do not run \`researchloop run\`" /tmp/researchloop-packed-prompt.log
+grep -q "Do not run \`autoresearch run\`" /tmp/researchloop-packed-prompt.log
 grep -q "Do not summarize package internals" /tmp/researchloop-packed-prompt.log
 grep -q "student or researcher starting AI research" /tmp/researchloop-packed-prompt.log
 grep -q "Do not install Docker" /tmp/researchloop-packed-prompt.log
@@ -86,9 +92,12 @@ grep -q "Ask for approval before running any baseline" /tmp/researchloop-packed-
 grep -q "Check read-only whether a baseline already exists" /tmp/researchloop-packed-prompt.log
 grep -q "Talk to the user about the baseline first" /tmp/researchloop-packed-prompt.log
 grep -q "baseline markdown note" /tmp/researchloop-packed-prompt.log
+grep -q "# Topic Intake" /tmp/researchloop-packed-prompt.log
+grep -q "propose, novel, or autonomous" /tmp/researchloop-packed-prompt.log
+grep -q "genuinely different hypotheses" /tmp/researchloop-packed-prompt.log
 
 "$bin" record --dir "$lab" --id packed-001 --status complete --metric val_loss=1.23 --note "packed smoke" >/tmp/researchloop-packed-record.log
 "$bin" report --dir "$lab" >/tmp/researchloop-packed-report.log
 grep -q "runs: 1" /tmp/researchloop-packed-report.log
 
-echo "researchloop test:packed passed (version=$local_version, files=$file_count)"
+echo "autoresearch test:packed passed (version=$local_version, files=$file_count)"

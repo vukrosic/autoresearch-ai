@@ -22,4 +22,4 @@ grep -q "direction: higher" /tmp/researchloop-compare-accuracy.log
 grep -q "best: run-c = 0.8" /tmp/researchloop-compare-accuracy.log
 grep -q "worst: run-a = 0.71" /tmp/researchloop-compare-accuracy.log
 
-echo "researchloop test:compare passed"
+echo "autoresearch test:compare passed"

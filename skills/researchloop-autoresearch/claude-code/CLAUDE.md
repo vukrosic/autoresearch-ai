@@ -1,4 +1,4 @@
-# ResearchLoop Autoresearch
+# AutoResearch-AI Autoresearch
 
 Use this repo as an autonomous AI research loop.
 
@@ -10,8 +10,8 @@ Before changing code, read:
 - `.researchloop/scratchpad/THREAD.md`
 - `.researchloop/repo-profile.json`
 
-On first contact after ResearchLoop is installed, follow `templates/prompts/first-contact.md` when available.
-Do not run init, training, baseline commands, `researchloop run`, `researchloop baseline`, sweeps, or experiment commands yet.
+On first contact after AutoResearch-AI is installed, follow `templates/prompts/first-contact.md` when available.
+Do not run init, training, baseline commands, `autoresearch run`, `autoresearch baseline`, sweeps, or experiment commands yet.
 Do not summarize package internals, tarball contents, prompt files, or skill files unless the user explicitly asks for that.
 Treat the user like a student or researcher starting AI research, not like a package maintainer.
 Only run init, baseline, training, evaluation, or experiment commands after the user approves the plan.
@@ -28,15 +28,15 @@ After the first-contact plan is approved:
 6. compare against the baseline
 7. prune weak branches
 
-Use ResearchLoop to keep the loop durable:
+Use AutoResearch-AI to keep the loop durable:
 
-- `researchloop goal`
-- `researchloop inspect`
-- `researchloop idea`
-- `researchloop prompt`
-- `researchloop record`
-- `researchloop compare`
-- `researchloop report`
+- `autoresearch goal`
+- `autoresearch inspect`
+- `autoresearch idea`
+- `autoresearch prompt`
+- `autoresearch record`
+- `autoresearch compare`
+- `autoresearch report`
 
 Never claim improvement without a run.
 Never skip the baseline.

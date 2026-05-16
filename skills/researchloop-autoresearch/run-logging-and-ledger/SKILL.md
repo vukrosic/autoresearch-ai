@@ -1,6 +1,6 @@
 ---
 name: researchloop-run-logging-and-ledger
-description: Use when a run, smoke check, or manual result needs to be recorded in the ResearchLoop ledger.
+description: Use when a run, smoke check, or manual result needs to be recorded in the AutoResearch-AI ledger.
 ---
 
 # Run Logging and Ledger

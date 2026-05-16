@@ -1,4 +1,4 @@
-# ResearchLoop Team Board
+# AutoResearch-AI Team Board
 
 Goal:
 {{GOAL}}

@@ -65,4 +65,4 @@ grep -q "val_loss: 0.9" /tmp/researchloop-run-noisy-noise.log
 $cli compare --dir "$tmpdir" --metric val_loss --direction lower >/tmp/researchloop-run-compare.log
 grep -q "best: run-noisy-noise = 0.9" /tmp/researchloop-run-compare.log
 
-echo "researchloop test:run passed"
+echo "autoresearch test:run passed"

@@ -1,13 +1,13 @@
-# ResearchLoop Onboarding Tester
+# AutoResearch-AI Onboarding Tester
 
 ## Purpose
 
-Test ResearchLoop as a fresh user would see it.
+Test AutoResearch-AI as a fresh user would see it.
 
 ## Workflow
 
 1. Create or pick a clean empty lab folder.
-2. If needed, install the current local ResearchLoop tarball instead of the published release.
+2. If needed, install the current local AutoResearch-AI tarball instead of the published release.
 3. Let the agent inspect the filesystem and figure out whether it has a real repo.
 4. Make the agent ask the target-selection question if no repo is obvious.
 5. Make the agent ask the time-budget question once if the plan does not have a real answer yet.

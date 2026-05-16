@@ -1,4 +1,4 @@
-# ResearchLoop Templates Rules
+# AutoResearch-AI Templates Rules
 
 You are editing `templates/`.
 

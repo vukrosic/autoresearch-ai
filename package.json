@@ -4,6 +4,8 @@
   "description": "Install an autonomous AI research harness for Codex, Claude Code, Hermes, and other coding agents.",
   "type": "module",
   "bin": {
+    "autoresearch": "./bin/researchloop.js",
+    "autoresearch-ai": "./bin/researchloop.js",
     "researchloop": "./bin/researchloop.js"
   },
   "files": [

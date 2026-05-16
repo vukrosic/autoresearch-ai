@@ -1,6 +1,6 @@
 # Core Loop
 
-Use this reference for the shared ResearchLoop workflow.
+Use this reference for the shared AutoResearch-AI workflow.
 
 1. Read `.researchloop/goal.md`, `.researchloop/plan.md`, `.researchloop/AGENTS.md`, `.researchloop/scratchpad/THREAD.md`, and `.researchloop/repo-profile.json`.
 2. Identify the baseline command and the metric before changing anything.

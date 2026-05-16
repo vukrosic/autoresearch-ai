@@ -1,4 +1,4 @@
-# ResearchLoop Skills
+# AutoResearch-AI Skills
 
 This folder ships downloadable agent skills for autonomous AI research.
 
@@ -26,7 +26,7 @@ Typical mapping:
 
 ## How distribution works
 
-ResearchLoop keeps the core loop in the npm package, and the skill pack stays here as a portable agent-side copy.
+AutoResearch-AI keeps the core loop in the npm package, and the skill pack stays here as a portable agent-side copy.
 
 That means:
 

@@ -1,6 +1,6 @@
-# ResearchLoop Agent Ops
+# AutoResearch-AI Agent Ops
 
-This is the operating model for building ResearchLoop itself with multiple agents.
+This is the operating model for building AutoResearch-AI itself with multiple agents.
 
 The goal is not a flat swarm.
 The goal is a small hierarchy that stays legible:
@@ -51,7 +51,7 @@ A small hierarchy keeps parallelism useful:
 - rejects vague or unverified claims
 - decides whether a branch is merge-ready
 
-## Suggested lanes for ResearchLoop
+## Suggested lanes for AutoResearch-AI
 
 Use these lanes when developing the package itself:
 
@@ -86,9 +86,9 @@ Use one branch per worker and keep the branch name tied to the lane.
 Example:
 
 ```bash
-codex/researchloop-cli-runtime
-codex/researchloop-dashboard
-codex/researchloop-tests-ci
+codex/autoresearch-cli-runtime
+codex/autoresearch-dashboard
+codex/autoresearch-tests-ci
 ```
 
 ## Merge rule

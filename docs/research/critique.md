@@ -1,6 +1,6 @@
 # Critique
 
-This is the honest read on ResearchLoop today.
+This is the honest read on AutoResearch-AI today.
 
 ## What Is Strong
 
@@ -19,7 +19,7 @@ This is the honest read on ResearchLoop today.
 
 ## What To Improve Next
 
-- Add `researchloop idea` or `researchloop compare` so the loop feels more like a product and less like a file bundle.
+- Add `autoresearch idea` or `autoresearch compare` so the loop feels more like a product and less like a file bundle.
 - Add a CI job for `npm run test:setup`, `npm run test:prompts`, and `npm run test:site`.
 - Put one real external repo onboarding note into the research log.
 - Turn one user conversation into a reusable onboarding example.
@@ -27,4 +27,4 @@ This is the honest read on ResearchLoop today.
 
 ## Bottom Line
 
-ResearchLoop is promising because it has a real use case, a real Mac-compatible proof, and a simple open source shape. It still needs more productization around the experiment loop and more proof from actual users before it feels like a durable startup.
+AutoResearch-AI is promising because it has a real use case, a real Mac-compatible proof, and a simple open source shape. It still needs more productization around the experiment loop and more proof from actual users before it feels like a durable startup.

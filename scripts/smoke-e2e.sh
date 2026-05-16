@@ -29,4 +29,4 @@ grep -q "Recorded run: smoke-001" /tmp/researchloop-record.log
 grep -q "runs: 1" /tmp/researchloop-report.log
 grep -q "complete: 1" /tmp/researchloop-report.log
 
-echo "researchloop smoke:e2e passed"
+echo "autoresearch smoke:e2e passed"

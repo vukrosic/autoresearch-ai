@@ -1,6 +1,6 @@
-# ResearchLoop Development Team
+# AutoResearch-AI Development Team
 
-Use this pack when you want to split ResearchLoop work across many agents without losing the merge story.
+Use this pack when you want to split AutoResearch-AI work across many agents without losing the merge story.
 
 ## Roles
 
@@ -20,10 +20,10 @@ Use this pack when you want to split ResearchLoop work across many agents withou
 ## Commands
 
 ```bash
-researchloop team --workers 8
-researchloop goal "ship the next ResearchLoop release"
-researchloop inspect
-researchloop prompt --agent codex
+autoresearch team --workers 8
+autoresearch goal "ship the next AutoResearch-AI release"
+autoresearch inspect
+autoresearch prompt --agent codex
 ```
 
 ## Board

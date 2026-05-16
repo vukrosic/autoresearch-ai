@@ -2,13 +2,13 @@
 
 Canonical folder:
 
-`/Users/vukrosic/my-life/researchloop`
+`/Users/vukrosic/my-life/autoresearch-ai`
 
 Moved here:
 
 - npm package: formerly `/Users/vukrosic/my-life/projects/researchloop-cli`
 - site: formerly `/Users/vukrosic/my-life/projects/research-loop-site`
-- hub note: formerly `/Users/vukrosic/my-life/projects/researchloop/README.md`
+- hub note: formerly `/Users/vukrosic/my-life/projects/autoresearch/README.md`
 
 Compatibility links remain in `/Users/vukrosic/my-life/projects/` so existing local URLs and old references still resolve.
 
@@ -28,7 +28,7 @@ Important subfolders:
 
 Local site:
 
-`http://localhost:8000/researchloop/docs/site/index.html`
+`http://localhost:8000/autoresearch-ai/docs/site/index.html`
 
 Old site path still works through symlink:
 

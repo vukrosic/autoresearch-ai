@@ -1,6 +1,6 @@
 ---
 name: researchloop-onboarding-and-demo
-description: Use when creating a clean first-run onboarding path or demo scenario for ResearchLoop.
+description: Use when creating a clean first-run onboarding path or demo scenario for AutoResearch-AI.
 ---
 
 # Onboarding and Demo

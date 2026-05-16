@@ -17,7 +17,7 @@ These are useful because they show many ways to package the same underlying idea
 - A skill or prompt should create a ready-to-run setup quickly.
 - AutoResearch loops can target many domains, not only ML training.
 
-## What ResearchLoop Should Keep
+## What AutoResearch-AI Should Keep
 
 - `AGENTS.md`
 - `goal.md`
@@ -26,7 +26,7 @@ These are useful because they show many ways to package the same underlying idea
 - `runs.jsonl`
 - idea notes and experiment records
 
-## What ResearchLoop Should Add
+## What AutoResearch-AI Should Add
 
 - a more polished npm installation path
 - explicit setup tests

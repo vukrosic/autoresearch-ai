@@ -1,4 +1,4 @@
-# Idea 001 - Add `researchloop record`
+# Idea 001 - Add `autoresearch record`
 
 Status: shipped in the local repo.
 
@@ -9,7 +9,7 @@ Users will trust the tool more if it can append a structured run result without 
 ## Command
 
 ```bash
-researchloop record \
+autoresearch record \
   --id mac-e2e-002 \
   --status complete \
   --metric val_loss=4.4157 \

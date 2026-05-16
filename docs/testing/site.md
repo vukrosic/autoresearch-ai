@@ -12,7 +12,7 @@ npm run test:site
 
 ## Checks
 
-- The title still names ResearchLoop.
+- The title still names AutoResearch-AI.
 - The install command is visible.
 - The page says it is MacBook-tested.
 - The page mentions the open source core.

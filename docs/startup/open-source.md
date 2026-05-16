@@ -1,6 +1,6 @@
 # Open Source Plan
 
-ResearchLoop should be open source because trust matters in research workflows.
+AutoResearch-AI should be open source because trust matters in research workflows.
 
 Users should be able to inspect:
 
@@ -17,7 +17,7 @@ Users should be able to inspect:
 The public repo should be simple:
 
 ```text
-researchloop/
+autoresearch/
   bin/
   templates/
   docs/

@@ -1,4 +1,4 @@
-# ResearchLoop Docs Rules
+# AutoResearch-AI Docs Rules
 
 You are editing `docs/`.
 

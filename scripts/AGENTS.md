@@ -1,4 +1,4 @@
-# ResearchLoop Scripts Rules
+# AutoResearch-AI Scripts Rules
 
 You are editing `scripts/`.
 

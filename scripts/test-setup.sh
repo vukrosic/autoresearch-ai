@@ -19,6 +19,7 @@ node "$repo_root/bin/researchloop.js" inspect --dir "$tmp_fixture" >/tmp/researc
 node "$repo_root/bin/researchloop.js" prompt --goal "reduce validation loss" >/tmp/researchloop-fixture-prompt.log
 
 test -f "$tmp_blank/.researchloop/AGENTS.md"
+test -f "$tmp_blank/.researchloop/baseline.md"
 test -f "$tmp_blank/.researchloop/goal.md"
 test -f "$tmp_blank/.researchloop/plan.md"
 test -f "$tmp_blank/.researchloop/scratchpad/runs.jsonl"
@@ -32,4 +33,4 @@ grep -q "runs: 1" /tmp/researchloop-setup-report.log
 grep -q '"pytorch"' /tmp/researchloop-fixture-inspect.log
 grep -q "train.py" /tmp/researchloop-fixture-inspect.log
 
-echo "researchloop test:setup passed"
+echo "autoresearch test:setup passed"

@@ -1,6 +1,6 @@
 ---
 name: researchloop-orchestration
-description: Use when splitting ResearchLoop work across multiple agents or lanes.
+description: Use when splitting AutoResearch-AI work across multiple agents or lanes.
 ---
 
 # Orchestration

@@ -2,11 +2,11 @@
 
 Short version:
 
-ResearchLoop turns coding agents into disciplined autonomous research loops.
+AutoResearch-AI turns coding agents into disciplined autonomous research loops.
 
 Longer version:
 
-ResearchLoop is an open source npm package that installs research rules, prompts, adapters, scratchpads, and experiment logs into an AI repo. Codex, Claude Code, Hermes, Cursor, or another agent can then run experiments with clearer goals, better memory, and reproducible evidence.
+AutoResearch-AI is an open source npm package that installs research rules, prompts, adapters, scratchpads, and experiment logs into an AI repo. Codex, Claude Code, Hermes, Cursor, or another agent can then run experiments with clearer goals, better memory, and reproducible evidence.
 
 ## Say This
 
@@ -24,4 +24,4 @@ ResearchLoop is an open source npm package that installs research rules, prompts
 
 ## First Promise
 
-Install ResearchLoop, paste the generated prompt into your agent, and get a clean research loop with goals, plans, ideas, runs, and reports.
+Install AutoResearch-AI, paste the generated prompt into your agent, and get a clean research loop with goals, plans, ideas, runs, and reports.

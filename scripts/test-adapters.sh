@@ -69,4 +69,4 @@ touch "$tmp_llm_full/train_llm.py" "$tmp_llm_full/configs/llm_config.py"
 $cli inspect --dir "$tmp_llm_full" >/tmp/researchloop-adapters-llm-full.log
 grep -q '"llm-research-kit"' /tmp/researchloop-adapters-llm-full.log
 
-echo "researchloop test:adapters passed"
+echo "autoresearch test:adapters passed"

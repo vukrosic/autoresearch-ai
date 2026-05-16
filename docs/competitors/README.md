@@ -2,7 +2,7 @@
 
 This folder tracks the landscape around autonomous AI research, prompt/eval tooling, and agent harnesses.
 
-The point is not to copy them blindly. The point is to learn which parts of the workflow are already solved, which parts are missing, and where ResearchLoop should stay simpler.
+The point is not to copy them blindly. The point is to learn which parts of the workflow are already solved, which parts are missing, and where AutoResearch-AI should stay simpler.
 
 ## Main Buckets
 

@@ -9,7 +9,7 @@ Likely pain:
 
 Useful product angle:
 
-ResearchLoop makes agent-driven optimization auditable and repeatable.
+AutoResearch-AI makes agent-driven optimization auditable and repeatable.
 
 First demo:
 

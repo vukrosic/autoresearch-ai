@@ -1,6 +1,6 @@
 # Release Plan
 
-ResearchLoop should ship like a living developer tool, not a one-time launch.
+AutoResearch-AI should ship like a living developer tool, not a one-time launch.
 
 The release rhythm should be small and frequent: every few days when there is a real improvement, and never only for ceremony.
 
@@ -76,14 +76,14 @@ Run this literal checklist for every release. Tick each box in the release PR de
 [ ] npm test passes locally (all fast tests green)
 [ ] npm run test:packed passes (tarball installs and boots from an isolated prefix)
 [ ] npm pack --dry-run: file count looks right, no researchloop-dev/, no scripts/, no docs/competitors/, no docs/startup/
-[ ] researchloop --version prints the new version (from the packed tarball, not just the linked checkout)
+[ ] autoresearch --version prints the new version (from the packed tarball, not just the linked checkout)
 [ ] README install/quickstart copy-pasted into a fresh shell still works end-to-end
 [ ] docs/site/index.html mentions the new headline feature, if any
 [ ] One LLM-driven onboarding scenario run against the packed tarball; transcript saved in researchloop-dev/transcripts/
 [ ] CI green on the release commit (Node 18 / 20 / 22 on ubuntu + macos)
 [ ] git tag vX.Y.Z, git push --follow-tags
 [ ] npm publish
-[ ] post-publish: install from npm in a fresh shell (npm install -g autoresearch-ai), run researchloop --version and researchloop --help
+[ ] post-publish: install from npm in a fresh shell (npm install -g autoresearch-ai), run autoresearch --version and autoresearch --help
 [ ] GitHub release draft published with the CHANGELOG entry
 ```
 
@@ -116,7 +116,7 @@ Bad release notes talk about "vision" without showing a user-facing change.
 
 The first launch should be:
 
-1. Public GitHub repo for `researchloop`
+1. Public GitHub repo for `autoresearch-ai`
 2. First npm publish
 3. Short demo video or screen recording
 4. X post announcing the loop
@@ -130,10 +130,10 @@ The launch is not finished when the package is published. It is finished when so
 The next improvements should be boring and practical:
 
 - better first-run onboarding
-- a more obvious `researchloop goal`
+- a more obvious `autoresearch goal`
 - one more adapter if a user actually needs it
-- better `researchloop compare` output
+- better `autoresearch compare` output
 - a richer dashboard view
-- a clearer `researchloop idea` flow that starts from repo history and chat, then suggests real research ideas instead of defaulting to sweeps
+- a clearer `autoresearch idea` flow that starts from repo history and chat, then suggests real research ideas instead of defaulting to sweeps
 
 The first release after launch should focus on removing friction from the first 10 minutes.

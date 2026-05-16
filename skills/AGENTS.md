@@ -1,10 +1,10 @@
-# ResearchLoop Skills Rules
+# AutoResearch-AI Skills Rules
 
 You are editing `skills/`.
 
 ## Scope
 
-This folder ships the agent-side instructions that mirror the ResearchLoop loop.
+This folder ships the agent-side instructions that mirror the AutoResearch-AI loop.
 
 ## Rules
 

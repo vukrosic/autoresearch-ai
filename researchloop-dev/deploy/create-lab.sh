@@ -17,7 +17,7 @@ while [ $# -gt 0 ]; do
       cat <<'USAGE'
 Usage: create-lab.sh [--base PATH]
 
-Creates a fresh empty lab folder for ResearchLoop onboarding tests.
+Creates a fresh empty lab folder for AutoResearch-AI onboarding tests.
 Defaults to $TMPDIR (or /tmp).
 
 Set --base to a different parent directory if you want labs grouped
@@ -38,7 +38,7 @@ if [ ! -d "$base" ]; then
 fi
 
 stamp="$(date +%Y-%m-%dT%H-%M-%S)"
-lab="$base/researchloop-onboarding-lab-$stamp"
+lab="$base/autoresearch-onboarding-lab-$stamp"
 
 mkdir -p "$lab"
 printf '%s\n' "$lab"

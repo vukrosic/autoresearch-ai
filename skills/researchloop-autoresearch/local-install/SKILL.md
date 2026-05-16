@@ -1,6 +1,6 @@
 ---
 name: researchloop-local-install
-description: Use when you need the shortest local package artifact handoff string or smoke-test command for ResearchLoop in a separate agent with no source-repo context.
+description: Use when you need the shortest local package artifact handoff string or smoke-test command for AutoResearch-AI in a separate agent with no source-repo context.
 ---
 
 # Local Package
@@ -18,7 +18,7 @@ If the agent needs to smoke-test the package as a fresh npm install, give it onl
 ```bash
 TARBALL="/Users/vukrosic/AI Science Projects/testing-research-loop/autoresearch-ai-0.3.1.tgz"
 npm install -g "$TARBALL"
-researchloop --help
+autoresearch --help
 ```
 
-Do not tell the separate agent to inspect the ResearchLoop source checkout unless the task is specifically to develop ResearchLoop itself.
+Do not tell the separate agent to inspect the AutoResearch-AI source checkout unless the task is specifically to develop AutoResearch-AI itself.

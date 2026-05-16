@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const packageRoot = path.resolve(path.dirname(__filename), "..");
 const templatesRoot = path.join(packageRoot, "templates");
+const packageName = "autoresearch-ai";
 
 function packageVersion() {
   try {
@@ -74,6 +75,190 @@ function targetDir() {
   return path.resolve(String(option("--dir", process.cwd())));
 }
 
+function defaultSafetyPolicy() {
+  return {
+    allowPrefixes: [
+      "python",
+      "python3",
+      "bash",
+      "sh",
+      "node",
+      "npm",
+      "npx",
+      "uv",
+      "make",
+      "pytest",
+      "printf",
+      "echo",
+      "sleep",
+      "false",
+      "true",
+    ],
+    denySubstrings: [
+      "rm -rf",
+      "sudo",
+      "curl",
+      "wget",
+      "mkfs",
+      "shutdown",
+      "reboot",
+      "poweroff",
+    ],
+    maxMinutesPerRun: 60,
+    maxCostUsdPerRun: 0,
+  };
+}
+
+function parseSafetyScalar(raw) {
+  const text = String(raw ?? "").trim();
+  if (!text) return "";
+  if (
+    (text.startsWith('"') && text.endsWith('"')) ||
+    (text.startsWith("'") && text.endsWith("'"))
+  ) {
+    return text.slice(1, -1);
+  }
+  if (/^-?\d+(?:\.\d+)?$/.test(text)) {
+    return Number(text);
+  }
+  if (text === "true") return true;
+  if (text === "false") return false;
+  return text;
+}
+
+function normalizeSafetyPolicy(policy) {
+  const defaults = defaultSafetyPolicy();
+  const allowPrefixes = Array.isArray(policy.allowPrefixes)
+    ? policy.allowPrefixes.map((entry) => String(entry).trim()).filter(Boolean)
+    : defaults.allowPrefixes;
+  const denySubstrings = Array.isArray(policy.denySubstrings)
+    ? policy.denySubstrings.map((entry) => String(entry).trim()).filter(Boolean)
+    : defaults.denySubstrings;
+  const maxMinutesPerRun = Number(policy.maxMinutesPerRun);
+  const maxCostUsdPerRun = Number(policy.maxCostUsdPerRun);
+
+  return {
+    allowPrefixes: allowPrefixes.length ? allowPrefixes : defaults.allowPrefixes,
+    denySubstrings: denySubstrings.length ? denySubstrings : defaults.denySubstrings,
+    maxMinutesPerRun: Number.isFinite(maxMinutesPerRun) && maxMinutesPerRun > 0
+      ? maxMinutesPerRun
+      : defaults.maxMinutesPerRun,
+    maxCostUsdPerRun: Number.isFinite(maxCostUsdPerRun) && maxCostUsdPerRun >= 0
+      ? maxCostUsdPerRun
+      : defaults.maxCostUsdPerRun,
+  };
+}
+
+function parseSafetyPolicy(text) {
+  const policy = {
+    allowPrefixes: [],
+    denySubstrings: [],
+    maxMinutesPerRun: undefined,
+    maxCostUsdPerRun: undefined,
+  };
+  let activeList = null;
+
+  for (const rawLine of String(text || "").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
+
+    const listMatch = line.match(/^([A-Za-z0-9_]+):\s*$/);
+    if (listMatch) {
+      activeList = listMatch[1];
+      continue;
+    }
+
+    const scalarMatch = line.match(/^([A-Za-z0-9_]+):\s*(.+)$/);
+    if (scalarMatch) {
+      const key = scalarMatch[1];
+      const value = parseSafetyScalar(scalarMatch[2]);
+      if (key === "allow_prefixes" || key === "allowPrefixes") {
+        policy.allowPrefixes = Array.isArray(value) ? value : [value];
+      } else if (key === "deny_substrings" || key === "denySubstrings") {
+        policy.denySubstrings = Array.isArray(value) ? value : [value];
+      } else if (key === "max_minutes_per_run" || key === "maxMinutesPerRun") {
+        policy.maxMinutesPerRun = value;
+      } else if (key === "max_cost_usd_per_run" || key === "maxCostUsdPerRun") {
+        policy.maxCostUsdPerRun = value;
+      }
+      activeList = null;
+      continue;
+    }
+
+    const itemMatch = line.match(/^-\s*(.+)$/);
+    if (itemMatch && activeList) {
+      const value = String(parseSafetyScalar(itemMatch[1]));
+      if (activeList === "allow_prefixes" || activeList === "allowPrefixes") {
+        policy.allowPrefixes.push(value);
+      } else if (activeList === "deny_substrings" || activeList === "denySubstrings") {
+        policy.denySubstrings.push(value);
+      }
+    }
+  }
+
+  return normalizeSafetyPolicy(policy);
+}
+
+function loadSafetyPolicy(cwd) {
+  const candidates = [
+    path.join(cwd, ".researchloop", "safety.yaml"),
+    path.join(templatesRoot, "base", "safety.yaml"),
+  ];
+  for (const file of candidates) {
+    if (!fs.existsSync(file)) {
+      continue;
+    }
+    try {
+      return parseSafetyPolicy(fs.readFileSync(file, "utf8"));
+    } catch {
+      // Fall through to the built-in defaults.
+    }
+  }
+  return defaultSafetyPolicy();
+}
+
+function evaluateCommandSafety(commandText, policy) {
+  const normalizedCommand = String(commandText || "").trim();
+  const lowerCommand = normalizedCommand.toLowerCase();
+  const denyMatch = (policy.denySubstrings || []).find((needle) => {
+    const trimmed = String(needle || "").trim();
+    return trimmed && lowerCommand.includes(trimmed.toLowerCase());
+  });
+  if (denyMatch) {
+    return {
+      allowed: false,
+      rule: "deny_substrings",
+      message: `matches deny_substrings: ${denyMatch}`,
+    };
+  }
+
+  const prefixMatch = (policy.allowPrefixes || []).find((prefix) => {
+    const trimmed = String(prefix || "").trim();
+    return trimmed && normalizedCommand.startsWith(trimmed);
+  });
+  if (!prefixMatch) {
+    return {
+      allowed: false,
+      rule: "allow_prefixes",
+      message: `does not start with an allowed prefix (${(policy.allowPrefixes || []).join(", ")})`,
+    };
+  }
+
+  const maxMinutes = Number(policy.maxMinutesPerRun);
+  const maxMs = Number.isFinite(maxMinutes) && maxMinutes > 0
+    ? Math.max(1, Math.floor(maxMinutes * 60_000))
+    : null;
+
+  return {
+    allowed: true,
+    rule: null,
+    message: "",
+    maxMs,
+  };
+}
+
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
 }
@@ -113,6 +298,29 @@ function run(commandText, cwd) {
   }
 }
 
+function runCapture(commandText, cwd) {
+  try {
+    const output = execSync(commandText, {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+      encoding: "utf8",
+      timeout: 5000,
+    }).trim();
+    return { ok: true, output };
+  } catch (err) {
+    const stdout = String(err?.stdout || "").trim();
+    const stderr = String(err?.stderr || "").trim();
+    return {
+      ok: false,
+      output: [stdout, stderr].filter(Boolean).join("\n").trim(),
+    };
+  }
+}
+
+function sha256Hex(text) {
+  return createHash("sha256").update(text).digest("hex");
+}
+
 function existsAny(cwd, candidates) {
   return candidates.filter((candidate) => fs.existsSync(path.join(cwd, candidate)));
 }
@@ -149,6 +357,120 @@ function readSafe(file) {
   } catch {
     return "";
   }
+}
+
+function captureEnv(cwd, pythonOverride = null) {
+  const env = {
+    git_sha: null,
+    git_dirty: null,
+    python_version: null,
+    pip_freeze_sha256: null,
+    torch_version: null,
+    cuda_available: null,
+    cuda_version: null,
+    gpu_device_names: null,
+    os: `${os.type()} ${os.release()} ${os.arch()}`,
+    hostname: os.hostname(),
+  };
+
+  const gitShaResult = runCapture("git rev-parse HEAD 2>&1", cwd);
+  if (gitShaResult.ok && gitShaResult.output) {
+    env.git_sha = gitShaResult.output;
+    const gitDirtyResult = runCapture("git status --porcelain 2>&1", cwd);
+    env.git_dirty = gitDirtyResult.ok ? gitDirtyResult.output.length > 0 : null;
+  }
+
+  let python = null;
+  const pythonCandidates = pythonOverride
+    ? [pythonOverride, "python3", "python"]
+    : ["python3", "python"];
+  for (const candidate of pythonCandidates) {
+    const versionResult = runCapture(`${candidate} --version 2>&1`, cwd);
+    if (versionResult.ok && versionResult.output) {
+      python = candidate;
+      env.python_version = versionResult.output;
+      break;
+    }
+  }
+
+  if (python) {
+    const freezeResult = runCapture(`${python} -m pip freeze 2>&1`, cwd);
+    if (freezeResult.ok) {
+      const freezeText = freezeResult.output
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .sort()
+        .join("\n");
+      env.pip_freeze_sha256 = sha256Hex(freezeText);
+    }
+
+    const torchProbe = runCapture(
+      `${python} - <<'PY'\nimport importlib.util\nimport json\nresult = {\n    "torch_version": None,\n    "cuda_available": None,\n    "cuda_version": None,\n    "gpu_device_names": None,\n}\nspec = importlib.util.find_spec("torch")\nif spec:\n    import torch\n    result["torch_version"] = torch.__version__\n    result["cuda_available"] = bool(torch.cuda.is_available())\n    result["cuda_version"] = torch.version.cuda or None\n    if result["cuda_available"]:\n        result["gpu_device_names"] = [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]\n    else:\n        result["gpu_device_names"] = None\nprint(json.dumps(result))\nPY`,
+      cwd
+    );
+    if (torchProbe.ok && torchProbe.output) {
+      try {
+        const torchEnv = JSON.parse(torchProbe.output);
+        env.torch_version = torchEnv.torch_version ?? null;
+        env.cuda_available = torchEnv.cuda_available ?? null;
+        env.cuda_version = torchEnv.cuda_version ?? null;
+        env.gpu_device_names = torchEnv.gpu_device_names ?? null;
+      } catch {
+        // keep explicit nulls when the probe fails
+      }
+    }
+  }
+
+  return env;
+}
+
+function formatEnvValue(value) {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return JSON.stringify(value);
+  return String(value);
+}
+
+function envMismatches(expectedEnv, currentEnv) {
+  const fields = [
+    "git_sha",
+    "git_dirty",
+    "python_version",
+    "pip_freeze_sha256",
+    "torch_version",
+    "cuda_available",
+    "cuda_version",
+    "gpu_device_names",
+    "os",
+    "hostname",
+  ];
+  const mismatches = [];
+  for (const field of fields) {
+    const expected = expectedEnv?.[field] ?? null;
+    const current = currentEnv?.[field] ?? null;
+    if (JSON.stringify(expected) !== JSON.stringify(current)) {
+      mismatches.push({ field, expected, current });
+    }
+  }
+  return mismatches;
+}
+
+function readLatestRunRow(cwd) {
+  const ledgerPath = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
+  const runs = parseRunsLedger(ledgerPath);
+  return [...runs].reverse().find((row) => row && !row.parse_error) || null;
+}
+
+function readRunRowById(cwd, runId) {
+  const ledgerPath = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
+  const runs = parseRunsLedger(ledgerPath);
+  return runs.find((row) => row && !row.parse_error && String(row.id) === String(runId)) || null;
+}
+
+function appendRunRow(cwd, row) {
+  const ledger = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
+  ensureDir(path.dirname(ledger));
+  fs.appendFileSync(ledger, `${JSON.stringify(row)}\n`);
 }
 
 function depsMention(cwd, needle) {
@@ -196,7 +518,7 @@ function detectRepo(cwd) {
 
 function installAgentFile(cwd, agent, force) {
   const content = [
-    "# Research Loop",
+    "# AutoResearch-AI",
     "",
     "Before doing autonomous research, read:",
     "",
@@ -360,8 +682,8 @@ function buildTeamPlan(cwd, goalText, requestedWorkers) {
       scope: lane.scope,
       files: lane.files,
       done: lane.done,
-      branch: `codex/researchloop-${slugify(lane.slug)}`,
-      worktree: `../researchloop-${slugify(lane.slug)}`,
+      branch: `codex/autoresearch-${slugify(lane.slug)}`,
+      worktree: `../autoresearch-${slugify(lane.slug)}`,
     })),
   };
 }
@@ -383,7 +705,7 @@ function cmdInit() {
     true
   );
 
-  console.log(`Research Loop initialized in ${cwd}`);
+  console.log(`AutoResearch-AI initialized in ${cwd}`);
   console.log(`Harness: ${path.relative(cwd, researchDir)}`);
   console.log(`Agent file: ${wroteAgent ? "written" : "already existed"}`);
   console.log(`Detected adapters: ${profile.adapters.join(", ")}`);
@@ -409,11 +731,15 @@ function cmdPrompt() {
     "Improve the target metric through small, documented experiments.";
   const promptFile = path.join(templatesRoot, "prompts", "researchloop.md");
   const firstContactFile = path.join(templatesRoot, "prompts", "first-contact.md");
+  const topicIntakeFile = path.join(templatesRoot, "prompts", "topic-intake.md");
   const template = fs.readFileSync(promptFile, "utf8");
   const firstContact = fs.existsSync(firstContactFile)
     ? `${fs.readFileSync(firstContactFile, "utf8").trim()}\n\n`
     : "";
-  let output = `${firstContact}${template.replaceAll("{{GOAL}}", goal)}`;
+  const topicIntake = fs.existsSync(topicIntakeFile)
+    ? `${fs.readFileSync(topicIntakeFile, "utf8").trim()}\n\n`
+    : "";
+  let output = `${firstContact}${topicIntake}${template.replaceAll("{{GOAL}}", goal)}`;
 
   if (focus) {
     const focusFile = path.join(templatesRoot, "prompts", "focus", `${focus}.md`);
@@ -438,7 +764,7 @@ function cmdGoal() {
       process.stdout.write(fs.readFileSync(goalFile, "utf8"));
       return;
     }
-    console.log("No research goal set yet. Use `researchloop goal \"lower validation loss\"`.");
+    console.log("No research goal set yet. Use `autoresearch goal \"lower validation loss\"`.");
     return;
   }
 
@@ -477,7 +803,7 @@ function cmdGoal() {
     "Unknown.",
     "",
     "## Notes",
-    "Use `researchloop inspect` to generate a repo profile, then ask an agent to fill in the missing benchmark details.",
+    "Use `autoresearch inspect` to generate a repo profile, then ask an agent to fill in the missing benchmark details.",
     "",
   ].join("\n");
 
@@ -504,22 +830,41 @@ function cmdDoctor() {
   const nodeVersion = process.version;
   const npmVersion = run("npm --version", cwd) || "not found";
   const gitVersion = run("git --version", cwd) || "not found";
-  const pythonVersion = run(`${python} --version`, cwd) || "not found";
-  const torchProbe = run(`${python} - <<'PY'\nimport importlib.util\nspec = importlib.util.find_spec('torch')\nif not spec:\n    print('torch missing')\nelse:\n    import torch\n    print(f'torch {torch.__version__}')\n    print(f'cuda {torch.cuda.is_available()}')\n    print(f'mps {hasattr(torch.backends, \"mps\") and torch.backends.mps.is_available()}')\nPY`, cwd) || "torch unknown";
+  const currentEnv = captureEnv(cwd, python);
+  const latestRun = readLatestRunRow(cwd);
 
   console.log(`cwd: ${cwd}`);
   console.log(`node: ${nodeVersion}`);
   console.log(`npm: ${npmVersion}`);
   console.log(`git: ${gitVersion}`);
-  console.log(`python: ${pythonVersion} (${python})`);
-  console.log(torchProbe);
+  console.log(`python: ${currentEnv.python_version || "not found"} (${python})`);
+  console.log(`git_sha: ${currentEnv.git_sha || "not found"}`);
+  console.log(`git_dirty: ${currentEnv.git_dirty === null ? "unknown" : String(currentEnv.git_dirty)}`);
+  console.log(`pip_freeze_sha256: ${currentEnv.pip_freeze_sha256 || "not found"}`);
+  console.log(`torch_version: ${currentEnv.torch_version || "not found"}`);
+  console.log(`cuda_available: ${currentEnv.cuda_available === null ? "unknown" : String(currentEnv.cuda_available)}`);
+  console.log(`cuda_version: ${currentEnv.cuda_version || "not found"}`);
+  console.log(`gpu_device_names: ${Array.isArray(currentEnv.gpu_device_names) ? currentEnv.gpu_device_names.join(", ") : "not found"}`);
+  console.log(`os: ${currentEnv.os}`);
+  console.log(`hostname: ${currentEnv.hostname}`);
+
+  if (latestRun && !latestRun.env) {
+    console.error("WARNING: doctor latest run has no env capture.");
+  } else if (latestRun?.env) {
+    const mismatches = envMismatches(latestRun.env, currentEnv);
+    for (const mismatch of mismatches) {
+      console.error(
+        `WARNING: doctor env mismatch ${mismatch.field}: stored=${formatEnvValue(mismatch.expected)} current=${formatEnvValue(mismatch.current)}`
+      );
+    }
+  }
 }
 
 function cmdReport() {
   const cwd = targetDir();
   const ledger = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
   if (!fs.existsSync(ledger)) {
-    console.log("No run ledger found. Run `researchloop init` first.");
+    console.log("No run ledger found. Run `autoresearch init` first.");
     return;
   }
   const rows = fs.readFileSync(ledger, "utf8").split("\n").filter(Boolean);
@@ -1006,7 +1351,7 @@ function cmdDashboard() {
   server.listen(port, host, () => {
     const address = server.address();
     const actualPort = typeof address === "object" && address ? address.port : port;
-    console.log(`ResearchLoop dashboard running at http://${host}:${actualPort}`);
+    console.log(`AutoResearch-AI dashboard running at http://${host}:${actualPort}`);
     console.log(`Repo: ${cwd}`);
     console.log("No auth. Localhost only.");
   });
@@ -1076,8 +1421,10 @@ function cmdIdea() {
     "# Research Idea Chat",
     "",
     "You are preparing research ideas by talking with the user, not by using a fixed sweep template.",
+    "If the user named a topic, treat it as a topic-intake conversation: baseline first, then modes, then ideas.",
     "",
     "First inspect the repo memory:",
+    "- `.researchloop/baseline.md`",
     "- `.researchloop/scratchpad/runs.jsonl`",
     "- `.researchloop/scratchpad/THREAD.md`",
     "- `.researchloop/plan.md`",
@@ -1096,11 +1443,14 @@ function cmdIdea() {
     "",
     "What to do:",
     `1. ${question}`,
-    "2. Keep the conversation short and concrete.",
-    "3. Use the repo history and the user's answer to propose 3-5 actual research ideas.",
-    "4. Give each idea a realistic time band and a kill criterion.",
-    "5. Do not default to generic learning-rate or hyperparameter sweeps unless the history justifies them.",
-    "6. If the repo has no useful history, say so and ask for the next real target repo or research dir.",
+    "2. Check whether a usable baseline already exists and where it is documented.",
+    "3. If no clear baseline markdown note exists, propose creating or updating `.researchloop/baseline.md` before experiments.",
+    "4. If the baseline is clear, offer modes: propose, novel, or autonomous.",
+    "5. In propose mode, suggest 2-4 grounded next experiments for the user to choose from.",
+    "6. In novel mode, generate genuinely different hypotheses with mechanism, failure mode, smallest test, evidence, time band, and kill criterion.",
+    "7. In autonomous mode, proceed only after explicit approval, then search papers when useful, write idea notes, choose the cheapest meaningful test, run it, record it, compare it, and stop with a clear result.",
+    "8. Do not default to generic learning-rate or hyperparameter sweeps unless the history justifies them.",
+    "9. If the repo has no useful history, say so and ask for the next real target repo or research dir.",
     "",
   ].join("\n");
 
@@ -1123,7 +1473,7 @@ function cmdCompare() {
   const preferHigher = direction === "higher" || direction === "max" || direction === "maximize";
 
   if (!fs.existsSync(ledger)) {
-    console.log("No run ledger found. Run `researchloop init` first.");
+    console.log("No run ledger found. Run `autoresearch init` first.");
     return;
   }
 
@@ -1264,7 +1614,7 @@ function parseMetricFromOutput(output, metricName, customRegexSource) {
   return null;
 }
 
-function spawnCommand(commandText, cwd, timeoutMs, logFile) {
+function spawnCommand(commandText, cwd, timeoutMs, logFile, timeoutReason = "timeout") {
   return new Promise((resolve) => {
     const child = spawn(commandText, { cwd, shell: true });
     const chunks = [];
@@ -1290,7 +1640,7 @@ function spawnCommand(commandText, cwd, timeoutMs, logFile) {
     });
     child.on("error", (err) => {
       clearTimeout(timer);
-      const message = `\nresearchloop: spawn error: ${err.message}\n`;
+      const message = `\nautoresearch: spawn error: ${err.message}\n`;
       logStream.end(message);
       resolve({
         output: Buffer.concat(chunks).toString("utf8") + message,
@@ -1306,6 +1656,7 @@ function spawnCommand(commandText, cwd, timeoutMs, logFile) {
         output: Buffer.concat(chunks).toString("utf8"),
         exitCode: code,
         timedOut,
+        timedOutBy: timedOut ? timeoutReason : null,
         spawnError: null,
       });
     });
@@ -1364,6 +1715,7 @@ async function cmdRun(isBaseline) {
   const cwd = targetDir();
   const goalFields = readGoalFields(cwd);
   const explicitCommand = option("--command", null);
+  const allowUnsafe = hasFlag("--allow-unsafe");
   let cmdText = explicitCommand && typeof explicitCommand === "string" ? explicitCommand : "";
   if (!cmdText) {
     cmdText = isBaseline
@@ -1373,7 +1725,7 @@ async function cmdRun(isBaseline) {
   if (!cmdText || cmdText.toLowerCase() === "unknown") {
     console.error("No command to run.");
     console.error("Set one via:");
-    console.error("  researchloop goal \"<text>\" --baseline \"python train.py\" --evaluation \"python eval.py\"");
+    console.error("  autoresearch goal \"<text>\" --baseline \"python train.py\" --evaluation \"python eval.py\"");
     console.error("Or pass --command directly.");
     process.exitCode = 1;
     return;
@@ -1384,27 +1736,53 @@ async function cmdRun(isBaseline) {
   const regexSource = customRegex && typeof customRegex === "string" ? customRegex : null;
   const timeoutSec = Number(option("--timeout", 600));
   const timeoutMs = Number.isFinite(timeoutSec) && timeoutSec > 0 ? timeoutSec * 1000 : 600000;
+  const safetyPolicy = loadSafetyPolicy(cwd);
+  const safetyCheck = evaluateCommandSafety(cmdText, safetyPolicy);
+
+  if (!allowUnsafe && !safetyCheck.allowed) {
+    console.error("autoresearch safety: blocked command before execution");
+    console.error(`rule: ${safetyCheck.rule}`);
+    console.error(`reason: ${safetyCheck.message}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  if (allowUnsafe) {
+    console.error("WARNING: --allow-unsafe bypasses command safety checks. This command will run unsafely.");
+  }
 
   const prefix = isBaseline ? "baseline" : "run";
   const id = String(option("--id", `${prefix}-${new Date().toISOString().replace(/[:.]/g, "-")}`));
   const runDir = path.join(cwd, ".researchloop", "scratchpad", "runs", id);
   ensureDir(runDir);
   const logFile = path.join(runDir, "log.txt");
+  const env = captureEnv(cwd);
+  const effectiveTimeoutMs = allowUnsafe || !Number.isFinite(safetyCheck.maxMs)
+    ? timeoutMs
+    : Math.min(timeoutMs, safetyCheck.maxMs);
+  const timeoutReason = !allowUnsafe && Number.isFinite(safetyCheck.maxMs) && safetyCheck.maxMs < timeoutMs
+    ? "safety"
+    : "timeout";
 
-  console.log(`researchloop ${prefix}`);
+  console.log(`autoresearch ${prefix}`);
   console.log(`command: ${cmdText}`);
   console.log(`metric: ${metricName}`);
-  console.log(`timeout: ${timeoutMs / 1000}s`);
+  console.log(`timeout: ${effectiveTimeoutMs / 1000}s`);
+  if (!allowUnsafe && timeoutReason === "safety") {
+    console.log(`safety: max_minutes_per_run=${safetyPolicy.maxMinutesPerRun}`);
+  }
   console.log(`log: ${path.relative(cwd, logFile)}`);
   console.log("---");
 
   const startedAt = new Date().toISOString();
-  const result = await spawnCommand(cmdText, cwd, timeoutMs, logFile);
+  const result = await spawnCommand(cmdText, cwd, effectiveTimeoutMs, logFile, timeoutReason);
   const finishedAt = new Date().toISOString();
 
   let status;
   if (result.spawnError) {
     status = "spawn_error";
+  } else if (result.timedOut && result.timedOutBy === "safety") {
+    status = "killed_by_safety";
   } else if (result.timedOut) {
     status = "timeout";
   } else if (result.exitCode !== 0) {
@@ -1428,17 +1806,16 @@ async function cmdRun(isBaseline) {
     timestamp: finishedAt,
     started_at: startedAt,
     status,
-    agent: `researchloop ${prefix}`,
+    agent: `autoresearch ${prefix}`,
     command: cmdText,
     exit_code: result.exitCode,
     log: path.relative(cwd, logFile),
     metrics,
     metric_history: metricSeries.length ? { [metricName]: metricSeries } : {},
     notes: "",
+    env,
   };
-  const ledger = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
-  ensureDir(path.dirname(ledger));
-  fs.appendFileSync(ledger, `${JSON.stringify(row)}\n`);
+  appendRunRow(cwd, row);
 
   const thread = path.join(cwd, ".researchloop", "scratchpad", "THREAD.md");
   ensureDir(path.dirname(thread));
@@ -1465,12 +1842,54 @@ async function cmdRun(isBaseline) {
   if (status === "failed" || status === "timeout" || status === "spawn_error") {
     process.exitCode = 1;
   }
+  if (status === "killed_by_safety") {
+    process.exitCode = 1;
+  }
+}
+
+function cmdReplay() {
+  const cwd = targetDir();
+  const runId = String(option("--id", positionalText())).trim();
+  if (!runId) {
+    console.error("No run id provided.");
+    console.error("Usage: autoresearch replay <run-id>");
+    process.exitCode = 1;
+    return;
+  }
+
+  const source = readRunRowById(cwd, runId);
+  if (!source) {
+    console.error(`No run found for id: ${runId}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const currentEnv = captureEnv(cwd);
+  console.log(`replay: ${runId}`);
+  console.log(`command: ${source.command || "not recorded"}`);
+
+  if (!source.env) {
+    console.error("WARNING: replay source run has no env capture.");
+    return;
+  }
+
+  const mismatches = envMismatches(source.env, currentEnv);
+  if (!mismatches.length) {
+    console.log("env: match");
+    return;
+  }
+
+  for (const mismatch of mismatches) {
+    console.error(
+      `WARNING: replay env mismatch ${mismatch.field}: stored=${formatEnvValue(mismatch.expected)} current=${formatEnvValue(mismatch.current)}`
+    );
+  }
 }
 
 const ARXIV_API_URL = "http://export.arxiv.org/api/query";
 
 function arxivCacheDir() {
-  return path.join(os.homedir(), ".cache", "researchloop", "arxiv");
+  return path.join(os.homedir(), ".cache", packageName, "arxiv");
 }
 
 function arxivCacheKey(query, limit, since) {
@@ -1501,7 +1920,7 @@ async function fetchArxivXml({ query, limit, since, cacheDir, offline }) {
     max_results: String(limit),
   });
   const url = `${ARXIV_API_URL}?${params.toString()}`;
-  const res = await fetch(url, { headers: { "User-Agent": "researchloop/0.2.0" } });
+  const res = await fetch(url, { headers: { "User-Agent": `${packageName}/${packageVersion()}` } });
   if (!res.ok) {
     throw new Error(`arxiv fetch failed: HTTP ${res.status}`);
   }
@@ -1609,7 +2028,7 @@ async function cmdScanPapers() {
   const cacheDirOpt = option("--cache-dir", null);
   const cacheDir = cacheDirOpt && typeof cacheDirOpt === "string" ? cacheDirOpt : arxivCacheDir();
 
-  console.log("researchloop scan-papers");
+  console.log("autoresearch scan-papers");
   console.log(`query: ${query}`);
   console.log(`limit: ${limit}`);
   if (since) console.log(`since: ${since}`);
@@ -1676,7 +2095,7 @@ function cmdTeam() {
   const goalText =
     option("--goal", "") ||
     readGoalSummary(path.join(researchDir, "goal.md")) ||
-    "Build the smallest useful multi-agent development loop for ResearchLoop.";
+    "Build the smallest useful multi-agent development loop for AutoResearch-AI.";
   const plan = buildTeamPlan(cwd, goalText, workerCount);
   const templateDir = path.join(templatesRoot, "team");
 
@@ -1731,7 +2150,7 @@ function cmdTeam() {
 
   const summaryFile = path.join(teamDir, "summary.md");
   const summary = [
-    "# ResearchLoop Development Team",
+    "# AutoResearch-AI Development Team",
     "",
     `Goal: ${plan.goalText}`,
     `Workers: ${plan.workers.length}`,
@@ -1751,7 +2170,7 @@ function cmdTeam() {
   ].join("\n");
   writeFileSafe(summaryFile, summary, true);
 
-  console.log(`ResearchLoop development team written to ${path.relative(cwd, teamDir)}`);
+  console.log(`AutoResearch-AI development team written to ${path.relative(cwd, teamDir)}`);
   console.log(`workers: ${plan.workers.length}`);
   console.log(`goal: ${plan.goalText}`);
   for (const worker of plan.workers) {
@@ -1761,26 +2180,31 @@ function cmdTeam() {
 }
 
 function cmdHelp() {
-  console.log(`Research Loop ${packageVersion()}
+  console.log(`AutoResearch-AI ${packageVersion()}
 
 Usage:
-  researchloop init [--agent codex|claude-code|hermes|cursor] [--dir PATH] [--force]
-  researchloop goal [TEXT] [--dir PATH] [--metric NAME] [--direction lower|higher] [--baseline CMD] [--evaluation CMD] [--allowed TEXT] [--forbidden TEXT]
-  researchloop inspect [--dir PATH]
-  researchloop idea [--dir PATH] [--goal TEXT] [--write]
-  researchloop prompt [--goal TEXT] [--focus hyperparameters|architecture|attention|training-ladder] [--agent NAME]
-  researchloop doctor [--dir PATH] [--python PATH]
-  researchloop record [--dir PATH] [--id ID] [--status STATUS] [--metric key=value] [--note TEXT]    (manual escape hatch; prefer 'run')
-  researchloop run [--dir PATH] [--id ID] [--command CMD] [--metric NAME] [--regex PATTERN] [--timeout SECONDS]
-  researchloop baseline [--dir PATH] [--id ID] [--command CMD] [--metric NAME] [--regex PATTERN] [--timeout SECONDS]
-  researchloop scan-papers [--dir PATH] [--query TEXT] [--limit N] [--since YYYY-MM] [--cache-dir PATH] [--offline]
-  researchloop compare [--dir PATH] [--metric NAME] [--direction lower|higher]
-  researchloop team [--dir PATH] [--workers N] [--goal TEXT] [--force]
-  researchloop dashboard [--dir PATH] [--host HOST] [--port PORT]
-  researchloop report [--dir PATH]
-  researchloop --version
+  autoresearch init [--agent codex|claude-code|hermes|cursor] [--dir PATH] [--force]
+  autoresearch goal [TEXT] [--dir PATH] [--metric NAME] [--direction lower|higher] [--baseline CMD] [--evaluation CMD] [--allowed TEXT] [--forbidden TEXT]
+  autoresearch inspect [--dir PATH]
+  autoresearch idea [--dir PATH] [--goal TEXT] [--write]
+  autoresearch prompt [--goal TEXT] [--focus hyperparameters|architecture|attention|training-ladder] [--agent NAME]
+  autoresearch doctor [--dir PATH] [--python PATH]
+  autoresearch replay [--dir PATH] [--id RUN_ID]
+  autoresearch record [--dir PATH] [--id ID] [--status STATUS] [--metric key=value] [--note TEXT]    (manual escape hatch; prefer 'run')
+  autoresearch run [--dir PATH] [--id ID] [--command CMD] [--metric NAME] [--regex PATTERN] [--timeout SECONDS] [--allow-unsafe]
+  autoresearch baseline [--dir PATH] [--id ID] [--command CMD] [--metric NAME] [--regex PATTERN] [--timeout SECONDS] [--allow-unsafe]
+  autoresearch scan-papers [--dir PATH] [--query TEXT] [--limit N] [--since YYYY-MM] [--cache-dir PATH] [--offline]
+  autoresearch compare [--dir PATH] [--metric NAME] [--direction lower|higher]
+  autoresearch team [--dir PATH] [--workers N] [--goal TEXT] [--force]
+  autoresearch dashboard [--dir PATH] [--host HOST] [--port PORT]
+  autoresearch report [--dir PATH]
+  autoresearch --version
 
-Research Loop installs docs, prompts, scratchpads, and experiment ledgers for autonomous AI research agents.
+Aliases:
+  autoresearch-ai
+  researchloop    legacy alias, still supported
+
+AutoResearch-AI installs docs, prompts, scratchpads, and experiment ledgers for autonomous AI research agents.
 `);
 }
 
@@ -1803,6 +2227,8 @@ async function main() {
     cmdPrompt();
   } else if (command === "doctor") {
     cmdDoctor();
+  } else if (command === "replay") {
+    cmdReplay();
   } else if (command === "record") {
     cmdRecord();
   } else if (command === "run") {

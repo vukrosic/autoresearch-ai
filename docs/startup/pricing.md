@@ -9,7 +9,7 @@ Possible future offers:
 - Free: local CLI, templates, adapters, reports.
 - Pro: hosted dashboard and synced run history.
 - Team: shared lab workspace, private templates, integrations.
-- Managed: ResearchLoop plus GPU runner and support.
+- Managed: AutoResearch-AI plus GPU runner and support.
 - Enterprise: compliance, private deployment, procurement, custom integrations.
 
 Early paid wedge:

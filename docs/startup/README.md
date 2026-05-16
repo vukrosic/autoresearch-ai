@@ -1,6 +1,6 @@
 # Startup Operating System
 
-ResearchLoop is an open source product with a startup motion around it.
+AutoResearch-AI is an open source product with a startup motion around it.
 
 Core idea:
 
@@ -41,9 +41,11 @@ Startup work means building a repeatable engine around the open source tool:
 ## Folders
 
 ```text
-users/              PhD students, labs, companies, interviews, feedback
-open-source.md      Open source principles and commercialization boundary
-agent-ops.md        Multi-agent operating model for building ResearchLoop
+  users/              PhD students, labs, companies, interviews, feedback
+  goals.md            Clear product goals for the autonomous research loop
+  development-goals.md Concrete tool goals and parallel implementation lanes
+  open-source.md      Open source principles and commercialization boundary
+  agent-ops.md        Multi-agent operating model for building AutoResearch-AI
 positioning.md      What we say the product is and is not
 pricing.md          Future paid layers, not the first wedge
 risks.md            Failure modes and countermeasures

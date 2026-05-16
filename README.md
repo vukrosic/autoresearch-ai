@@ -13,7 +13,7 @@ It installs a durable research harness into a machine learning repo so agents li
 Copy this into Codex, Claude Code, Hermes, Cursor, or another coding agent:
 
 ```text
-npm install -g autoresearch-ai. Act as an automated AI researcher. This package contains the tools and prompts. Follow `templates/prompts/first-contact.md`: only talk to me first, explain my system/GPU/repo in simple language, check whether a baseline exists and where it is documented, and wait for approval before init, training, baselines, sweeps, or experiments.
+npm install -g autoresearch-ai. Act as an automated AI researcher. This package contains the tools and prompts. Follow `templates/prompts/first-contact.md` and `templates/prompts/topic-intake.md`: only talk to me first, explain my system/GPU/repo in simple language, check whether a baseline exists and where it is documented, and wait for approval before init, training, baselines, sweeps, or experiments. When I give a research topic, use the existing baseline if it exists; if it does not, propose documenting `.researchloop/baseline.md` first. Then offer propose, novel, or autonomous mode.
 ```
 
 ---
@@ -24,7 +24,7 @@ Manual Installation:
 npm install -g autoresearch-ai
 ```
 
-The package name is `autoresearch-ai`; the CLI command you run after install is still `researchloop`.
+The package name is `autoresearch-ai`; the primary CLI command is `autoresearch`, with `researchloop` kept as a legacy alias.
 
 Local development from this checkout:
 
@@ -32,26 +32,26 @@ Local development from this checkout:
 git clone https://github.com/vukrosic/autoresearch-ai.git
 cd autoresearch-ai
 npm link
-researchloop --help
+autoresearch --help
 ```
 
 ## Quick Start
 
 ```bash
-researchloop init --agent codex
-researchloop goal "lower validation loss" --metric val_loss --direction lower \
+autoresearch init --agent codex
+autoresearch goal "lower validation loss" --metric val_loss --direction lower \
   --baseline "python train.py" --evaluation "python eval.py"
-researchloop inspect
-researchloop scan-papers --limit 10
-researchloop idea --write
-researchloop prompt --agent codex
-researchloop team --workers 8
-researchloop baseline
-researchloop run --id lr-3e-4 --command "python train.py --lr 3e-4"
-researchloop compare --metric val_loss --direction lower
-researchloop report
-researchloop dashboard
-researchloop doctor
+autoresearch inspect
+autoresearch scan-papers --limit 10
+autoresearch idea --write
+autoresearch prompt --agent codex
+autoresearch team --workers 8
+autoresearch baseline
+autoresearch run --id lr-3e-4 --command "python train.py --lr 3e-4"
+autoresearch compare --metric val_loss --direction lower
+autoresearch report
+autoresearch dashboard
+autoresearch doctor
 ```
 
 Then paste the generated prompt into the coding agent. On first contact, the agent should explain the system and repo context in plain language before asking for approval to run anything.
@@ -61,6 +61,7 @@ Then paste the generated prompt into the coding agent. On first contact, the age
 ```text
 .researchloop/
   AGENTS.md
+  baseline.md
   goal.md
   plan.md
   repo-profile.json
@@ -77,6 +78,24 @@ Then paste the generated prompt into the coding agent. On first contact, the age
 ```
 
 The package does not claim to magically train every model. It gives an agent the operating system for serious research: constraints, baseline-first behavior, experiment logs, idea files, and reproducible reports.
+
+## Research Topics
+
+When you give the agent a topic like "query/key architectures", it should not jump straight into training ideas.
+
+The expected flow is:
+
+1. Check whether a usable baseline already exists and where it is documented.
+2. If no clear baseline markdown note exists, propose creating or updating `.researchloop/baseline.md` first.
+3. After the baseline is clear, offer three modes:
+
+```text
+propose     suggest 2-4 grounded experiments for me to choose from
+novel       reason about genuinely different hypotheses, not just parameter tweaks
+autonomous  after I approve it, run the loop within the agreed budget
+```
+
+Paper search is optional. The agent should offer it when it would improve the decision, and use it in autonomous mode when useful, but the first experiment should still stay small and baseline-aware.
 
 ## Repo Layout
 
@@ -98,9 +117,9 @@ scripts/              Smoke tests for the npm package
 
 Tested on this MacBook:
 
-- `researchloop init`, `inspect`, `prompt`, `doctor`, and `report` pass in a clean temp repo.
-- `researchloop inspect` correctly detects `llm-research-kit` as `generic`, `pytorch`, `huggingface`, and `llm-research-kit`.
-- `researchloop doctor` confirms local torch 2.8.0, CUDA false, MPS true.
+- `autoresearch init`, `inspect`, `prompt`, `doctor`, and `report` pass in a clean temp repo.
+- `autoresearch inspect` correctly detects `llm-research-kit` as `generic`, `pytorch`, `huggingface`, and `llm-research-kit`.
+- `autoresearch doctor` confirms local torch 2.8.0, CUDA false, MPS true.
 - A tiny synthetic LLM training run completed locally through `llm-research-kit` on MPS.
 
 See `docs/research/experiments/macbook-e2e-2026-05-15.md`.
@@ -132,20 +151,20 @@ The startup plan is in `docs/startup/`.
 
 ## Commands
 
-- `researchloop init` creates `.researchloop/` and agent instruction files.
-- `researchloop goal` saves a durable research objective in `.researchloop/goal.md`.
-- `researchloop inspect` writes `.researchloop/repo-profile.json`.
-- `researchloop scan-papers` fetches relevant arXiv abstracts into `.researchloop/scratchpad/papers/`.
-- `researchloop idea` opens a chat-first research prompt that reads the repo history, asks for the time budget if needed, and can write the prompt into an idea note.
-- `researchloop prompt` prints an agent-ready autonomous research prompt, with optional focus playbooks.
-- `researchloop team` generates a local multi-agent development board for the AutoResearch-AI repo or another project.
-- `researchloop baseline` runs the baseline command, parses the metric, and locks it into `goal.md` and `plan.md`.
-- `researchloop run` executes a training or eval command, streams the log, parses the metric, and records the run.
-- `researchloop record` appends a structured run result to `runs.jsonl` (use for manual rows).
-- `researchloop compare` ranks runs by a chosen metric.
-- `researchloop report` summarizes the run ledger.
-- `researchloop dashboard` starts a local localhost dashboard for experiment tracking.
-- `researchloop doctor` checks basic local tooling.
+- `autoresearch init` creates `.researchloop/` and agent instruction files.
+- `autoresearch goal` saves a durable research objective in `.researchloop/goal.md`.
+- `autoresearch inspect` writes `.researchloop/repo-profile.json`.
+- `autoresearch scan-papers` fetches relevant arXiv abstracts into `.researchloop/scratchpad/papers/`.
+- `autoresearch idea` opens a chat-first research prompt that reads the repo history, asks for the time budget if needed, and can write the prompt into an idea note.
+- `autoresearch prompt` prints an agent-ready autonomous research prompt, with optional focus playbooks.
+- `autoresearch team` generates a local multi-agent development board for the AutoResearch-AI repo or another project.
+- `autoresearch baseline` runs the baseline command, parses the metric, and locks it into `goal.md` and `plan.md`.
+- `autoresearch run` executes a training or eval command, streams the log, parses the metric, and records the run.
+- `autoresearch record` appends a structured run result to `runs.jsonl` (use for manual rows).
+- `autoresearch compare` ranks runs by a chosen metric.
+- `autoresearch report` summarizes the run ledger.
+- `autoresearch dashboard` starts a local localhost dashboard for experiment tracking.
+- `autoresearch doctor` checks basic local tooling.
 - `npm test` runs every fast check below in sequence. CI runs this on Node 18 / 20 / 22 against ubuntu and macos for every push and PR.
 - `npm run test:release` adds the packed-tarball install check on top of `npm test`. Run this before publishing.
 - `npm run test:setup` runs the blank-repo and minimal-fixture setup checks.

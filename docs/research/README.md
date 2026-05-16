@@ -1,6 +1,6 @@
 # Research Notes
 
-This folder tracks the real research and product evidence behind ResearchLoop.
+This folder tracks the real research and product evidence behind AutoResearch-AI.
 
 The rule is simple: no claim without a run, a user conversation, or a concrete artifact.
 

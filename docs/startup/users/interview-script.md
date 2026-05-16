@@ -23,4 +23,4 @@ Could you walk me through how you currently run experiments in one repo?
 
 ## Closing
 
-Could I try ResearchLoop on a small repo or example workflow and send you the result?
+Could I try AutoResearch-AI on a small repo or example workflow and send you the result?

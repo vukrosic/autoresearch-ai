@@ -1,6 +1,6 @@
 # Testing
 
-This folder defines the setup and onboarding tests for ResearchLoop.
+This folder defines the setup and onboarding tests for AutoResearch-AI.
 
 The goal is to prove that a new user can:
 

@@ -1,6 +1,6 @@
 ---
 name: researchloop-optimizer-search
-description: Use when choosing or tuning the optimizer for a ResearchLoop experiment.
+description: Use when choosing or tuning the optimizer for a AutoResearch-AI experiment.
 ---
 
 # Optimizer Search

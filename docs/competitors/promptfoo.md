@@ -24,8 +24,8 @@ Useful traits:
 - Local-first matters for trust and privacy.
 - Comparisons should be easy to read, not hidden in a notebook.
 
-## How ResearchLoop Differs
+## How AutoResearch-AI Differs
 
-- ResearchLoop is about autonomous research loops, not just prompt tests.
+- AutoResearch-AI is about autonomous research loops, not just prompt tests.
 - It needs durable state, run ledgers, and agent instructions.
 - Prompt evaluation should be one adapter or subcommand, not the whole product.

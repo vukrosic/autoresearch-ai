@@ -48,4 +48,4 @@ if [ "$offline_exit" -eq 0 ]; then
 fi
 grep -q "offline mode" /tmp/researchloop-scan-offline.log
 
-echo "researchloop test:scan-papers passed"
+echo "autoresearch test:scan-papers passed"

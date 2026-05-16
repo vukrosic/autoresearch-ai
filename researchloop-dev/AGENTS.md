@@ -1,4 +1,4 @@
-# ResearchLoop Dev Control Room
+# AutoResearch-AI Dev Control Room
 
 This folder is local-only.
 
@@ -11,4 +11,3 @@ This folder is local-only.
 5. Record gaps in the control room instead of hiding them in product docs.
 6. If the agent has no repo context, let it discover the target folder itself.
 7. If the agent has no time budget yet, ask exactly one question and record the answer.
-

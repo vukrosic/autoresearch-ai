@@ -12,7 +12,7 @@ Rules:
 8. Do not claim a result unless you actually ran it.
 9. Prefer short ablations over broad refactors.
 10. Leave the repo cleaner and easier to continue than you found it.
-11. Use `researchloop record` and `researchloop report` to keep the ledger current.
+11. Use `autoresearch record` and `autoresearch report` to keep the ledger current.
 
 Output format:
 - Plan

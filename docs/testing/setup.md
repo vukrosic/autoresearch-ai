@@ -5,12 +5,12 @@
 Create a temporary empty repo and run:
 
 ```bash
-researchloop init --agent codex
-researchloop inspect
-researchloop prompt --goal "improve validation loss"
-researchloop doctor
-researchloop record --id setup-001 --status complete --metric val_loss=1.23 --note "blank repo setup smoke"
-researchloop report
+autoresearch init --agent codex
+autoresearch inspect
+autoresearch prompt --goal "improve validation loss"
+autoresearch doctor
+autoresearch record --id setup-001 --status complete --metric val_loss=1.23 --note "blank repo setup smoke"
+autoresearch report
 ```
 
 Expected:
@@ -24,7 +24,7 @@ Expected:
 
 ## Scenario 2 - Minimal ML Fixture
 
-Create a repo with `train.py`, `pyproject.toml`, and a log folder, then run `researchloop inspect`.
+Create a repo with `train.py`, `pyproject.toml`, and a log folder, then run `autoresearch inspect`.
 
 Expected:
 

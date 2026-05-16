@@ -16,4 +16,4 @@ grep -q "validation loss" /tmp/researchloop-goal-prompt.log
 grep -q "lower validation loss" /tmp/researchloop-goal-prompt.log
 grep -q "lower validation loss" /tmp/researchloop-goal-show.log
 
-echo "researchloop test:goal passed"
+echo "autoresearch test:goal passed"

@@ -32,4 +32,4 @@ if printf '%s' "$hyper" | grep -q '{{GOAL}}'; then
   exit 1
 fi
 
-echo "researchloop test:focus-prompts passed"
+echo "autoresearch test:focus-prompts passed"

@@ -1,6 +1,6 @@
 ---
 name: researchloop-baseline-first
-description: Use when starting a ResearchLoop investigation and you need the first valid baseline before any optimization.
+description: Use when starting a AutoResearch-AI investigation and you need the first valid baseline before any optimization.
 ---
 
 # Baseline First

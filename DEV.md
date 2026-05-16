@@ -1,6 +1,6 @@
 # Development Control Room
 
-This repo contains a local-only control room under `researchloop-dev/`.
+This repo contains a local-only control room under `researchloop-dev/` for AutoResearch-AI.
 
 It is for:
 
