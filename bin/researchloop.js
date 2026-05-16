@@ -814,6 +814,89 @@ function summarizeDashboardRuns(runs, primaryMetric, preferHigher = false) {
   };
 }
 
+function readSystemMetrics() {
+  const cpus = os.cpus() || [];
+  const loadAvg = os.loadavg ? os.loadavg() : [0, 0, 0];
+  const totalMem = os.totalmem();
+  const freeMem = os.freemem();
+  const usedMem = totalMem - freeMem;
+  const memPct = totalMem > 0 ? (usedMem / totalMem) * 100 : 0;
+  const cpuCount = cpus.length || 1;
+  const loadPct = Math.min(100, (loadAvg[0] / cpuCount) * 100);
+  const platform = `${os.platform()} ${os.arch()}`;
+  const hostname = os.hostname();
+  const nodeVersion = process.version;
+
+  return {
+    hostname,
+    platform,
+    nodeVersion,
+    uptimeSeconds: Math.round(os.uptime()),
+    cpu: {
+      count: cpuCount,
+      model: cpus[0]?.model || "unknown",
+      loadAvg: { "1m": loadAvg[0], "5m": loadAvg[1], "15m": loadAvg[2] },
+      usagePct: Number.isFinite(loadPct) ? Number(loadPct.toFixed(1)) : 0,
+    },
+    memory: {
+      totalBytes: totalMem,
+      freeBytes: freeMem,
+      usedBytes: usedMem,
+      usagePct: Number(memPct.toFixed(1)),
+    },
+  };
+}
+
+function readThreadTail(cwd, lineCount = 24) {
+  const threadPath = path.join(cwd, ".researchloop", "scratchpad", "THREAD.md");
+  const text = readTextIfExists(threadPath);
+  if (!text) return { path: threadPath, lines: [], hasContent: false };
+  const lines = text.split("\n").filter(Boolean).slice(-lineCount);
+  return { path: threadPath, lines, hasContent: lines.length > 0 };
+}
+
+function readLatestLogTail(cwd, runs, lineCount = 30) {
+  const latest = [...(runs || [])].reverse().find((run) => run && run.log && !run.parse_error);
+  if (!latest) return null;
+  const logPath = path.join(cwd, latest.log);
+  if (!fs.existsSync(logPath)) return { runId: latest.id, path: logPath, lines: [], modifiedAt: null };
+  let modifiedAt = null;
+  try {
+    modifiedAt = fs.statSync(logPath).mtime.toISOString();
+  } catch {
+    modifiedAt = null;
+  }
+  const lines = readTextIfExists(logPath).split("\n").slice(-lineCount);
+  return { runId: latest.id, path: logPath, lines, modifiedAt };
+}
+
+function detectActiveRun(cwd, runs, logTail) {
+  if (!runs || !runs.length) return { active: false };
+  const latest = [...runs].reverse().find((run) => run && !run.parse_error);
+  if (!latest) return { active: false };
+  const inFlightStatuses = new Set(["running", "in_progress", "queued"]);
+  const statusActive = inFlightStatuses.has(String(latest.status || "").toLowerCase());
+  let recentlyTouched = false;
+  if (logTail?.modifiedAt) {
+    const mtime = new Date(logTail.modifiedAt).getTime();
+    if (Number.isFinite(mtime)) {
+      recentlyTouched = Date.now() - mtime < 60_000;
+    }
+  }
+  if (!statusActive && !recentlyTouched) return { active: false, latestId: latest.id };
+  return {
+    active: true,
+    latestId: latest.id,
+    runId: latest.id,
+    command: latest.command || "",
+    agent: latest.agent || "",
+    startedAt: latest.started_at || latest.timestamp || null,
+    logPath: latest.log || "",
+    logModifiedAt: logTail?.modifiedAt || null,
+    reason: statusActive ? "status" : "log_recent",
+  };
+}
+
 function buildDashboardState(cwd) {
   const goalPath = path.join(cwd, ".researchloop", "goal.md");
   const planPath = path.join(cwd, ".researchloop", "plan.md");
@@ -836,6 +919,10 @@ function buildDashboardState(cwd) {
   const summary = summarizeDashboardRuns(runs, primaryMetric, preferHigher);
   const traces = buildRunTraces(cwd, runs, primaryMetric, preferHigher);
   const comparison = summarizeTraces(traces, preferHigher);
+  const system = readSystemMetrics();
+  const thread = readThreadTail(cwd, 24);
+  const logTail = readLatestLogTail(cwd, runs, 30);
+  const activeRun = detectActiveRun(cwd, runs, logTail);
 
   return {
     cwd,
@@ -849,6 +936,10 @@ function buildDashboardState(cwd) {
     summary,
     traces,
     comparison,
+    system,
+    thread,
+    logTail,
+    activeRun,
   };
 }
 
@@ -890,6 +981,22 @@ function cmdDashboard() {
       res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
       const state = buildDashboardState(cwd);
       res.end(`${JSON.stringify(state.goal, null, 2)}\n`);
+      return;
+    }
+    if (url.pathname === "/api/system") {
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+      res.end(`${JSON.stringify(readSystemMetrics(), null, 2)}\n`);
+      return;
+    }
+    if (url.pathname === "/api/thread") {
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+      res.end(`${JSON.stringify(readThreadTail(cwd, 50), null, 2)}\n`);
+      return;
+    }
+    if (url.pathname === "/api/log-tail") {
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+      const state = buildDashboardState(cwd);
+      res.end(`${JSON.stringify(state.logTail || null, null, 2)}\n`);
       return;
     }
     res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });

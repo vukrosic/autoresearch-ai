@@ -6,7 +6,7 @@
     <title>ResearchLoop Dashboard</title>
     <meta
       name="description"
-      content="Local dashboard for ResearchLoop experiment tracking. No auth, no accounts, localhost only."
+      content="Local dashboard for autonomous AI research runs. No auth, no accounts, localhost only."
     />
     <style>
       :root {
@@ -15,20 +15,22 @@
         --panel: #0d171f;
         --panel-2: #101b25;
         --line: rgba(255, 255, 255, 0.09);
+        --line-strong: rgba(255, 255, 255, 0.16);
         --text: #edf3f8;
         --muted: #9ba7b2;
         --soft: #cad4dc;
         --accent: #62d6a6;
         --accent-2: #71a7ff;
+        --accent-3: #c38bff;
         --danger: #ff8b8b;
         --warning: #f6c177;
+        --success: #62d6a6;
         --radius: 14px;
+        --radius-sm: 10px;
         --shadow: 0 20px 70px rgba(0, 0, 0, 0.33);
       }
 
-      * {
-        box-sizing: border-box;
-      }
+      * { box-sizing: border-box; }
 
       body {
         margin: 0;
@@ -43,453 +45,1472 @@
         min-height: 100vh;
       }
 
-      a {
-        color: inherit;
+      a { color: inherit; }
+      code, .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
       }
 
       .shell {
-        width: min(1280px, calc(100% - 32px));
+        width: min(1440px, calc(100% - 32px));
         margin: 0 auto;
-        padding: 24px 0 32px;
+        padding: 22px 0 36px;
       }
 
-      header {
+      header.topbar {
         display: flex;
         justify-content: space-between;
         align-items: center;
         gap: 16px;
-        margin-bottom: 20px;
+        margin-bottom: 18px;
       }
 
-      .brand {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
-
+      .brand { display: flex; align-items: center; gap: 12px; }
       .brand-mark {
-        width: 36px;
-        height: 36px;
+        width: 38px; height: 38px;
         border-radius: 10px;
-        display: grid;
-        place-items: center;
+        display: grid; place-items: center;
         border: 1px solid rgba(98, 214, 166, 0.26);
         color: var(--accent);
         background: linear-gradient(135deg, rgba(98, 214, 166, 0.13), rgba(113, 167, 255, 0.13));
+        font-weight: 700;
+      }
+      .brand h1 { margin: 0; font-size: 17px; line-height: 1.2; }
+      .brand p { margin: 2px 0 0; color: var(--muted); font-size: 12.5px; }
+
+      .topbar-actions { display: flex; align-items: center; gap: 10px; }
+      .status-chip {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 7px 11px; border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.035);
+        color: var(--soft); font-size: 12.5px;
+      }
+      .status-chip .dot {
+        width: 8px; height: 8px; border-radius: 50%;
+        background: var(--muted);
+      }
+      .status-chip.is-live .dot {
+        background: var(--accent);
+        box-shadow: 0 0 0 4px rgba(98, 214, 166, 0.18);
+        animation: pulse 1.4s infinite ease-in-out;
+      }
+      .status-chip.is-stale .dot { background: var(--warning); }
+      .status-chip.is-error .dot { background: var(--danger); }
+      @keyframes pulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50%      { transform: scale(0.8); opacity: 0.6; }
       }
 
-      .brand h1 {
-        margin: 0;
-        font-size: 17px;
-        line-height: 1.2;
+      /* ───── live run banner ───── */
+      .live-banner {
+        display: none;
+        margin-bottom: 16px;
+        padding: 14px 16px;
+        border-radius: var(--radius);
+        border: 1px solid rgba(98, 214, 166, 0.32);
+        background:
+          linear-gradient(135deg, rgba(98, 214, 166, 0.10), rgba(113, 167, 255, 0.08)),
+          rgba(13, 23, 31, 0.6);
       }
-
-      .brand p {
-        margin: 2px 0 0;
-        color: var(--muted);
-        font-size: 13px;
-      }
-
-      .status {
-        color: var(--muted);
-        font-size: 13px;
-        text-align: right;
-      }
-
-      .grid {
+      .live-banner.is-visible { display: block; }
+      .live-banner-row {
         display: grid;
-        gap: 16px;
+        grid-template-columns: minmax(0, 1.4fr) repeat(4, minmax(0, 1fr));
+        gap: 14px;
+        align-items: center;
+      }
+      .live-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+      .live-title .badge {
+        font-size: 11px; padding: 3px 8px; border-radius: 999px;
+        background: rgba(98, 214, 166, 0.18); color: var(--accent);
+        border: 1px solid rgba(98, 214, 166, 0.4); text-transform: uppercase;
+        letter-spacing: 0.05em; font-weight: 700;
+      }
+      .live-title .id { font-weight: 700; truncate: true; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .live-stat .lbl { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+      .live-stat .val { color: var(--text); font-size: 16px; font-weight: 700; margin-top: 4px; }
+      .live-command {
+        margin-top: 10px;
+        padding: 8px 10px;
+        border-radius: var(--radius-sm);
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid var(--line);
+        color: var(--soft);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        overflow: auto;
       }
 
-      .top-grid {
+      /* ───── KPI strip ───── */
+      .kpi-row {
         display: grid;
-        grid-template-columns: 1.2fr 0.8fr;
-        gap: 16px;
-        align-items: start;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 12px;
         margin-bottom: 16px;
       }
+      .kpi {
+        padding: 14px 16px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.015));
+      }
+      .kpi .label {
+        color: var(--muted); font-size: 11.5px;
+        text-transform: uppercase; letter-spacing: 0.05em;
+      }
+      .kpi .value {
+        margin-top: 6px; font-size: 1.5rem; font-weight: 700; line-height: 1.1;
+      }
+      .kpi .sub { margin-top: 5px; color: var(--soft); font-size: 12.5px; }
+      .kpi.is-accent .value { color: var(--accent); }
+      .kpi.is-blue .value { color: var(--accent-2); }
+      .kpi.is-warning .value { color: var(--warning); }
 
-      .secondary-grid {
+      /* ───── layout grids ───── */
+      .main-grid {
         display: grid;
-        grid-template-columns: 1fr 0.95fr;
+        grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
         gap: 16px;
         margin-bottom: 16px;
       }
+      .col-stack { display: grid; gap: 16px; align-content: start; }
 
       .panel {
         border: 1px solid var(--line);
         border-radius: var(--radius);
-        background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.015));
         box-shadow: var(--shadow);
         overflow: hidden;
       }
-
       .panel-head {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 12px;
-        padding: 16px 16px 12px;
+        display: flex; justify-content: space-between; align-items: center; gap: 12px;
+        padding: 14px 16px;
         border-bottom: 1px solid var(--line);
       }
-
       .panel-head h2 {
-        margin: 0;
-        font-size: 14px;
-        letter-spacing: 0;
-        text-transform: uppercase;
-        color: var(--soft);
+        margin: 0; font-size: 13px; letter-spacing: 0.04em;
+        text-transform: uppercase; color: var(--soft); font-weight: 600;
       }
-
-      .panel-body {
-        padding: 16px;
-      }
-
-      .goal-title {
-        margin: 6px 0 12px;
-        font-size: clamp(1.6rem, 2vw, 2.3rem);
-        line-height: 1.02;
-        max-width: 18ch;
-      }
-
-      .meta-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-bottom: 12px;
+      .panel-head .head-right { display: flex; align-items: center; gap: 8px; }
+      .panel-body { padding: 16px; }
+      .panel.placeholder { opacity: 0.92; }
+      .placeholder-badge {
+        font-size: 10.5px; padding: 2px 7px; border-radius: 999px;
+        background: rgba(195, 139, 255, 0.16);
+        color: var(--accent-3);
+        border: 1px solid rgba(195, 139, 255, 0.32);
+        text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;
       }
 
       .pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 7px 11px;
-        border-radius: 999px;
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 5px 9px; border-radius: 999px;
         border: 1px solid var(--line);
         background: rgba(255, 255, 255, 0.035);
-        color: var(--soft);
-        font-size: 13px;
+        color: var(--soft); font-size: 12px;
       }
+      .pill strong { color: var(--text); font-weight: 600; }
+      .pill.is-accent { color: var(--accent); border-color: rgba(98, 214, 166, 0.35); background: rgba(98, 214, 166, 0.08); }
+      .pill.is-blue   { color: var(--accent-2); border-color: rgba(113, 167, 255, 0.35); background: rgba(113, 167, 255, 0.08); }
+      .pill.is-warning{ color: var(--warning); border-color: rgba(246, 193, 119, 0.35); background: rgba(246, 193, 119, 0.08); }
+      .pill.is-danger { color: var(--danger);  border-color: rgba(255, 139, 139, 0.35); background: rgba(255, 139, 139, 0.08); }
 
-      .pill strong {
-        color: var(--text);
-        font-weight: 600;
-      }
+      .meta-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 
       pre {
-        margin: 0;
-        white-space: pre-wrap;
-        word-break: break-word;
-        color: var(--soft);
-        font-size: 13px;
-        line-height: 1.6;
+        margin: 0; white-space: pre-wrap; word-break: break-word;
+        color: var(--soft); font-size: 12.5px; line-height: 1.6;
       }
 
-      .stats {
+      /* chart */
+      .chart-wrap { display: grid; gap: 10px; }
+      .chart-label {
+        display: flex; justify-content: space-between; gap: 12px;
+        color: var(--muted); font-size: 12.5px;
+      }
+      .chart {
+        width: 100%; height: 240px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .legend { display: grid; gap: 6px; margin-top: 6px; }
+      .legend-item {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px; align-items: center;
+        padding: 9px 12px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        background: rgba(255, 255, 255, 0.025);
+        cursor: pointer;
+        transition: border-color 120ms ease, background 120ms ease;
+      }
+      .legend-item:hover { border-color: var(--line-strong); background: rgba(255, 255, 255, 0.045); }
+      .legend-item.is-hidden { opacity: 0.45; }
+      .legend-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+      .legend-name { font-weight: 600; color: var(--text); font-size: 13px; }
+      .legend-sub { color: var(--muted); font-size: 11.5px; margin-top: 1px; }
+      .legend-value { color: var(--soft); font-size: 12.5px; text-align: right; white-space: nowrap; }
+      .dot { width: 10px; height: 10px; border-radius: 999px; flex: 0 0 auto; }
+
+      /* resource bars */
+      .resource-list { display: grid; gap: 12px; }
+      .resource-row { display: grid; gap: 6px; }
+      .resource-row-head {
+        display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+      }
+      .resource-row-head .name { color: var(--text); font-size: 13px; font-weight: 600; }
+      .resource-row-head .val { color: var(--soft); font-size: 12px; }
+      .bar { height: 7px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); overflow: hidden; }
+      .bar > span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width 240ms ease; }
+      .bar.warn > span { background: linear-gradient(90deg, var(--warning), var(--danger)); }
+
+      /* goal headline */
+      .goal-title {
+        margin: 4px 0 10px;
+        font-size: clamp(1.4rem, 1.8vw, 2rem);
+        line-height: 1.05; max-width: 22ch;
+      }
+      .goal-progress {
+        display: grid; grid-template-columns: 1fr auto; gap: 10px;
+        margin-top: 10px; align-items: center;
+      }
+
+      /* agent thread */
+      .thread-feed {
+        display: grid; gap: 6px;
+        max-height: 280px; overflow: auto;
+        padding-right: 4px;
+      }
+      .thread-line {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        color: var(--soft);
+        padding: 4px 8px;
+        border-left: 2px solid var(--line);
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .thread-line.is-heading { color: var(--text); border-color: var(--accent); font-weight: 600; }
+      .thread-line.is-bullet { color: var(--soft); border-color: var(--accent-2); }
+      .thread-line.is-meta { color: var(--muted); border-color: rgba(255,255,255,0.04); }
+
+      /* log tail */
+      .log-tail {
+        background: #04090d;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        padding: 10px 12px;
+        max-height: 220px;
+        overflow: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 11.5px;
+        line-height: 1.5;
+        color: var(--soft);
+        white-space: pre;
+      }
+
+      /* experiments table */
+      .table-controls {
+        display: flex; flex-wrap: wrap; gap: 8px;
+        margin-bottom: 12px;
+      }
+      .control {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 6px 10px; border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.035);
+        color: var(--soft); font-size: 12px;
+        cursor: pointer;
+      }
+      .control input, .control select {
+        background: transparent; border: 0; color: var(--text);
+        font-size: 12px; outline: none; min-width: 80px;
+      }
+      .control.is-active { border-color: rgba(113, 167, 255, 0.45); background: rgba(113, 167, 255, 0.08); color: var(--accent-2); }
+
+      .runs-table {
+        width: 100%; border-collapse: collapse; font-size: 12.5px;
+      }
+      .runs-table th, .runs-table td {
+        text-align: left;
+        padding: 9px 10px;
+        border-bottom: 1px solid var(--line);
+      }
+      .runs-table th {
+        color: var(--muted); font-weight: 500; text-transform: uppercase;
+        letter-spacing: 0.05em; font-size: 11px;
+      }
+      .runs-table tr:last-child td { border-bottom: 0; }
+      .runs-table tr.is-clickable { cursor: pointer; }
+      .runs-table tr.is-clickable:hover td { background: rgba(255, 255, 255, 0.03); }
+      .status-tag {
+        font-size: 11px; padding: 2px 8px; border-radius: 999px;
+        text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;
+        border: 1px solid var(--line);
+      }
+      .status-tag.is-complete { background: rgba(98, 214, 166, 0.12); color: var(--accent); border-color: rgba(98, 214, 166, 0.32); }
+      .status-tag.is-failed   { background: rgba(255, 139, 139, 0.12); color: var(--danger); border-color: rgba(255, 139, 139, 0.32); }
+      .status-tag.is-running  { background: rgba(113, 167, 255, 0.12); color: var(--accent-2); border-color: rgba(113, 167, 255, 0.32); }
+      .status-tag.is-other    { background: rgba(246, 193, 119, 0.12); color: var(--warning); border-color: rgba(246, 193, 119, 0.32); }
+
+      .delta-up   { color: var(--accent); }
+      .delta-down { color: var(--danger); }
+      .delta-flat { color: var(--muted); }
+
+      /* placeholder galleries */
+      .gallery-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 10px;
+      }
+      .gallery-tile {
+        aspect-ratio: 1 / 1;
+        border-radius: var(--radius-sm);
+        border: 1px dashed var(--line-strong);
+        background:
+          repeating-linear-gradient(45deg, rgba(255,255,255,0.02) 0 6px, transparent 6px 12px),
+          rgba(255,255,255,0.02);
+        display: grid; place-items: center;
+        color: var(--muted); font-size: 11px; text-align: center; padding: 8px;
+      }
+
+      .sample-card {
+        border: 1px dashed var(--line-strong);
+        border-radius: var(--radius-sm);
+        padding: 10px 12px; margin-bottom: 8px;
+        background: rgba(255,255,255,0.02);
+      }
+      .sample-card .role {
+        font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+        color: var(--muted); margin-bottom: 4px;
+      }
+      .sample-card .text {
+        font-size: 13px; color: var(--soft); white-space: pre-wrap;
+      }
+
+      /* ───── mode selector ───── */
+      .mode-row {
+        display: flex; flex-wrap: wrap; gap: 8px;
+        margin-bottom: 16px;
+      }
+      .mode-chip {
+        padding: 7px 14px; border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255,255,255,0.035);
+        color: var(--soft); font-size: 12.5px; font-weight: 500;
+        cursor: pointer; user-select: none;
+        transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+      }
+      .mode-chip:hover { border-color: var(--line-strong); }
+      .mode-chip.is-on {
+        background: rgba(98, 214, 166, 0.12);
+        border-color: rgba(98, 214, 166, 0.42);
+        color: var(--accent);
+      }
+      .mode-chip .ct {
+        margin-left: 6px; padding: 1px 6px; border-radius: 999px;
+        background: rgba(255,255,255,0.06); font-size: 10.5px; color: var(--muted);
+      }
+      .mode-chip.is-on .ct { background: rgba(98,214,166,0.18); color: var(--accent); }
+
+      /* ───── kanban / idea pipeline ───── */
+      .kanban {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .kanban-col {
+        border: 1px dashed var(--line-strong);
+        border-radius: var(--radius-sm);
+        background: rgba(255,255,255,0.02);
+        padding: 10px;
+        min-height: 160px;
+      }
+      .kanban-col h3 {
+        margin: 0 0 8px; font-size: 11px;
+        color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em;
+        display: flex; justify-content: space-between; align-items: center;
+      }
+      .idea-card {
+        padding: 9px 10px;
+        border-radius: 8px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--line);
+        margin-bottom: 6px;
+      }
+      .idea-card .title { font-size: 12.5px; color: var(--text); font-weight: 600; }
+      .idea-card .meta  { color: var(--muted); font-size: 11px; margin-top: 3px; }
+
+      /* ───── architecture map ───── */
+      .arch-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 12px;
       }
-
-      .stat {
-        padding: 14px;
-        border-radius: 12px;
-        border: 1px solid var(--line);
-        background: rgba(255, 255, 255, 0.03);
-        min-height: 94px;
+      .arch-cell {
+        border: 1px dashed var(--line-strong);
+        border-radius: var(--radius-sm);
+        padding: 10px 12px;
+        background: rgba(255,255,255,0.02);
       }
-
-      .stat .label {
-        color: var(--muted);
-        font-size: 12px;
-        text-transform: uppercase;
-        letter-spacing: 0.03em;
+      .arch-cell h4 {
+        margin: 0 0 6px; font-size: 11px;
+        color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em;
       }
-
-      .stat .value {
-        margin-top: 8px;
-        font-size: 1.35rem;
-        font-weight: 700;
-        line-height: 1.08;
-      }
-
-      .stat .sub {
-        margin-top: 6px;
+      .arch-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+      .arch-tag {
+        font-size: 11.5px; padding: 3px 8px; border-radius: 999px;
+        border: 1px solid var(--line); background: rgba(255,255,255,0.03);
         color: var(--soft);
-        font-size: 13px;
-        line-height: 1.4;
+      }
+      .arch-tag.is-tried { color: var(--accent); border-color: rgba(98,214,166,0.32); background: rgba(98,214,166,0.07); }
+      .arch-tag.is-best  { color: var(--accent-2); border-color: rgba(113,167,255,0.42); background: rgba(113,167,255,0.10); font-weight: 700; }
+      .arch-tag.is-bad   { color: var(--danger); border-color: rgba(255,139,139,0.32); background: rgba(255,139,139,0.07); text-decoration: line-through; }
+
+      /* ───── parallel coords ───── */
+      .parcoord {
+        width: 100%; height: 220px;
+        border: 1px dashed var(--line-strong);
+        border-radius: var(--radius-sm);
+        background: rgba(255,255,255,0.02);
       }
 
-      .sparkline-wrap {
-        display: grid;
-        gap: 12px;
-      }
-
-      .chart {
-        width: 100%;
-        height: 220px;
-        border: 1px solid var(--line);
-        border-radius: 12px;
-        background: rgba(255, 255, 255, 0.025);
-      }
-
-      .chart-label {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        color: var(--muted);
-        font-size: 13px;
-      }
-
-      .legend {
-        display: grid;
-        gap: 8px;
-      }
-
-      .legend-item,
-      .run-card {
-        display: grid;
-        gap: 6px;
-        padding: 12px 14px;
-        border: 1px solid var(--line);
-        border-radius: 12px;
-        background: rgba(255, 255, 255, 0.03);
-      }
-
-      .legend-item {
-        grid-template-columns: 1fr auto;
-        align-items: center;
-      }
-
-      .legend-left {
-        display: flex;
-        align-items: center;
+      /* ───── scaling laws / FLOPs ───── */
+      .stat-grid-3 {
+        display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 10px;
-        min-width: 0;
       }
+      .mini-stat {
+        padding: 10px 12px;
+        border-radius: var(--radius-sm);
+        border: 1px dashed var(--line-strong);
+        background: rgba(255,255,255,0.02);
+      }
+      .mini-stat .l { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+      .mini-stat .v { color: var(--text); font-size: 18px; font-weight: 700; margin-top: 4px; }
+      .mini-stat .s { color: var(--soft); font-size: 11.5px; margin-top: 3px; }
 
-      .legend-name,
-      .run-title {
-        font-weight: 600;
-        color: var(--text);
+      .queue-list { display: grid; gap: 8px; }
+      .queue-item {
+        display: flex; justify-content: space-between; align-items: center; gap: 10px;
+        padding: 10px 12px;
+        border: 1px dashed var(--line-strong);
+        border-radius: var(--radius-sm);
+        background: rgba(255,255,255,0.02);
       }
-
-      .legend-sub,
-      .run-sub {
-        color: var(--muted);
-        font-size: 12px;
-      }
-
-      .legend-value {
-        color: var(--soft);
-        font-size: 13px;
-        white-space: nowrap;
-      }
-
-      .dot {
-        width: 10px;
-        height: 10px;
-        border-radius: 999px;
-        flex: 0 0 auto;
-      }
-
-      .run-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 12px;
-      }
+      .queue-item .left { display: grid; gap: 2px; min-width: 0; }
+      .queue-item .name { font-size: 13px; color: var(--text); }
+      .queue-item .sub  { font-size: 11.5px; color: var(--muted); }
 
       .empty {
-        color: var(--muted);
-        padding: 10px 0;
-        font-size: 13px;
+        color: var(--muted); font-size: 12.5px;
+        padding: 14px; text-align: center;
+        border: 1px dashed var(--line); border-radius: var(--radius-sm);
+        background: rgba(255,255,255,0.02);
       }
+      .empty code { color: var(--accent-2); background: rgba(113, 167, 255, 0.1); padding: 1px 5px; border-radius: 5px; }
 
       .footer {
-        margin-top: 16px;
-        color: var(--muted);
-        font-size: 13px;
+        margin-top: 22px; color: var(--muted); font-size: 12.5px;
+        display: flex; justify-content: space-between; gap: 10px; align-items: center;
+        padding-top: 14px; border-top: 1px solid var(--line);
       }
 
-      @media (max-width: 1100px) {
-        .top-grid,
-        .secondary-grid {
-          grid-template-columns: 1fr;
-        }
+      /* run details modal */
+      .modal-mask {
+        position: fixed; inset: 0; display: none;
+        background: rgba(2, 8, 14, 0.78);
+        backdrop-filter: blur(6px); z-index: 20;
+        padding: 24px; overflow: auto;
+      }
+      .modal-mask.is-open { display: block; }
+      .modal {
+        margin: 24px auto; max-width: 900px;
+        background: linear-gradient(180deg, #0f1923, #0a1219);
+        border: 1px solid var(--line-strong);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+      }
+      .modal-head {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 14px 18px; border-bottom: 1px solid var(--line);
+      }
+      .modal-head h2 { margin: 0; font-size: 15px; }
+      .modal-body { padding: 16px 18px; }
+      .modal-close {
+        background: transparent; border: 1px solid var(--line);
+        color: var(--soft); padding: 4px 10px; border-radius: 999px;
+        cursor: pointer; font-size: 12.5px;
+      }
+
+      /* responsive */
+      @media (max-width: 1200px) {
+        .main-grid { grid-template-columns: 1fr; }
+        .kpi-row   { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .live-banner-row { grid-template-columns: 1fr 1fr; }
+      }
+      @media (max-width: 720px) {
+        .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .live-banner-row { grid-template-columns: 1fr; }
+        header.topbar { flex-direction: column; align-items: stretch; }
       }
     </style>
   </head>
   <body>
     <div class="shell">
-      <header>
+      <header class="topbar">
         <div class="brand">
           <div class="brand-mark">R</div>
           <div>
-            <h1>ResearchLoop Dashboard</h1>
-            <p>Local experiment tracking for AI research repos.</p>
+            <h1>ResearchLoop · Dashboard</h1>
+            <p id="brandSub">Autonomous AI research — local experiment tracking.</p>
           </div>
         </div>
-        <div class="status" id="statusText">Loading state...</div>
+        <div class="topbar-actions">
+          <span class="status-chip" id="repoChip" title="Detected adapters">
+            <span class="dot"></span><span id="repoChipText">repo: …</span>
+          </span>
+          <span class="status-chip" id="liveChip" title="Run activity">
+            <span class="dot"></span><span id="liveChipText">idle</span>
+          </span>
+          <span class="status-chip" id="pollChip" title="Polling status">
+            <span class="dot"></span><span id="pollChipText">connecting…</span>
+          </span>
+        </div>
       </header>
 
-      <section class="top-grid">
-        <article class="panel">
-          <div class="panel-head">
-            <h2>Loss comparison</h2>
-            <span class="pill" id="goalMetricPill">Metric: loading</span>
-          </div>
-          <div class="panel-body">
-            <div class="goal-title" id="goalTitle">Loading…</div>
-            <div class="meta-row" id="goalMeta"></div>
-            <div class="chart-label">
-              <span id="trendLabel">No numeric metric yet.</span>
-              <span id="trendRange"></span>
-            </div>
-            <div id="chartMount"></div>
-            <div id="legendMount" class="legend"></div>
-          </div>
-        </article>
+      <!-- research mode selector (filters which placeholder panels show) -->
+      <div class="mode-row" id="modeRow">
+        <button class="mode-chip is-on" data-mode="general">General <span class="ct">core</span></button>
+        <button class="mode-chip is-on" data-mode="llm">LLM <span class="ct">12</span></button>
+        <button class="mode-chip is-on" data-mode="diffusion">Diffusion <span class="ct">5</span></button>
+        <button class="mode-chip" data-mode="jepa">JEPA <span class="ct">4</span></button>
+        <button class="mode-chip" data-mode="rl">RL <span class="ct">6</span></button>
+        <button class="mode-chip is-on" data-mode="kernels">Kernels <span class="ct">3</span></button>
+        <button class="mode-chip is-on" data-mode="lab">Lab tools <span class="ct">5</span></button>
+      </div>
 
-        <article class="panel">
-          <div class="panel-head">
-            <h2>Snapshot</h2>
-            <span class="pill" id="repoType">Detecting</span>
+      <!-- live run banner -->
+      <section class="live-banner" id="liveBanner">
+        <div class="live-banner-row">
+          <div class="live-title">
+            <span class="badge">live</span>
+            <span class="id" id="liveRunId">—</span>
           </div>
-          <div class="panel-body">
-            <div class="stats">
-              <div class="stat">
-                <div class="label">Runs</div>
-                <div class="value" id="statRuns">0</div>
-                <div class="sub">All recorded entries</div>
-              </div>
-              <div class="stat">
-                <div class="label">Best final</div>
-                <div class="value" id="statBest">-</div>
-                <div class="sub" id="statBestSub">No metric yet</div>
-              </div>
-              <div class="stat">
-                <div class="label">Biggest drop</div>
-                <div class="value" id="statDrop">-</div>
-                <div class="sub" id="statDropSub">Waiting for curves</div>
-              </div>
-              <div class="stat">
-                <div class="label">Latest</div>
-                <div class="value" id="statLatest">-</div>
-                <div class="sub" id="statLatestSub">Waiting for the first run</div>
-              </div>
-            </div>
-            <div class="meta-row" id="repoMeta"></div>
-          </div>
-        </article>
+          <div class="live-stat"><div class="lbl">Elapsed</div><div class="val" id="liveElapsed">—</div></div>
+          <div class="live-stat"><div class="lbl">Last update</div><div class="val" id="liveLastUpdate">—</div></div>
+          <div class="live-stat"><div class="lbl">Last metric</div><div class="val" id="liveLastMetric">—</div></div>
+          <div class="live-stat"><div class="lbl">ETA</div><div class="val" id="liveEta">—</div></div>
+        </div>
+        <div class="live-command mono" id="liveCommand">—</div>
       </section>
 
-      <section class="panel">
+      <!-- KPI strip -->
+      <section class="kpi-row" id="kpiRow">
+        <div class="kpi"><div class="label">Total runs</div><div class="value" id="kpiRuns">0</div><div class="sub" id="kpiRunsSub">no entries yet</div></div>
+        <div class="kpi is-accent"><div class="label">Best metric</div><div class="value" id="kpiBest">—</div><div class="sub" id="kpiBestSub">awaiting data</div></div>
+        <div class="kpi is-blue"><div class="label">Biggest improvement</div><div class="value" id="kpiDelta">—</div><div class="sub" id="kpiDeltaSub">awaiting curves</div></div>
+        <div class="kpi"><div class="label">Latest run</div><div class="value" id="kpiLatest">—</div><div class="sub" id="kpiLatestSub">no run yet</div></div>
+        <div class="kpi is-warning"><div class="label">Compute load</div><div class="value" id="kpiLoad">—</div><div class="sub" id="kpiLoadSub">cpu / mem</div></div>
+      </section>
+
+      <!-- main grid -->
+      <section class="main-grid">
+        <!-- LEFT column -->
+        <div class="col-stack">
+          <!-- loss / metric chart -->
+          <article class="panel" aria-label="Loss comparison">
+            <div class="panel-head">
+              <h2>Metric curves · Loss comparison</h2>
+              <div class="head-right">
+                <span class="pill" id="metricPill">Metric: loading</span>
+                <span class="pill" id="directionPill">—</span>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="chart-label">
+                <span id="trendLabel">No numeric metric yet.</span>
+                <span id="trendRange"></span>
+              </div>
+              <div id="chartMount" class="chart-wrap"></div>
+              <div id="legendMount" class="legend"></div>
+            </div>
+          </article>
+
+          <!-- experiments table -->
+          <article class="panel">
+            <div class="panel-head">
+              <h2>Experiments</h2>
+              <div class="head-right">
+                <span class="pill" id="runHint">Loading</span>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="table-controls">
+                <label class="control">
+                  filter
+                  <input id="filterInput" type="text" placeholder="id / command / metric" />
+                </label>
+                <label class="control">
+                  status
+                  <select id="filterStatus">
+                    <option value="">all</option>
+                    <option value="complete">complete</option>
+                    <option value="failed">failed</option>
+                    <option value="running">running</option>
+                    <option value="timeout">timeout</option>
+                  </select>
+                </label>
+                <label class="control">
+                  sort
+                  <select id="sortField">
+                    <option value="time">recent</option>
+                    <option value="metric">metric</option>
+                    <option value="id">id</option>
+                  </select>
+                </label>
+                <span class="control is-active" id="filterCount">0 shown</span>
+              </div>
+              <div style="overflow:auto">
+                <table class="runs-table">
+                  <thead>
+                    <tr>
+                      <th>Run</th>
+                      <th>Status</th>
+                      <th>Points</th>
+                      <th>Final</th>
+                      <th>Δ</th>
+                      <th>Started</th>
+                    </tr>
+                  </thead>
+                  <tbody id="runsTbody">
+                    <tr><td colspan="6"><div class="empty">Loading experiments…</div></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </article>
+
+          <!-- live log tail -->
+          <article class="panel">
+            <div class="panel-head">
+              <h2>Live log tail</h2>
+              <div class="head-right">
+                <span class="pill mono" id="logPath">—</span>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="log-tail" id="logTail">
+                <span style="color:var(--muted)">No log to tail yet. Run something with <code>researchloop run "&lt;cmd&gt;"</code>.</span>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <!-- RIGHT column -->
+        <div class="col-stack">
+          <!-- goal card -->
+          <article class="panel">
+            <div class="panel-head">
+              <h2>Research goal</h2>
+              <div class="head-right">
+                <span class="pill" id="primaryMetricPill">Metric: —</span>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="goal-title" id="goalTitle">Set a goal with <code>researchloop goal</code>.</div>
+              <div class="meta-row" id="goalMeta"></div>
+              <div class="goal-progress">
+                <div class="bar" id="goalBar"><span style="width:0%"></span></div>
+                <span class="pill" id="goalProgressPill">progress: —</span>
+              </div>
+            </div>
+          </article>
+
+          <!-- plan card -->
+          <article class="panel">
+            <div class="panel-head">
+              <h2>Plan &amp; picklist</h2>
+              <div class="head-right">
+                <span class="pill" id="timeBudgetPill">budget: —</span>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="meta-row" id="planMeta"></div>
+              <div style="display:grid; grid-template-columns: 1fr; gap: 12px;">
+                <div>
+                  <div style="color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:6px">Current state</div>
+                  <pre id="planState">—</pre>
+                </div>
+                <div>
+                  <div style="color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:6px">Picklist</div>
+                  <pre id="planPicklist">—</pre>
+                </div>
+                <div>
+                  <div style="color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:6px">Ruled out</div>
+                  <pre id="planRuled">—</pre>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- system resources -->
+          <article class="panel">
+            <div class="panel-head">
+              <h2>System resources</h2>
+              <div class="head-right">
+                <span class="pill mono" id="sysHost">—</span>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="resource-list" id="resourceList"></div>
+            </div>
+          </article>
+
+          <!-- agent thread -->
+          <article class="panel">
+            <div class="panel-head">
+              <h2>Agent thread</h2>
+              <div class="head-right">
+                <span class="pill" id="threadCount">0 lines</span>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="thread-feed" id="threadFeed">
+                <div class="empty">THREAD.md is empty. The autonomous loop will write its decisions here.</div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- secondary grid: queues, samples, completions, checkpoints, alerts -->
+      <section class="main-grid">
+        <div class="col-stack">
+          <!-- sweep queue (placeholder) -->
+          <article class="panel placeholder">
+            <div class="panel-head">
+              <h2>Sweep queue · next experiments</h2>
+              <div class="head-right">
+                <span class="placeholder-badge">placeholder</span>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="queue-list" id="queueList">
+                <div class="queue-item">
+                  <div class="left">
+                    <div class="name">lr-sweep · lr=3e-4</div>
+                    <div class="sub">3 of 8 in plan · est. 14 min · proposed by picklist</div>
+                  </div>
+                  <span class="pill is-blue">queued</span>
+                </div>
+                <div class="queue-item">
+                  <div class="left">
+                    <div class="name">lr-sweep · lr=1e-4</div>
+                    <div class="sub">4 of 8 · est. 14 min</div>
+                  </div>
+                  <span class="pill">draft</span>
+                </div>
+                <div class="queue-item">
+                  <div class="left">
+                    <div class="name">arch-ablation · 4 → 8 heads</div>
+                    <div class="sub">queued behind sweep · est. 22 min</div>
+                  </div>
+                  <span class="pill">draft</span>
+                </div>
+              </div>
+              <p style="color:var(--muted); font-size:12px; margin: 12px 0 0">
+                When <code>researchloop sweep</code> lands (G09/G10), this will read the live queue and
+                show in-flight + planned runs with their hyperparams and ETAs.
+              </p>
+            </div>
+          </article>
+
+          <!-- LLM sample completions (placeholder, shown when adapters suggest LLM/HF) -->
+          <article class="panel placeholder" id="completionsPanel">
+            <div class="panel-head">
+              <h2>LLM sample completions</h2>
+              <div class="head-right"><span class="placeholder-badge">placeholder</span></div>
+            </div>
+            <div class="panel-body">
+              <div class="sample-card">
+                <div class="role">prompt</div>
+                <div class="text mono">The Riemann zeta function evaluated at s=2 equals</div>
+                <div class="role" style="margin-top:8px">step 1 200 · greedy</div>
+                <div class="text">… pi squared over six, which arises from the Basel problem.</div>
+              </div>
+              <div class="sample-card">
+                <div class="role">prompt</div>
+                <div class="text mono">def is_prime(n):</div>
+                <div class="role" style="margin-top:8px">step 1 200 · temp 0.7</div>
+                <div class="text">    if n &lt; 2: return False
+    for i in range(2, int(n**0.5)+1):
+        if n % i == 0: return False
+    return True</div>
+              </div>
+              <p style="color:var(--muted); font-size:12px; margin: 6px 0 0">
+                Wire to <code>.researchloop/scratchpad/samples/&lt;run&gt;.jsonl</code> once
+                the eval adapter writes per-step completions.
+              </p>
+            </div>
+          </article>
+        </div>
+
+        <div class="col-stack">
+          <!-- diffusion samples gallery (placeholder, shown when adapters suggest diffusion) -->
+          <article class="panel placeholder" id="samplesPanel">
+            <div class="panel-head">
+              <h2>Diffusion samples · last 12</h2>
+              <div class="head-right"><span class="placeholder-badge">placeholder</span></div>
+            </div>
+            <div class="panel-body">
+              <div class="gallery-grid">
+                <div class="gallery-tile">step 100</div>
+                <div class="gallery-tile">step 250</div>
+                <div class="gallery-tile">step 500</div>
+                <div class="gallery-tile">step 1k</div>
+                <div class="gallery-tile">step 2k</div>
+                <div class="gallery-tile">step 5k</div>
+                <div class="gallery-tile">step 10k</div>
+                <div class="gallery-tile">step 20k</div>
+              </div>
+              <p style="color:var(--muted); font-size:12px; margin: 12px 0 0">
+                Drop PNGs into <code>.researchloop/scratchpad/samples/&lt;run&gt;/step-*.png</code>
+                and they’ll render here, with FID/IS overlays once tracked.
+              </p>
+            </div>
+          </article>
+
+          <!-- checkpoints (placeholder) -->
+          <article class="panel placeholder">
+            <div class="panel-head">
+              <h2>Checkpoints</h2>
+              <div class="head-right"><span class="placeholder-badge">placeholder</span></div>
+            </div>
+            <div class="panel-body">
+              <table class="runs-table">
+                <thead><tr><th>Tag</th><th>Run</th><th>Step</th><th>Size</th><th>Metric</th></tr></thead>
+                <tbody>
+                  <tr><td><span class="pill is-accent">best</span></td><td class="mono">run-A · seed 7</td><td>step 5 000</td><td>184 MB</td><td>2.31</td></tr>
+                  <tr><td><span class="pill is-blue">latest</span></td><td class="mono">run-A · seed 7</td><td>step 7 200</td><td>184 MB</td><td>2.36</td></tr>
+                  <tr><td>—</td><td class="mono">run-B · seed 11</td><td>step 4 000</td><td>184 MB</td><td>2.42</td></tr>
+                </tbody>
+              </table>
+              <p style="color:var(--muted); font-size:12px; margin: 12px 0 0">
+                Will scan <code>checkpoints/</code> in the repo and let you tag, diff configs,
+                or promote a checkpoint to a baseline.
+              </p>
+            </div>
+          </article>
+
+          <!-- alerts / notifications (placeholder) -->
+          <article class="panel placeholder">
+            <div class="panel-head">
+              <h2>Alerts</h2>
+              <div class="head-right"><span class="placeholder-badge">placeholder</span></div>
+            </div>
+            <div class="panel-body">
+              <div class="queue-list">
+                <div class="queue-item"><div class="left"><div class="name">Notify when a run beats baseline</div><div class="sub">desktop notification + write to THREAD.md</div></div><span class="pill is-accent">on</span></div>
+                <div class="queue-item"><div class="left"><div class="name">Stop on NaN / divergence</div><div class="sub">watches log tail for nan/inf in metric stream</div></div><span class="pill is-warning">draft</span></div>
+                <div class="queue-item"><div class="left"><div class="name">Cost guard</div><div class="sub">cap GPU-hours per day · pause sweep when reached</div></div><span class="pill">draft</span></div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ──────────────────────────────────────────────────────────────
+           RESEARCH-MODE SECTIONS · ideas, ablations, kernels, JEPA/RL/diff
+           All placeholders. Toggle via the mode-chip row at the top.
+           ────────────────────────────────────────────────────────────── -->
+
+      <!-- 1. idea / hypothesis pipeline (kanban) -->
+      <section class="panel placeholder" data-mode="general lab">
         <div class="panel-head">
-          <h2>Experiments</h2>
-          <span class="pill" id="runHint">Loading</span>
+          <h2>Idea pipeline · hypothesis register</h2>
+          <div class="head-right">
+            <span class="pill is-blue">12 ideas tracked</span>
+            <span class="placeholder-badge">placeholder</span>
+          </div>
         </div>
         <div class="panel-body">
-          <div id="runsGrid" class="run-grid">
-            <div class="empty">Loading experiments…</div>
+          <div class="kanban">
+            <div class="kanban-col">
+              <h3>Backlog <span class="ct" style="color:var(--soft)">5</span></h3>
+              <div class="idea-card"><div class="title">Replace RoPE with NoPE</div><div class="meta">Hypothesis: NoPE matches at ≤2k ctx · cost: 1 run · arch · llm</div></div>
+              <div class="idea-card"><div class="title">SwiGLU → GeGLU swap</div><div class="meta">Activation ablation · llm · 88M model</div></div>
+              <div class="idea-card"><div class="title">Try Mamba-2 block mix</div><div class="meta">SSM hybrid · llm · arch</div></div>
+              <div class="idea-card"><div class="title">JEPA-style masked-latent loss</div><div class="meta">Self-supervised · jepa · vision</div></div>
+              <div class="idea-card"><div class="title">RL fine-tune w/ GRPO</div><div class="meta">post-train · rl · llm</div></div>
+            </div>
+            <div class="kanban-col">
+              <h3>In progress <span class="ct" style="color:var(--accent-2)">3</span></h3>
+              <div class="idea-card"><div class="title">Muon vs AdamW · GQA</div><div class="meta">running run-D · 4 of 8 sweep steps · est 18m</div></div>
+              <div class="idea-card"><div class="title">QK-norm on/off</div><div class="meta">queued · 2 runs · stability</div></div>
+              <div class="idea-card"><div class="title">Squared-ReLU vs LeakySqRelu</div><div class="meta">queued · 2 runs</div></div>
+            </div>
+            <div class="kanban-col">
+              <h3>Validated <span class="ct" style="color:var(--accent)">2</span></h3>
+              <div class="idea-card"><div class="title">RMSNorm vs LayerNorm</div><div class="meta">RMSNorm wins · −0.18 val_loss · evidence: 4 runs</div></div>
+              <div class="idea-card"><div class="title">GQA n_kv=4 best at 88M</div><div class="meta">vs 1/2/8 · throughput +14%</div></div>
+            </div>
+            <div class="kanban-col">
+              <h3>Falsified <span class="ct" style="color:var(--danger)">2</span></h3>
+              <div class="idea-card"><div class="title">Dropout 0.1 helps</div><div class="meta">+0.04 val_loss · ruled out</div></div>
+              <div class="idea-card"><div class="title">fp16 instead of bf16</div><div class="meta">overflows at lr=3e-3 · ruled out</div></div>
+            </div>
+          </div>
+          <p style="color:var(--muted); font-size:12px; margin:12px 0 0">
+            Wire to <code>.researchloop/scratchpad/ideas/*.md</code> (one idea per file with
+            status frontmatter) so the autonomous loop can promote / falsify ideas as runs land.
+          </p>
+        </div>
+      </section>
+
+      <!-- 2. architecture ablation map -->
+      <section class="main-grid" data-mode="general llm">
+        <div class="col-stack">
+          <article class="panel placeholder" data-mode="general llm">
+            <div class="panel-head">
+              <h2>Architecture ablation map</h2>
+              <div class="head-right"><span class="placeholder-badge">placeholder</span></div>
+            </div>
+            <div class="panel-body">
+              <div class="arch-grid">
+                <div class="arch-cell">
+                  <h4>Attention</h4>
+                  <div class="arch-tags">
+                    <span class="arch-tag is-tried">MHA</span>
+                    <span class="arch-tag is-best">GQA · 8q/4kv</span>
+                    <span class="arch-tag is-tried">MQA</span>
+                    <span class="arch-tag">MLA</span>
+                    <span class="arch-tag">sliding window</span>
+                    <span class="arch-tag">attention sinks</span>
+                    <span class="arch-tag">linear attn</span>
+                  </div>
+                </div>
+                <div class="arch-cell">
+                  <h4>Positional</h4>
+                  <div class="arch-tags">
+                    <span class="arch-tag is-best">RoPE</span>
+                    <span class="arch-tag">YaRN</span>
+                    <span class="arch-tag">ALiBi</span>
+                    <span class="arch-tag">NoPE</span>
+                    <span class="arch-tag">learned</span>
+                  </div>
+                </div>
+                <div class="arch-cell">
+                  <h4>Normalization</h4>
+                  <div class="arch-tags">
+                    <span class="arch-tag is-best">RMSNorm + QK-norm</span>
+                    <span class="arch-tag is-bad">LayerNorm</span>
+                    <span class="arch-tag">DyT</span>
+                    <span class="arch-tag">post-norm</span>
+                    <span class="arch-tag">scale-norm</span>
+                  </div>
+                </div>
+                <div class="arch-cell">
+                  <h4>FFN / activation</h4>
+                  <div class="arch-tags">
+                    <span class="arch-tag is-best">Squared-ReLU</span>
+                    <span class="arch-tag">SwiGLU</span>
+                    <span class="arch-tag">GeGLU</span>
+                    <span class="arch-tag">ReGLU</span>
+                    <span class="arch-tag">MoE 4×2</span>
+                  </div>
+                </div>
+                <div class="arch-cell">
+                  <h4>Depth × width</h4>
+                  <div class="arch-tags">
+                    <span class="arch-tag is-tried">22L × 512d</span>
+                    <span class="arch-tag">12L × 768d</span>
+                    <span class="arch-tag">32L × 384d</span>
+                    <span class="arch-tag">isoflop curve</span>
+                  </div>
+                </div>
+                <div class="arch-cell">
+                  <h4>Other levers</h4>
+                  <div class="arch-tags">
+                    <span class="arch-tag">tied embeddings</span>
+                    <span class="arch-tag">muP</span>
+                    <span class="arch-tag">z-loss</span>
+                    <span class="arch-tag">stable embedding init</span>
+                    <span class="arch-tag">RoPE base × 10</span>
+                  </div>
+                </div>
+              </div>
+              <p style="color:var(--muted); font-size:12px; margin:10px 0 0">
+                Tap a tag → promote to the picklist · auto-fills <code>.researchloop/scratchpad/ideas/</code>.
+              </p>
+            </div>
+          </article>
+
+          <!-- optimizer comparison -->
+          <article class="panel placeholder" data-mode="general llm">
+            <div class="panel-head">
+              <h2>Optimizer comparison</h2>
+              <div class="head-right"><span class="placeholder-badge">placeholder</span></div>
+            </div>
+            <div class="panel-body">
+              <table class="runs-table">
+                <thead><tr><th>Optimizer</th><th>Best val</th><th>Tokens/s</th><th>MFU</th><th>Stable</th></tr></thead>
+                <tbody>
+                  <tr><td><span class="pill is-accent">Muon + AdamW</span></td><td>2.61</td><td>48 200</td><td>34%</td><td>✓</td></tr>
+                  <tr><td>AdamW</td><td>2.74</td><td>52 100</td><td>37%</td><td>✓</td></tr>
+                  <tr><td>Muon (matrix-only)</td><td>2.67</td><td>49 800</td><td>35%</td><td>✓</td></tr>
+                  <tr><td>Lion</td><td>2.81</td><td>53 500</td><td>38%</td><td>✓</td></tr>
+                  <tr><td>Shampoo</td><td>—</td><td>—</td><td>—</td><td class="delta-down">OOM</td></tr>
+                  <tr><td>SOAP</td><td>—</td><td>—</td><td>—</td><td>todo</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+
+        <div class="col-stack">
+          <!-- scaling laws -->
+          <article class="panel placeholder" data-mode="general llm jepa diffusion">
+            <div class="panel-head">
+              <h2>Scaling laws · isoflop curve</h2>
+              <div class="head-right"><span class="placeholder-badge">placeholder</span></div>
+            </div>
+            <div class="panel-body">
+              <svg viewBox="0 0 480 200" class="parcoord" style="height:200px" aria-label="Compute vs loss">
+                <line x1="32" y1="170" x2="460" y2="170" stroke="rgba(255,255,255,0.18)"/>
+                <line x1="32" y1="20"  x2="32"  y2="170" stroke="rgba(255,255,255,0.18)"/>
+                <text x="32" y="190" font-size="10" fill="rgba(255,255,255,0.5)">1e16 FLOPs</text>
+                <text x="430" y="190" font-size="10" fill="rgba(255,255,255,0.5)">1e19</text>
+                <text x="10" y="22" font-size="10" fill="rgba(255,255,255,0.5)">loss</text>
+                <path d="M 50 60 C 140 90, 240 120, 440 155" stroke="#62d6a6" stroke-width="2.5" fill="none"/>
+                <circle cx="60" cy="65" r="3" fill="#71a7ff"/>
+                <circle cx="140" cy="95" r="3" fill="#71a7ff"/>
+                <circle cx="230" cy="120" r="3" fill="#71a7ff"/>
+                <circle cx="320" cy="138" r="3" fill="#71a7ff"/>
+                <circle cx="420" cy="155" r="3" fill="#62d6a6"/>
+                <text x="420" y="148" font-size="10" fill="#62d6a6" text-anchor="end">extrapolated</text>
+              </svg>
+              <div class="stat-grid-3" style="margin-top:10px">
+                <div class="mini-stat"><div class="l">Chinchilla-fit α</div><div class="v">0.34</div><div class="s">slope of loss vs log-compute</div></div>
+                <div class="mini-stat"><div class="l">Tokens / param</div><div class="v">22×</div><div class="s">vs Chinchilla 20×</div></div>
+                <div class="mini-stat"><div class="l">Predicted @ 1B</div><div class="v">2.31</div><div class="s">val_loss at 22B tokens</div></div>
+              </div>
+            </div>
+          </article>
+
+          <!-- kernels / compute -->
+          <article class="panel placeholder" data-mode="kernels general">
+            <div class="panel-head">
+              <h2>Kernels · throughput · MFU</h2>
+              <div class="head-right"><span class="placeholder-badge">placeholder</span></div>
+            </div>
+            <div class="panel-body">
+              <table class="runs-table">
+                <thead><tr><th>Kernel</th><th>Backend</th><th>Tokens/s</th><th>MFU</th><th>Δ vs base</th></tr></thead>
+                <tbody>
+                  <tr><td>SDPA · baseline</td><td>PyTorch</td><td>41 200</td><td>29%</td><td>—</td></tr>
+                  <tr><td>FlashAttention-2</td><td>CUDA</td><td>58 900</td><td>42%</td><td class="delta-up">+43%</td></tr>
+                  <tr><td>FlashAttention-3</td><td>CUDA · H100</td><td>72 400</td><td>52%</td><td class="delta-up">+76%</td></tr>
+                  <tr><td>Fused QKVO (Triton)</td><td>Triton</td><td>61 800</td><td>44%</td><td class="delta-up">+50%</td></tr>
+                  <tr><td>RMSNorm · custom</td><td>Triton</td><td>+0.6% e2e</td><td>—</td><td class="delta-up">small</td></tr>
+                  <tr><td>RoPE · fused</td><td>Triton</td><td>+1.1% e2e</td><td>—</td><td class="delta-up">small</td></tr>
+                  <tr><td>Paged-KV cache</td><td>CUDA</td><td>todo</td><td>—</td><td>—</td></tr>
+                </tbody>
+              </table>
+              <p style="color:var(--muted); font-size:12px; margin:10px 0 0">
+                Wire to <code>nsys</code> / <code>ncu</code> / <code>torch.profiler</code>; or
+                ingest a <code>kernels.jsonl</code> the trainer writes per epoch.
+              </p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- 3. run diff + sweep visualization -->
+      <section class="main-grid">
+        <div class="col-stack">
+          <article class="panel placeholder" data-mode="general lab">
+            <div class="panel-head">
+              <h2>Run diff · A vs B</h2>
+              <div class="head-right">
+                <span class="pill is-blue">run-B vs run-A</span>
+                <span class="placeholder-badge">placeholder</span>
+              </div>
+            </div>
+            <div class="panel-body">
+              <table class="runs-table">
+                <thead><tr><th>Setting</th><th>A</th><th>B</th><th>Δ</th></tr></thead>
+                <tbody>
+                  <tr><td>lr</td><td class="mono">3e-4</td><td class="mono">1e-4</td><td class="delta-down">−2/3×</td></tr>
+                  <tr><td>n_kv_heads</td><td>4</td><td>2</td><td class="delta-down">−2</td></tr>
+                  <tr><td>activation</td><td>sq-relu</td><td>swiglu</td><td>≠</td></tr>
+                  <tr><td>warmup</td><td>2%</td><td>5%</td><td class="delta-up">+3%</td></tr>
+                  <tr><td>final val_loss</td><td>2.74</td><td>2.61</td><td class="delta-up">−0.13</td></tr>
+                  <tr><td>tokens/s</td><td>48 200</td><td>46 100</td><td class="delta-down">−4%</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+        <div class="col-stack">
+          <article class="panel placeholder" data-mode="general lab">
+            <div class="panel-head">
+              <h2>Sweep view · parallel coords</h2>
+              <div class="head-right"><span class="placeholder-badge">placeholder</span></div>
+            </div>
+            <div class="panel-body">
+              <svg viewBox="0 0 480 200" class="parcoord" aria-label="Parallel coordinates">
+                <g stroke="rgba(255,255,255,0.18)" stroke-width="1">
+                  <line x1="40"  y1="20" x2="40"  y2="170"/>
+                  <line x1="150" y1="20" x2="150" y2="170"/>
+                  <line x1="260" y1="20" x2="260" y2="170"/>
+                  <line x1="370" y1="20" x2="370" y2="170"/>
+                  <line x1="450" y1="20" x2="450" y2="170"/>
+                </g>
+                <g font-size="10" fill="rgba(255,255,255,0.5)" text-anchor="middle">
+                  <text x="40" y="190">lr</text>
+                  <text x="150" y="190">d_model</text>
+                  <text x="260" y="190">n_layers</text>
+                  <text x="370" y="190">act</text>
+                  <text x="450" y="190">val_loss</text>
+                </g>
+                <polyline points="40,40  150,80  260,60  370,40  450,55" stroke="#62d6a6" stroke-width="1.6" fill="none" opacity="0.9"/>
+                <polyline points="40,80  150,120 260,100 370,80  450,90" stroke="#71a7ff" stroke-width="1.6" fill="none" opacity="0.85"/>
+                <polyline points="40,120 150,40  260,150 370,120 450,130" stroke="#c38bff" stroke-width="1.6" fill="none" opacity="0.7"/>
+                <polyline points="40,60  150,100 260,40  370,60  450,70" stroke="#f6c177" stroke-width="1.6" fill="none" opacity="0.85"/>
+              </svg>
+              <p style="color:var(--muted); font-size:12px; margin:10px 0 0">
+                Drag axes to filter · hover to highlight · click to pin a run as the "A" for the diff panel.
+              </p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- 4. paper feed + cost -->
+      <section class="main-grid">
+        <div class="col-stack">
+          <article class="panel placeholder" data-mode="general lab">
+            <div class="panel-head">
+              <h2>Paper scan · "try this" inbox</h2>
+              <div class="head-right"><span class="placeholder-badge">placeholder</span></div>
+            </div>
+            <div class="panel-body">
+              <div class="queue-list">
+                <div class="queue-item">
+                  <div class="left">
+                    <div class="name">A New Path for SSM-Transformer Hybrids</div>
+                    <div class="sub">arxiv:2511.xxxxx · 2 days ago · matches: SSM · hybrid · GQA</div>
+                  </div>
+                  <span class="pill is-blue">try this</span>
+                </div>
+                <div class="queue-item">
+                  <div class="left">
+                    <div class="name">Better μ-parametrization for sub-1B</div>
+                    <div class="sub">arxiv:2511.xxxxx · 4 days ago · matches: muP · 88M</div>
+                  </div>
+                  <span class="pill">queued</span>
+                </div>
+                <div class="queue-item">
+                  <div class="left">
+                    <div class="name">JEPA-V3: latent-only world models</div>
+                    <div class="sub">arxiv:2511.xxxxx · 1 week ago · matches: jepa · vision</div>
+                  </div>
+                  <span class="pill">scan</span>
+                </div>
+                <div class="queue-item">
+                  <div class="left">
+                    <div class="name">GRPO at 1B scale beats DPO</div>
+                    <div class="sub">arxiv:2511.xxxxx · 5 days ago · matches: rl · post-train</div>
+                  </div>
+                  <span class="pill">scan</span>
+                </div>
+              </div>
+              <p style="color:var(--muted); font-size:12px; margin:10px 0 0">
+                Wire to <code>researchloop scan-papers</code> output; promote any item into the idea pipeline.
+              </p>
+            </div>
+          </article>
+        </div>
+        <div class="col-stack">
+          <article class="panel placeholder" data-mode="general lab">
+            <div class="panel-head">
+              <h2>Compute budget · cost tracker</h2>
+              <div class="head-right"><span class="placeholder-badge">placeholder</span></div>
+            </div>
+            <div class="panel-body">
+              <div class="stat-grid-3">
+                <div class="mini-stat"><div class="l">GPU-hours today</div><div class="v">3.4</div><div class="s">of 8 cap · 42%</div></div>
+                <div class="mini-stat"><div class="l">$ est today</div><div class="v">$ 6.80</div><div class="s">@ $2/GPU-hr</div></div>
+                <div class="mini-stat"><div class="l">Tokens trained</div><div class="v">412 M</div><div class="s">across 7 runs</div></div>
+                <div class="mini-stat"><div class="l">Avg run cost</div><div class="v">$ 0.97</div><div class="s">last 7 days</div></div>
+                <div class="mini-stat"><div class="l">Cheapest win/$</div><div class="v">−0.18</div><div class="s">val_loss / $1 · RMSNorm swap</div></div>
+                <div class="mini-stat"><div class="l">Disk used</div><div class="v">38.2 GB</div><div class="s">ckpts + logs</div></div>
+              </div>
+              <div class="bar" style="margin-top:12px"><span style="width:42%"></span></div>
+              <p style="color:var(--muted); font-size:12px; margin:8px 0 0">Daily budget bar · pause sweep at 100%.</p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- 5. modality-specific panels -->
+      <section class="main-grid">
+        <div class="col-stack">
+          <!-- LLM specific -->
+          <article class="panel placeholder" data-mode="llm">
+            <div class="panel-head">
+              <h2>LLM · tokenization &amp; eval</h2>
+              <div class="head-right"><span class="placeholder-badge">placeholder</span></div>
+            </div>
+            <div class="panel-body">
+              <div class="stat-grid-3">
+                <div class="mini-stat"><div class="l">Vocab</div><div class="v">49 152</div><div class="s">BPE · tied embeddings</div></div>
+                <div class="mini-stat"><div class="l">Bytes / token</div><div class="v">3.41</div><div class="s">en-corpus avg</div></div>
+                <div class="mini-stat"><div class="l">Ctx · max</div><div class="v">2 048</div><div class="s">RoPE base 10 000</div></div>
+                <div class="mini-stat"><div class="l">PPL (held-out)</div><div class="v">13.9</div><div class="s">best run · −1.2 vs base</div></div>
+                <div class="mini-stat"><div class="l">HellaSwag</div><div class="v">36.4%</div><div class="s">0-shot · tiny model</div></div>
+                <div class="mini-stat"><div class="l">MMLU</div><div class="v">25.1%</div><div class="s">random ≈ 25 · expected</div></div>
+              </div>
+              <p style="color:var(--muted); font-size:12px; margin:10px 0 0">
+                Hook <code>lm-eval-harness</code> output to fill these. Per-domain PPL bars can drop below.
+              </p>
+            </div>
+          </article>
+
+          <!-- JEPA specific -->
+          <article class="panel placeholder" data-mode="jepa">
+            <div class="panel-head">
+              <h2>JEPA · predictor &amp; latent alignment</h2>
+              <div class="head-right"><span class="placeholder-badge">placeholder</span></div>
+            </div>
+            <div class="panel-body">
+              <div class="stat-grid-3">
+                <div class="mini-stat"><div class="l">Predictor MSE</div><div class="v">0.142</div><div class="s">masked → context</div></div>
+                <div class="mini-stat"><div class="l">EMA decay</div><div class="v">0.996</div><div class="s">target encoder</div></div>
+                <div class="mini-stat"><div class="l">Mask ratio</div><div class="v">75%</div><div class="s">block-style</div></div>
+                <div class="mini-stat"><div class="l">k-NN probe</div><div class="v">62.1%</div><div class="s">ImageNet-tiny</div></div>
+                <div class="mini-stat"><div class="l">Linear probe</div><div class="v">68.8%</div><div class="s">+6.7 vs DINO</div></div>
+                <div class="mini-stat"><div class="l">Collapse risk</div><div class="v">low</div><div class="s">latent std 0.31</div></div>
+              </div>
+              <p style="color:var(--muted); font-size:12px; margin:10px 0 0">
+                Tracks I-JEPA / V-JEPA setups · drop in a probe loader to fill these from run logs.
+              </p>
+            </div>
+          </article>
+        </div>
+
+        <div class="col-stack">
+          <!-- Diffusion specific -->
+          <article class="panel placeholder" data-mode="diffusion">
+            <div class="panel-head">
+              <h2>Diffusion · sample quality</h2>
+              <div class="head-right"><span class="placeholder-badge">placeholder</span></div>
+            </div>
+            <div class="panel-body">
+              <div class="stat-grid-3">
+                <div class="mini-stat"><div class="l">FID-50k</div><div class="v">22.4</div><div class="s">CFG=4.0 · DDIM-50</div></div>
+                <div class="mini-stat"><div class="l">IS</div><div class="v">8.31</div><div class="s">+0.6 vs base</div></div>
+                <div class="mini-stat"><div class="l">CLIP-T</div><div class="v">0.286</div><div class="s">text alignment</div></div>
+                <div class="mini-stat"><div class="l">Sched</div><div class="v">cosine</div><div class="s">vs linear / karras</div></div>
+                <div class="mini-stat"><div class="l">v-pred</div><div class="v">on</div><div class="s">vs ε-pred</div></div>
+                <div class="mini-stat"><div class="l">CFG sweep</div><div class="v">1–9</div><div class="s">9 points</div></div>
+              </div>
+              <p style="color:var(--muted); font-size:12px; margin:10px 0 0">
+                FID/IS read from <code>.researchloop/scratchpad/eval/&lt;run&gt;/sample_quality.json</code>.
+              </p>
+            </div>
+          </article>
+
+          <!-- RL specific -->
+          <article class="panel placeholder" data-mode="rl">
+            <div class="panel-head">
+              <h2>RL · returns &amp; exploration</h2>
+              <div class="head-right"><span class="placeholder-badge">placeholder</span></div>
+            </div>
+            <div class="panel-body">
+              <div class="stat-grid-3">
+                <div class="mini-stat"><div class="l">Mean return</div><div class="v">412</div><div class="s">last 100 eps</div></div>
+                <div class="mini-stat"><div class="l">Best return</div><div class="v">1 084</div><div class="s">@ ep 8 200</div></div>
+                <div class="mini-stat"><div class="l">Episode length</div><div class="v">312</div><div class="s">truncated cap 500</div></div>
+                <div class="mini-stat"><div class="l">ε (explore)</div><div class="v">0.08</div><div class="s">decaying</div></div>
+                <div class="mini-stat"><div class="l">Replay size</div><div class="v">512 k</div><div class="s">86% full</div></div>
+                <div class="mini-stat"><div class="l">KL · ref</div><div class="v">0.21</div><div class="s">GRPO clamp 0.5</div></div>
+              </div>
+              <p style="color:var(--muted); font-size:12px; margin:10px 0 0">
+                Generic across env types · ingest <code>episodes.jsonl</code> the trainer writes.
+              </p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- 6. lab / notebook scratchpad -->
+      <section class="panel placeholder" data-mode="lab general">
+        <div class="panel-head">
+          <h2>Notebook · today's scratchpad</h2>
+          <div class="head-right">
+            <span class="pill">auto-saves to .researchloop/scratchpad/notebook/</span>
+            <span class="placeholder-badge">placeholder</span>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="sample-card">
+            <div class="role">2026-05-16 · morning</div>
+            <div class="text">Try replacing RoPE base 10 000 → 100 000 for long-ctx eval. Hypothesis: helps ≥4k ctx, neutral below. Cost: 2 runs × ~14 min.</div>
+          </div>
+          <div class="sample-card">
+            <div class="role">2026-05-16 · midday</div>
+            <div class="text">Muon-only diverged at lr 3e-3. Bisect: 1.5e-3 stable, 2e-3 unstable. Add to ruled-out for hybrid lr range.</div>
+          </div>
+          <div class="sample-card">
+            <div class="role">open question</div>
+            <div class="text">Does QK-norm matter at 88M, or only beyond 300M? Need 1 run at 300M to know.</div>
           </div>
         </div>
       </section>
 
       <div class="footer">
-        No auth. No accounts. Served from localhost and driven by `.researchloop/`.
+        <span>No auth · localhost only · driven by <code>.researchloop/</code></span>
+        <span id="footRight">v—</span>
+      </div>
+    </div>
+
+    <!-- run detail modal -->
+    <div class="modal-mask" id="modalMask">
+      <div class="modal">
+        <div class="modal-head">
+          <h2 id="modalTitle">Run details</h2>
+          <button class="modal-close" id="modalClose">close</button>
+        </div>
+        <div class="modal-body" id="modalBody"></div>
       </div>
     </div>
 
     <script>
-      const stateUrl = "/api/state";
+      const STATE_URL = "/api/state";
+      const POLL_MS = 3000;
       let latestState = null;
+      const hiddenTraces = new Set();
+      const tableFilter = { text: "", status: "", sort: "time" };
 
-      function escapeHtml(value) {
-        return String(value ?? "")
-          .replaceAll("&", "&amp;")
-          .replaceAll("<", "&lt;")
-          .replaceAll(">", "&gt;")
-          .replaceAll('"', "&quot;")
-          .replaceAll("'", "&#39;");
-      }
+      // ───── helpers ─────
+      const $ = (id) => document.getElementById(id);
+      const escapeHtml = (value) => String(value ?? "")
+        .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;").replaceAll("'", "&#39;");
 
       function formatTime(value) {
-        if (!value) return "-";
-        const date = new Date(value);
-        if (Number.isNaN(date.getTime())) return String(value);
-        return date.toLocaleString();
+        if (!value) return "—";
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString();
       }
-
-      function renderPills(items) {
-        return items
-          .filter(Boolean)
-          .map((item) => `<span class="pill">${item}</span>`)
-          .join("");
+      function formatRelative(value) {
+        if (!value) return "—";
+        const ms = Date.now() - new Date(value).getTime();
+        if (!Number.isFinite(ms)) return "—";
+        const s = Math.max(0, Math.round(ms / 1000));
+        if (s < 60) return `${s}s ago`;
+        const m = Math.round(s / 60);
+        if (m < 60) return `${m}m ago`;
+        const h = Math.round(m / 60);
+        if (h < 48) return `${h}h ago`;
+        return `${Math.round(h / 24)}d ago`;
       }
-
+      function formatDuration(startISO, endISO) {
+        if (!startISO) return "—";
+        const start = new Date(startISO).getTime();
+        const end = endISO ? new Date(endISO).getTime() : Date.now();
+        if (!Number.isFinite(start) || !Number.isFinite(end)) return "—";
+        const s = Math.max(0, Math.round((end - start) / 1000));
+        if (s < 60) return `${s}s`;
+        const m = Math.floor(s / 60); const rem = s % 60;
+        if (m < 60) return `${m}m ${rem}s`;
+        const h = Math.floor(m / 60); const remM = m % 60;
+        return `${h}h ${remM}m`;
+      }
+      function formatBytes(bytes) {
+        if (!Number.isFinite(bytes)) return "—";
+        const u = ["B","KB","MB","GB","TB"]; let i = 0;
+        while (bytes >= 1024 && i < u.length - 1) { bytes /= 1024; i++; }
+        return `${bytes.toFixed(bytes < 10 ? 1 : 0)} ${u[i]}`;
+      }
       function metricLabel(metricKey, value) {
-        if (!metricKey || !Number.isFinite(Number(value))) return "-";
+        if (!metricKey || !Number.isFinite(Number(value))) return "—";
         return `${metricKey}: ${Number(value).toFixed(4)}`;
       }
-
       function deltaLabel(delta, preferHigher) {
-        if (!Number.isFinite(Number(delta))) return "-";
+        if (!Number.isFinite(Number(delta))) return "—";
         const sign = delta > 0 ? "+" : "";
-        const direction = preferHigher ? "gain" : "drop";
-        return `${sign}${Number(delta).toFixed(4)} ${direction}`;
+        const word = preferHigher ? "gain" : "drop";
+        return `${sign}${Number(delta).toFixed(4)} ${word}`;
+      }
+      function deltaClass(delta, preferHigher) {
+        if (!Number.isFinite(Number(delta))) return "delta-flat";
+        const good = preferHigher ? delta > 0 : delta > 0; // "drop" = positive delta when preferLower
+        return good ? "delta-up" : "delta-down";
+      }
+      function statusClass(status) {
+        const s = String(status || "").toLowerCase();
+        if (s === "complete" || s === "completed") return "is-complete";
+        if (s === "failed" || s === "error" || s === "spawn_error") return "is-failed";
+        if (s === "running" || s === "in_progress") return "is-running";
+        return "is-other";
       }
 
+      // ───── chart ─────
       function multiTraceChart(traces, preferHigher) {
-        if (!traces || !traces.length) {
-          return '<div class="empty">No numeric metric data yet.</div>';
+        const visible = (traces || []).filter((t) => !hiddenTraces.has(t.id));
+        if (!visible.length) {
+          return '<div class="empty">No experiments selected. Toggle traces in the legend.</div>';
         }
-
-        const width = 960;
-        const height = 280;
-        const pad = 24;
-        const allValues = traces.flatMap((trace) => trace.values.map((point) => Number(point.value)).filter((value) => Number.isFinite(value)));
-        if (!allValues.length) {
-          return '<div class="empty">No numeric metric data yet.</div>';
-        }
-        const min = Math.min(...allValues);
-        const max = Math.max(...allValues);
+        const W = 960, H = 280, padL = 36, padR = 16, padT = 18, padB = 28;
+        const allVals = visible.flatMap((t) => (t.values || []).map((p) => Number(p.value)).filter(Number.isFinite));
+        if (!allVals.length) return '<div class="empty">No numeric metric data yet.</div>';
+        const min = Math.min(...allVals), max = Math.max(...allVals);
         const range = max - min || 1;
-        const maxLen = Math.max(...traces.map((trace) => trace.values.length || 1));
+        const maxLen = Math.max(...visible.map((t) => (t.values || []).length || 1));
         const marker = preferHigher ? "higher is better" : "lower is better";
 
-        const linePaths = traces.map((trace) => {
-          const points = trace.values
-            .map((point, index) => {
-              const x = pad + ((width - pad * 2) * (maxLen === 1 ? 0.5 : index / (maxLen - 1)));
-              const y = height - pad - ((Number(point.value) - min) / range) * (height - pad * 2);
-              return `${x},${y}`;
-            })
-            .join(" ");
-          const lastPoint = trace.values[trace.values.length - 1];
-          const lastX = pad + ((width - pad * 2) * (maxLen === 1 ? 0.5 : (trace.values.length - 1) / (maxLen - 1)));
-          const lastY = height - pad - ((Number(lastPoint.value) - min) / range) * (height - pad * 2);
-          const stroke = trace.color || "#62d6a6";
-          const dash = trace.status === "failed" || trace.status === "timeout" ? "6 4" : "0";
+        const xAt = (i) => padL + ((W - padL - padR) * (maxLen === 1 ? 0.5 : i / (maxLen - 1)));
+        const yAt = (v) => H - padB - ((Number(v) - min) / range) * (H - padT - padB);
+
+        // gridlines
+        const grid = [];
+        for (let g = 0; g <= 4; g++) {
+          const y = padT + ((H - padT - padB) * g) / 4;
+          const value = max - (range * g) / 4;
+          grid.push(`
+            <line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="rgba(255,255,255,0.05)" />
+            <text x="${padL - 6}" y="${y + 3}" text-anchor="end" fill="rgba(255,255,255,0.45)" font-size="10">${value.toFixed(2)}</text>
+          `);
+        }
+
+        const lines = visible.map((t) => {
+          const pts = (t.values || [])
+            .map((p, i) => `${xAt(i)},${yAt(p.value)}`).join(" ");
+          const last = (t.values || [])[(t.values || []).length - 1];
+          const lx = xAt((t.values || []).length - 1);
+          const ly = yAt(last?.value ?? 0);
+          const dash = (t.status === "failed" || t.status === "timeout") ? "6 4" : "0";
+          const stroke = t.color || "#62d6a6";
           return `
-            <g opacity="${trace.status === "complete" || trace.status === "completed" ? "1" : "0.72"}">
-              <polyline points="${points}" fill="none" stroke="${stroke}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="${dash}" />
-              <circle cx="${lastX}" cy="${lastY}" r="4.5" fill="${stroke}" />
+            <g opacity="${(t.status === "complete" || t.status === "completed") ? 1 : 0.75}">
+              <polyline points="${pts}" fill="none" stroke="${stroke}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="${dash}" />
+              <circle cx="${lx}" cy="${ly}" r="4" fill="${stroke}" />
             </g>
           `;
         }).join("");
 
         return `
-          <svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Per-experiment loss comparison">
-            <defs>
-              <linearGradient id="lineGradient" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stop-color="#62d6a6" />
-                <stop offset="100%" stop-color="#71a7ff" />
-              </linearGradient>
-            </defs>
-            <line x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}" stroke="rgba(255,255,255,0.08)" />
-            <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${height - pad}" stroke="rgba(255,255,255,0.08)" />
-            ${linePaths}
-            <text x="${pad}" y="${pad - 4}" fill="rgba(255,255,255,0.55)" font-size="12">${marker}</text>
+          <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Per-experiment metric comparison">
+            ${grid.join("")}
+            ${lines}
+            <text x="${padL}" y="${padT - 4}" fill="rgba(255,255,255,0.55)" font-size="11">${marker}</text>
+            <text x="${W - padR}" y="${H - 6}" text-anchor="end" fill="rgba(255,255,255,0.45)" font-size="10">steps</text>
           </svg>
         `;
       }
@@ -498,163 +1519,470 @@
         const metricKey = state.primaryMetric || "";
         const traces = state.traces || [];
         if (!traces.length) {
-          return '<div class="empty">No experiments recorded yet. Use <code>researchloop run</code> to add curves.</div>';
+          return '<div class="empty">No experiments recorded yet. Use <code>researchloop run "&lt;cmd&gt;"</code> to add curves.</div>';
         }
-
         const bestId = state.comparison?.bestFinal?.trace?.id;
-        const bestImprovementId = state.comparison?.bestImprovement?.trace?.id;
-        return traces
-          .map((trace) => {
-            const firstValue = trace.values?.[0]?.value;
-            const finalValue = trace.final;
-            const delta = Number.isFinite(Number(firstValue)) && Number.isFinite(Number(finalValue))
-              ? (trace.values.length ? (firstValue - finalValue) : Number.NaN)
-              : Number.NaN;
-            const isBest = trace.id === bestId;
-            const isImproved = trace.id === bestImprovementId;
-            return `
-              <div class="legend-item">
-                <div class="legend-left">
-                  <span class="dot" style="background:${trace.color}; box-shadow: 0 0 0 2px color-mix(in srgb, ${trace.color} 20%, transparent);"></span>
-                  <div style="min-width:0">
-                    <div class="legend-name">${escapeHtml(trace.id || "-")}${isBest ? " · best final" : ""}${isImproved ? " · biggest drop" : ""}</div>
-                    <div class="legend-sub">${escapeHtml(trace.status || "-")} · ${trace.values.length} points</div>
-                  </div>
-                </div>
-                <div class="legend-value">
-                  ${escapeHtml(metricLabel(metricKey, finalValue))}<br />
-                  ${escapeHtml(deltaLabel(delta, state.preferHigher))}
+        const bestDeltaId = state.comparison?.bestImprovement?.trace?.id;
+        return traces.map((t) => {
+          const firstValue = t.values?.[0]?.value;
+          const final = t.final;
+          const delta = Number.isFinite(Number(firstValue)) && Number.isFinite(Number(final))
+            ? (state.preferHigher ? final - firstValue : firstValue - final) : NaN;
+          const isHidden = hiddenTraces.has(t.id);
+          const tags = [];
+          if (t.id === bestId) tags.push("best");
+          if (t.id === bestDeltaId) tags.push("biggest Δ");
+          return `
+            <div class="legend-item ${isHidden ? "is-hidden" : ""}" data-id="${escapeHtml(t.id)}">
+              <div class="legend-left">
+                <span class="dot" style="background:${t.color}; box-shadow: 0 0 0 2px color-mix(in srgb, ${t.color} 22%, transparent);"></span>
+                <div style="min-width:0">
+                  <div class="legend-name">${escapeHtml(t.id || "—")}${tags.length ? ` · <span style="color:var(--muted); font-weight:500">${tags.join(" · ")}</span>` : ""}</div>
+                  <div class="legend-sub">${escapeHtml(t.status || "—")} · ${(t.values || []).length} points</div>
                 </div>
               </div>
-            `;
-          })
-          .join("");
+              <div class="legend-value">
+                ${escapeHtml(metricLabel(metricKey, final))}<br/>
+                <span class="${deltaClass(delta, state.preferHigher)}">${escapeHtml(deltaLabel(delta, state.preferHigher))}</span>
+              </div>
+            </div>
+          `;
+        }).join("");
       }
 
-      function renderRuns(state) {
+      // ───── runs table ─────
+      function renderRunsTable(state) {
         const metricKey = state.primaryMetric || "";
         const traces = state.traces || [];
-        const rows = (state.runs || []).filter((run) => !run.parse_error);
+        const byId = new Map(traces.map((t) => [t.id, t]));
+        const rows = (state.runs || []).filter((r) => !r.parse_error);
 
-        if (!rows.length) {
-          document.getElementById("runsGrid").innerHTML =
-            '<div class="empty">No runs recorded yet. Use <code>researchloop run</code> after the next experiment.</div>';
+        const filtered = rows.filter((r) => {
+          if (tableFilter.status) {
+            const s = String(r.status || "").toLowerCase();
+            if (!s.startsWith(tableFilter.status)) return false;
+          }
+          if (tableFilter.text) {
+            const hay = `${r.id || ""} ${r.command || ""} ${Object.keys(r.metrics || {}).join(" ")}`.toLowerCase();
+            if (!hay.includes(tableFilter.text.toLowerCase())) return false;
+          }
+          return true;
+        });
+
+        const sorted = filtered.slice();
+        if (tableFilter.sort === "metric") {
+          const dir = state.preferHigher ? -1 : 1;
+          sorted.sort((a, b) => {
+            const av = Number(a.metrics?.[metricKey]); const bv = Number(b.metrics?.[metricKey]);
+            if (!Number.isFinite(av) && !Number.isFinite(bv)) return 0;
+            if (!Number.isFinite(av)) return 1;
+            if (!Number.isFinite(bv)) return -1;
+            return (av - bv) * dir;
+          });
+        } else if (tableFilter.sort === "id") {
+          sorted.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+        } else {
+          sorted.reverse(); // recent first
+        }
+
+        $("filterCount").textContent = `${sorted.length} shown · ${rows.length} total`;
+
+        if (!sorted.length) {
+          $("runsTbody").innerHTML = `<tr><td colspan="6"><div class="empty">${rows.length ? "No runs match the filter." : "No runs yet. Use <code>researchloop run \"&lt;cmd&gt;\"</code>."}</div></td></tr>`;
           return;
         }
 
-        const byId = new Map(traces.map((trace) => [trace.id, trace]));
-        const html = rows
-          .slice()
-          .reverse()
-          .map((run) => {
-            const trace = byId.get(run.id) || null;
-            const finalValue = trace ? trace.final : run.metrics?.[metricKey];
-            const firstValue = trace && trace.values.length ? trace.values[0].value : Number.NaN;
-            const delta = Number.isFinite(Number(firstValue)) && Number.isFinite(Number(finalValue))
-              ? (firstValue - finalValue)
-              : Number.NaN;
-            return `
-              <div class="run-card">
-                <div class="run-title">${escapeHtml(run.id || "-")}</div>
-                <div class="run-sub">${escapeHtml(run.status || "-")} · ${trace ? trace.values.length : 0} points</div>
-                <div class="run-sub">${escapeHtml(metricLabel(metricKey, finalValue))}</div>
-                <div class="run-sub">${escapeHtml(deltaLabel(delta, state.preferHigher))}</div>
-              </div>
-            `;
-          })
-          .join("");
-
-        document.getElementById("runsGrid").innerHTML = html;
+        $("runsTbody").innerHTML = sorted.map((r) => {
+          const t = byId.get(r.id);
+          const final = t ? t.final : r.metrics?.[metricKey];
+          const first = t?.values?.[0]?.value;
+          const delta = Number.isFinite(Number(first)) && Number.isFinite(Number(final))
+            ? (state.preferHigher ? final - first : first - final) : NaN;
+          return `
+            <tr class="is-clickable" data-id="${escapeHtml(r.id)}">
+              <td>
+                <div style="display:flex; align-items:center; gap:8px">
+                  ${t ? `<span class="dot" style="background:${t.color}"></span>` : ""}
+                  <div>
+                    <div style="font-weight:600">${escapeHtml(r.id || "—")}</div>
+                    <div style="color:var(--muted); font-size:11.5px" class="mono">${escapeHtml((r.command || "").slice(0, 64))}${(r.command || "").length > 64 ? "…" : ""}</div>
+                  </div>
+                </div>
+              </td>
+              <td><span class="status-tag ${statusClass(r.status)}">${escapeHtml(r.status || "—")}</span></td>
+              <td>${t ? (t.values || []).length : 0}</td>
+              <td>${escapeHtml(metricLabel(metricKey, final))}</td>
+              <td class="${deltaClass(delta, state.preferHigher)}">${escapeHtml(deltaLabel(delta, state.preferHigher))}</td>
+              <td>${escapeHtml(formatRelative(r.started_at || r.timestamp))}</td>
+            </tr>
+          `;
+        }).join("");
       }
 
-      function render(state) {
-        latestState = state;
-        const goal = state.goal || {};
-        const summary = state.summary || {};
-        const repoProfile = state.repoProfile || {};
-        const traces = state.traces || [];
+      // ───── system resources ─────
+      function renderResources(state) {
+        const sys = state.system || {};
+        $("sysHost").textContent = sys.hostname ? `${sys.hostname} · ${sys.platform || ""}` : "—";
+        const cpuPct = Math.max(0, Math.min(100, sys.cpu?.usagePct ?? 0));
+        const memPct = Math.max(0, Math.min(100, sys.memory?.usagePct ?? 0));
+        const usedG = (sys.memory?.usedBytes || 0) / (1024 ** 3);
+        const totalG = (sys.memory?.totalBytes || 0) / (1024 ** 3);
+        const load = sys.cpu?.loadAvg || {};
 
-        document.getElementById("statusText").textContent =
-          `Updated ${formatTime(state.generatedAt)} · ${summary.totalRuns || 0} runs`;
-        document.getElementById("repoType").textContent = Array.isArray(repoProfile.adapters)
-          ? repoProfile.adapters.join(", ")
-          : "generic";
+        $("resourceList").innerHTML = `
+          <div class="resource-row">
+            <div class="resource-row-head">
+              <span class="name">CPU · ${sys.cpu?.count || "?"} cores</span>
+              <span class="val">${cpuPct.toFixed(0)}% · load ${(load["1m"] ?? 0).toFixed(2)} / ${(load["5m"] ?? 0).toFixed(2)} / ${(load["15m"] ?? 0).toFixed(2)}</span>
+            </div>
+            <div class="bar ${cpuPct > 85 ? "warn" : ""}"><span style="width:${cpuPct}%"></span></div>
+          </div>
+          <div class="resource-row">
+            <div class="resource-row-head">
+              <span class="name">Memory</span>
+              <span class="val">${usedG.toFixed(1)} / ${totalG.toFixed(1)} GiB · ${memPct.toFixed(0)}%</span>
+            </div>
+            <div class="bar ${memPct > 85 ? "warn" : ""}"><span style="width:${memPct}%"></span></div>
+          </div>
+          <div class="resource-row">
+            <div class="resource-row-head">
+              <span class="name">GPU · utilization <span class="placeholder-badge" style="margin-left:6px">placeholder</span></span>
+              <span class="val">—</span>
+            </div>
+            <div class="bar"><span style="width:0%"></span></div>
+          </div>
+          <div class="resource-row">
+            <div class="resource-row-head">
+              <span class="name">VRAM <span class="placeholder-badge" style="margin-left:6px">placeholder</span></span>
+              <span class="val">—</span>
+            </div>
+            <div class="bar"><span style="width:0%"></span></div>
+          </div>
+          <div class="resource-row">
+            <div class="resource-row-head">
+              <span class="name">Disk · checkpoints <span class="placeholder-badge" style="margin-left:6px">placeholder</span></span>
+              <span class="val">—</span>
+            </div>
+            <div class="bar"><span style="width:0%"></span></div>
+          </div>
+          <div style="color:var(--muted); font-size:11.5px; line-height:1.5">
+            CPU and memory are real (Node <code>os</code> module).
+            GPU / VRAM / disk are wired as placeholders — hook to <code>nvidia-smi</code>,
+            <code>rocm-smi</code>, or <code>du -sh checkpoints/</code> via a future <code>/api/gpu</code> endpoint.
+          </div>
+        `;
+      }
 
-        document.getElementById("goalTitle").textContent = goal.goal || "Set a research goal with `researchloop goal`.";
-        document.getElementById("goalMetricPill").textContent = goal.metric
-          ? `Metric: ${goal.metric}`
-          : "Metric: not set";
+      // ───── agent thread ─────
+      function renderThread(state) {
+        const thread = state.thread || {};
+        const lines = thread.lines || [];
+        $("threadCount").textContent = `${lines.length} line${lines.length === 1 ? "" : "s"}`;
+        if (!lines.length) {
+          $("threadFeed").innerHTML = '<div class="empty">THREAD.md is empty. The autonomous loop will write decisions here.</div>';
+          return;
+        }
+        $("threadFeed").innerHTML = lines.map((line) => {
+          const stripped = line.trim();
+          let cls = "is-meta";
+          if (/^#{1,3}\s/.test(stripped)) cls = "is-heading";
+          else if (/^[-*]\s/.test(stripped) || /^\d+\.\s/.test(stripped)) cls = "is-bullet";
+          else if (stripped.length > 0) cls = "";
+          return `<div class="thread-line ${cls}">${escapeHtml(line)}</div>`;
+        }).join("");
+        const feed = $("threadFeed");
+        feed.scrollTop = feed.scrollHeight;
+      }
 
-        const goalMeta = [];
-        if (goal.direction) goalMeta.push(`<span class="pill">Direction: <strong>${escapeHtml(goal.direction)}</strong></span>`);
-        if (goal.baseline) goalMeta.push(`<span class="pill">Baseline: <strong>${escapeHtml(goal.baseline)}</strong></span>`);
-        if (goal.evaluation) goalMeta.push(`<span class="pill">Eval: <strong>${escapeHtml(goal.evaluation)}</strong></span>`);
-        document.getElementById("goalMeta").innerHTML = renderPills(goalMeta);
+      // ───── live run banner ─────
+      function renderLive(state) {
+        const live = state.activeRun || {};
+        const logTail = state.logTail || {};
+        const banner = $("liveBanner");
+        const chip = $("liveChip");
+        const chipText = $("liveChipText");
 
-        document.getElementById("statRuns").textContent = summary.totalRuns || 0;
+        if (!live.active) {
+          banner.classList.remove("is-visible");
+          chip.classList.remove("is-live"); chip.classList.remove("is-stale");
+          chipText.textContent = state.summary?.totalRuns ? "idle · no active run" : "idle";
+          return;
+        }
+
+        banner.classList.add("is-visible");
+        chip.classList.add("is-live");
+        chipText.textContent = `running · ${live.runId || "—"}`;
+
+        $("liveRunId").textContent = live.runId || "—";
+        $("liveCommand").textContent = live.command || "—";
+        $("liveElapsed").textContent = formatDuration(live.startedAt, null);
+        $("liveLastUpdate").textContent = formatRelative(live.logModifiedAt || live.startedAt);
+
+        // most recent metric value across all traces for this run
+        const trace = (state.traces || []).find((t) => t.id === live.runId);
+        const lastVal = trace?.values?.[trace.values.length - 1]?.value;
+        $("liveLastMetric").textContent = Number.isFinite(Number(lastVal))
+          ? `${state.primaryMetric || "metric"}: ${Number(lastVal).toFixed(4)}`
+          : "—";
+        $("liveEta").innerHTML = `— <span class="placeholder-badge" style="margin-left:6px">placeholder</span>`;
+      }
+
+      // ───── log tail ─────
+      function renderLogTail(state) {
+        const lt = state.logTail || {};
+        $("logPath").textContent = lt.path
+          ? lt.path.replace(state.cwd ? state.cwd + "/" : "", "")
+          : "—";
+        const lines = (lt.lines || []);
+        if (!lines.length) {
+          $("logTail").innerHTML = '<span style="color:var(--muted)">No log output yet.</span>';
+          return;
+        }
+        $("logTail").textContent = lines.join("\n");
+        const el = $("logTail"); el.scrollTop = el.scrollHeight;
+      }
+
+      // ───── KPI strip ─────
+      function renderKPIs(state) {
+        const sum = state.summary || {};
+        $("kpiRuns").textContent = sum.totalRuns || 0;
+        $("kpiRunsSub").textContent = sum.completeRuns
+          ? `${sum.completeRuns} complete · ${sum.parseErrors || 0} parse errors`
+          : "no entries yet";
 
         if (state.comparison?.bestFinal) {
-          document.getElementById("statBest").textContent = metricLabel(state.primaryMetric, state.comparison.bestFinal.final);
-          document.getElementById("statBestSub").textContent = `${state.comparison.bestFinal.trace.id} · ${state.comparison.bestFinal.trace.values.length} points`;
+          $("kpiBest").textContent = Number(state.comparison.bestFinal.final).toFixed(4);
+          $("kpiBestSub").textContent = `${state.primaryMetric || "metric"} · ${state.comparison.bestFinal.trace.id}`;
         } else {
-          document.getElementById("statBest").textContent = "-";
-          document.getElementById("statBestSub").textContent = "No metric data yet";
+          $("kpiBest").textContent = "—"; $("kpiBestSub").textContent = "awaiting data";
         }
 
         if (state.comparison?.bestImprovement) {
-          document.getElementById("statDrop").textContent = deltaLabel(state.comparison.bestImprovement.delta, state.preferHigher);
-          document.getElementById("statDropSub").textContent = `${state.comparison.bestImprovement.trace.id} · biggest change`;
+          $("kpiDelta").textContent = deltaLabel(state.comparison.bestImprovement.delta, state.preferHigher);
+          $("kpiDeltaSub").textContent = `${state.comparison.bestImprovement.trace.id}`;
         } else {
-          document.getElementById("statDrop").textContent = "-";
-          document.getElementById("statDropSub").textContent = "Waiting for curves";
+          $("kpiDelta").textContent = "—"; $("kpiDeltaSub").textContent = "awaiting curves";
         }
 
-        if (summary.latestRun) {
-          const latestTrace = traces.find((trace) => trace.id === summary.latestRun.id);
-          document.getElementById("statLatest").textContent = summary.latestRun.id || "-";
-          document.getElementById("statLatestSub").textContent = `${summary.latestRun.status || "-"} · ${latestTrace ? `${latestTrace.values.length} points` : formatTime(summary.latestRun.timestamp)}`;
+        if (sum.latestRun) {
+          $("kpiLatest").textContent = sum.latestRun.id || "—";
+          $("kpiLatestSub").textContent = `${sum.latestRun.status || "—"} · ${formatRelative(sum.latestRun.timestamp)}`;
         } else {
-          document.getElementById("statLatest").textContent = "-";
-          document.getElementById("statLatestSub").textContent = "Waiting for the first run";
+          $("kpiLatest").textContent = "—"; $("kpiLatestSub").textContent = "no run yet";
         }
 
-        document.getElementById("repoMeta").innerHTML = renderPills([
-          repoProfile.cwd ? `<strong>Repo:</strong> ${escapeHtml(repoProfile.cwd)}` : "",
-          Array.isArray(repoProfile.package_files) && repoProfile.package_files.length
-            ? `<strong>Packages:</strong> ${escapeHtml(repoProfile.package_files.join(", "))}`
-            : "",
-          repoProfile.git_branch ? `<strong>Branch:</strong> ${escapeHtml(repoProfile.git_branch)}` : "",
-        ]);
-
-        document.getElementById("trendLabel").textContent = state.primaryMetric
-          ? `Comparing ${state.primaryMetric} across recorded experiments.`
-          : "No numeric metric found yet.";
-        document.getElementById("trendRange").textContent = state.traces && state.traces.length
-          ? `${state.traces.length} experiments`
-          : "";
-        document.getElementById("chartMount").innerHTML = multiTraceChart(state.traces, state.preferHigher);
-        document.getElementById("legendMount").innerHTML = renderLegend(state);
-
-        document.getElementById("runHint").textContent = summary.parseErrors
-          ? `${summary.parseErrors} parse errors`
-          : `${summary.totalRuns || 0} experiments`;
-
-        renderRuns(state);
+        const sys = state.system || {};
+        const cpu = sys.cpu?.usagePct ?? 0;
+        const mem = sys.memory?.usagePct ?? 0;
+        $("kpiLoad").textContent = `${Math.round(cpu)}% / ${Math.round(mem)}%`;
+        $("kpiLoadSub").textContent = `cpu / mem · ${sys.cpu?.count || "?"} cores`;
       }
 
+      // ───── goal + plan ─────
+      function renderGoal(state) {
+        const g = state.goal || {};
+        $("goalTitle").innerHTML = g.goal
+          ? escapeHtml(g.goal)
+          : 'Set a goal with <code>researchloop goal</code>.';
+        $("primaryMetricPill").textContent = state.primaryMetric
+          ? `Metric: ${state.primaryMetric}`
+          : "Metric: not set";
+        $("metricPill").textContent = state.primaryMetric
+          ? `Metric: ${state.primaryMetric}`
+          : "Metric: not set";
+        $("directionPill").textContent = state.preferHigher ? "higher = better" : "lower = better";
+
+        const meta = [];
+        if (g.direction) meta.push(`<span class="pill">Direction: <strong>${escapeHtml(g.direction)}</strong></span>`);
+        if (g.baseline)  meta.push(`<span class="pill">Baseline: <strong>${escapeHtml(g.baseline)}</strong></span>`);
+        if (g.evaluation)meta.push(`<span class="pill">Eval: <strong>${escapeHtml(g.evaluation)}</strong></span>`);
+        if (g.currentBest) meta.push(`<span class="pill is-accent">Current best: <strong>${escapeHtml(g.currentBest)}</strong></span>`);
+        $("goalMeta").innerHTML = meta.join("");
+
+        // goal progress: best vs baseline-ish — placeholder %
+        const best = state.comparison?.bestFinal?.final;
+        const baseSeries = (state.summary?.series || []);
+        const baseline = baseSeries.length ? baseSeries[0].value : undefined;
+        if (Number.isFinite(Number(best)) && Number.isFinite(Number(baseline)) && baseline !== best) {
+          const delta = state.preferHigher ? (best - baseline) : (baseline - best);
+          const denom = Math.max(Math.abs(baseline), 1e-9);
+          const pct = Math.max(0, Math.min(100, (delta / denom) * 100));
+          $("goalBar").firstElementChild.style.width = `${pct}%`;
+          $("goalProgressPill").textContent = `progress: ${pct.toFixed(1)}% from first run`;
+        } else {
+          $("goalBar").firstElementChild.style.width = "0%";
+          $("goalProgressPill").textContent = "progress: awaiting data";
+        }
+      }
+
+      function renderPlan(state) {
+        const p = state.plan || {};
+        const planMeta = [];
+        if (p.timeBudget) planMeta.push(`<span class="pill">Time budget: <strong>${escapeHtml(p.timeBudget)}</strong></span>`);
+        $("planMeta").innerHTML = planMeta.join("");
+        $("timeBudgetPill").textContent = p.timeBudget ? `budget: ${p.timeBudget}` : "budget: —";
+        $("planState").textContent = p.currentState || "—";
+        $("planPicklist").textContent = p.picklist || "—";
+        $("planRuled").textContent = p.ruledOut || "—";
+      }
+
+      function renderRepo(state) {
+        const repo = state.repoProfile || {};
+        const adapters = Array.isArray(repo.adapters) && repo.adapters.length ? repo.adapters.join(", ") : "generic";
+        $("repoChipText").textContent = `repo: ${adapters}`;
+        $("brandSub").textContent = `Autonomous AI research · ${adapters} · ${repo.git_branch || "no branch"}`;
+
+        // toggle adapter-specific panels
+        const adapterStr = Array.isArray(repo.adapters) ? repo.adapters.join(",").toLowerCase() : "";
+        const isLLM = /huggingface|transformers|llm|gpt/.test(adapterStr) || adapterStr === "";
+        const isDiff = /diffusion|stable|unet|vae/.test(adapterStr);
+        const completionsPanel = $("completionsPanel");
+        const samplesPanel = $("samplesPanel");
+        if (completionsPanel) completionsPanel.style.display = isLLM || !isDiff ? "" : "none";
+        if (samplesPanel)     samplesPanel.style.display     = isDiff || true ? "" : "none";
+      }
+
+      // ───── main render ─────
+      function render(state) {
+        latestState = state;
+        const sum = state.summary || {};
+
+        $("pollChip").classList.remove("is-error"); $("pollChip").classList.add("is-live");
+        $("pollChipText").textContent = `polling · every ${POLL_MS / 1000}s · updated ${formatRelative(state.generatedAt)}`;
+
+        renderRepo(state);
+        renderLive(state);
+        renderKPIs(state);
+        renderGoal(state);
+        renderPlan(state);
+        renderResources(state);
+        renderThread(state);
+        renderLogTail(state);
+
+        $("trendLabel").textContent = state.primaryMetric
+          ? `Comparing ${state.primaryMetric} across ${(state.traces || []).length} experiments.`
+          : "No numeric metric found yet — record one with `researchloop record`.";
+        $("trendRange").textContent = state.traces?.length ? `${state.traces.length} experiments` : "";
+        $("chartMount").innerHTML = multiTraceChart(state.traces, state.preferHigher);
+        $("legendMount").innerHTML = renderLegend(state);
+        $("runHint").textContent = sum.parseErrors
+          ? `${sum.parseErrors} parse errors`
+          : `${sum.totalRuns || 0} experiments`;
+
+        renderRunsTable(state);
+        $("footRight").textContent = `repo: ${state.cwd || "—"}`;
+      }
+
+      // ───── interactions ─────
+      document.addEventListener("click", (e) => {
+        const legend = e.target.closest(".legend-item");
+        if (legend) {
+          const id = legend.dataset.id;
+          if (hiddenTraces.has(id)) hiddenTraces.delete(id);
+          else hiddenTraces.add(id);
+          if (latestState) {
+            $("chartMount").innerHTML = multiTraceChart(latestState.traces, latestState.preferHigher);
+            $("legendMount").innerHTML = renderLegend(latestState);
+          }
+          return;
+        }
+        const row = e.target.closest(".runs-table tr.is-clickable");
+        if (row) openRunModal(row.dataset.id);
+      });
+
+      $("filterInput").addEventListener("input", (e) => {
+        tableFilter.text = e.target.value;
+        if (latestState) renderRunsTable(latestState);
+      });
+      $("filterStatus").addEventListener("change", (e) => {
+        tableFilter.status = e.target.value;
+        if (latestState) renderRunsTable(latestState);
+      });
+      $("sortField").addEventListener("change", (e) => {
+        tableFilter.sort = e.target.value;
+        if (latestState) renderRunsTable(latestState);
+      });
+
+      function openRunModal(id) {
+        if (!latestState) return;
+        const run = (latestState.runs || []).find((r) => r.id === id);
+        if (!run) return;
+        const trace = (latestState.traces || []).find((t) => t.id === id);
+        const metricKey = latestState.primaryMetric || "";
+        const metricRows = Object.entries(run.metrics || {}).map(([k, v]) =>
+          `<tr><td class="mono">${escapeHtml(k)}</td><td class="mono">${escapeHtml(String(v))}</td></tr>`
+        ).join("") || `<tr><td colspan="2" style="color:var(--muted)">no metrics recorded</td></tr>`;
+
+        $("modalTitle").textContent = `Run · ${run.id}`;
+        $("modalBody").innerHTML = `
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px">
+            <div class="pill"><strong>Status:</strong> ${escapeHtml(run.status || "—")}</div>
+            <div class="pill"><strong>Exit:</strong> ${escapeHtml(String(run.exit_code ?? "—"))}</div>
+            <div class="pill"><strong>Started:</strong> ${escapeHtml(formatTime(run.started_at))}</div>
+            <div class="pill"><strong>Finished:</strong> ${escapeHtml(formatTime(run.timestamp))}</div>
+            <div class="pill" style="grid-column: span 2"><strong>Agent:</strong> ${escapeHtml(run.agent || "—")}</div>
+          </div>
+          <div style="margin-bottom:14px">
+            <div style="color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:6px">Command</div>
+            <div class="live-command mono">${escapeHtml(run.command || "—")}</div>
+          </div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px">
+            <div>
+              <div style="color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:6px">Final metrics</div>
+              <table class="runs-table"><tbody>${metricRows}</tbody></table>
+            </div>
+            <div>
+              <div style="color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:6px">${escapeHtml(metricKey || "metric")} curve · ${trace ? (trace.values || []).length : 0} pts</div>
+              <div>${trace ? multiTraceChart([trace], latestState.preferHigher) : '<div class="empty">no curve</div>'}</div>
+            </div>
+          </div>
+          <div style="margin-top:14px; color:var(--muted); font-size:12px">
+            Notes / artifacts / hyperparam-diff would render here once captured by the run adapter.
+          </div>
+        `;
+        $("modalMask").classList.add("is-open");
+      }
+      $("modalClose").addEventListener("click", () => $("modalMask").classList.remove("is-open"));
+      $("modalMask").addEventListener("click", (e) => {
+        if (e.target.id === "modalMask") $("modalMask").classList.remove("is-open");
+      });
+
+      // ───── mode chip filter ─────
+      const activeModes = new Set(
+        Array.from(document.querySelectorAll(".mode-chip.is-on")).map((c) => c.dataset.mode)
+      );
+      function applyModes() {
+        document.querySelectorAll("[data-mode]").forEach((el) => {
+          if (el.classList.contains("mode-chip")) return;
+          const modes = (el.dataset.mode || "").split(/\s+/).filter(Boolean);
+          const visible = modes.some((m) => activeModes.has(m));
+          el.style.display = visible ? "" : "none";
+        });
+      }
+      document.querySelectorAll(".mode-chip").forEach((chip) => {
+        chip.addEventListener("click", () => {
+          const mode = chip.dataset.mode;
+          if (activeModes.has(mode)) { activeModes.delete(mode); chip.classList.remove("is-on"); }
+          else { activeModes.add(mode); chip.classList.add("is-on"); }
+          applyModes();
+        });
+      });
+      applyModes();
+
+      // ───── poll loop ─────
       async function refresh() {
         try {
-          const res = await fetch(stateUrl, { cache: "no-store" });
+          const res = await fetch(STATE_URL, { cache: "no-store" });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const state = await res.json();
           render(state);
-        } catch (error) {
-          document.getElementById("statusText").textContent = `Failed to load state: ${error.message}`;
+        } catch (err) {
+          $("pollChip").classList.add("is-error"); $("pollChip").classList.remove("is-live");
+          $("pollChipText").textContent = `error · ${err.message}`;
         }
       }
-
       refresh();
-      setInterval(refresh, 3000);
+      setInterval(refresh, POLL_MS);
     </script>
   </body>
 </html>
