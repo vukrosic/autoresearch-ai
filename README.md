@@ -173,7 +173,7 @@ The startup plan is in `docs/startup/`.
 - `autoresearch compare` ranks runs by a chosen metric.
 - `autoresearch report` summarizes the run ledger.
 - `autoresearch dashboard` starts a local localhost dashboard for experiment tracking.
-- `autoresearch doctor` checks basic local tooling.
+- `autoresearch doctor` checks basic local tooling and can print a repair plan with `--repair-plan`.
 - `npm test` runs every fast check below in sequence. CI runs this on Node 18 / 20 / 22 against ubuntu and macos for every push and PR.
 - `npm run test:release` adds the packed-tarball install check on top of `npm test`. Run this before publishing.
 - `npm run test:setup` runs the blank-repo and minimal-fixture setup checks.

@@ -359,6 +359,18 @@ function readSafe(file) {
   }
 }
 
+function readJsonIfExists(file) {
+  const text = readSafe(file);
+  if (!text) {
+    return null;
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 function captureEnv(cwd, pythonOverride = null) {
   const env = {
     git_sha: null,
@@ -465,6 +477,142 @@ function readRunRowById(cwd, runId) {
   const ledgerPath = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
   const runs = parseRunsLedger(ledgerPath);
   return runs.find((row) => row && !row.parse_error && String(row.id) === String(runId)) || null;
+}
+
+function readRunConfig(cwd, runId) {
+  const file = path.join(cwd, ".researchloop", "scratchpad", "runs", String(runId), "config.json");
+  return readJsonIfExists(file);
+}
+
+function readEvalRegex(cwd) {
+  const evalFile = path.join(cwd, ".researchloop", "eval.yaml");
+  const raw = readSafe(evalFile);
+  if (!raw) {
+    return "";
+  }
+
+  for (const line of raw.split(/\r?\n/)) {
+    const match = line.match(/^\s*(?:regex_or_jsonpath|regex)\s*:\s*(.+?)\s*$/i);
+    if (match) {
+      return String(parseSafetyScalar(match[1])).trim();
+    }
+  }
+
+  return "";
+}
+
+function repairPlanItem(priority, title, fix, evidence = "") {
+  return { priority, title, fix, evidence };
+}
+
+function buildDoctorRepairPlan(cwd, currentEnv, latestRun) {
+  const items = [];
+  const gitRoot = run("git rev-parse --show-toplevel 2>&1", cwd);
+  if (gitRoot && path.resolve(gitRoot) !== cwd) {
+    items.push(
+      repairPlanItem(
+        20,
+        "wrong working directory",
+        `cd ${JSON.stringify(gitRoot)} before rerunning autoresearch`,
+        `cwd=${cwd}`
+      )
+    );
+  }
+
+  if (!currentEnv.python_version) {
+    const installPython = os.platform() === "darwin"
+      ? "brew install python"
+      : "sudo apt-get install -y python3";
+    items.push(
+      repairPlanItem(
+        0,
+        "install Python",
+        installPython,
+        "python_version=null"
+      )
+    );
+  }
+
+  if (latestRun) {
+    const runConfig = readRunConfig(cwd, latestRun.id) || {};
+    const runDir = path.join(cwd, ".researchloop", "scratchpad", "runs", String(latestRun.id));
+    const logText = readSafe(path.join(runDir, "log.txt"));
+    const evalRegex = readEvalRegex(cwd);
+    const metricName = String(runConfig.metric || Object.keys(latestRun.metrics || {})[0] || "val_loss").trim();
+    const matchedMetric = latestRun.metrics && typeof latestRun.metrics === "object"
+      ? Object.keys(latestRun.metrics).find((key) => Number.isFinite(Number(latestRun.metrics[key])))
+      : "";
+
+    if (latestRun.status === "timeout" || latestRun.status === "killed_by_safety") {
+      const timeoutMs = Number(runConfig.timeout_ms);
+      const timeoutSec = Number.isFinite(timeoutMs) ? Math.max(1, Math.round(timeoutMs / 1000)) : null;
+      items.push(
+        repairPlanItem(
+          50,
+          "command timeout",
+          timeoutSec ? `raise the timeout above ${timeoutSec}s or narrow the workload` : "raise the timeout or narrow the workload",
+          latestRun.status
+        )
+      );
+    }
+
+    if (latestRun.status === "spawn_error" || /ModuleNotFoundError|Cannot find module|No module named|command not found|No such file or directory/i.test(logText)) {
+      const missingModule = logText.match(/No module named ['"]?([A-Za-z0-9_.-]+)['"]?/i)
+        || logText.match(/ModuleNotFoundError:\s+No module named ['"]?([A-Za-z0-9_.-]+)['"]?/i)
+        || logText.match(/Cannot find module ['"]([^'"]+)['"]/i);
+      let fix = "install the missing dependency or activate the environment before rerunning";
+      if (missingModule?.[1]) {
+        const dep = missingModule[1];
+        if (/Cannot find module/i.test(logText)) {
+          fix = `npm install ${dep}`;
+        } else {
+          fix = `python3 -m pip install ${dep}`;
+        }
+      }
+      items.push(
+        repairPlanItem(
+          40,
+          "missing dependency",
+          fix,
+          latestRun.status
+        )
+      );
+    }
+
+    if ((latestRun.status === "complete_no_metric" || (latestRun.status === "complete" && !matchedMetric)) && !currentEnv.python_version) {
+      // Let the install-Python item stand in for missing parsing in the no-Python case.
+    } else if (latestRun.status === "complete_no_metric" || (latestRun.status === "complete" && !matchedMetric)) {
+      const regex = evalRegex || String(runConfig.metric_regex || defaultMetricRegex(metricName));
+      items.push(
+        repairPlanItem(
+          60,
+          "no metric parsed from last run",
+          `update the metric regex in .researchloop/eval.yaml so ${metricName} is matched`,
+          regex ? `regex=${regex}` : "no regex configured"
+        )
+      );
+    }
+  }
+
+  const scaffoldFiles = [
+    ".researchloop/goal.md",
+    ".researchloop/plan.md",
+    ".researchloop/scratchpad/THREAD.md",
+    ".researchloop/scratchpad/runs.jsonl",
+  ];
+  const missingScaffold = scaffoldFiles.filter((relPath) => !fs.existsSync(path.join(cwd, relPath)));
+  if (missingScaffold.length) {
+    items.push(
+      repairPlanItem(
+        70,
+        "partial .researchloop scaffold",
+        "run `autoresearch init --dir .` to restore the missing baseline files",
+        `missing=${missingScaffold.join(", ")}`
+      )
+    );
+  }
+
+  return items.sort((a, b) => a.priority - b.priority || a.title.localeCompare(b.title));
 }
 
 function appendRunRow(cwd, row) {
@@ -826,6 +974,26 @@ function readGoalSummary(goalFile) {
 
 function cmdDoctor() {
   const cwd = targetDir();
+  if (hasFlag("--repair-plan")) {
+    const currentEnv = captureEnv(cwd, String(option("--python", "python3")));
+    const latestRun = readLatestRunRow(cwd);
+    const items = buildDoctorRepairPlan(cwd, currentEnv, latestRun);
+    console.log("Repair plan:");
+    if (!items.length) {
+      console.log("1. no obvious repairs needed");
+      process.exitCode = 0;
+      return;
+    }
+    for (const [index, item] of items.entries()) {
+      console.log(`${index + 1}. ${item.title}`);
+      if (item.evidence) {
+        console.log(`   evidence: ${item.evidence}`);
+      }
+      console.log(`   fix: ${item.fix}`);
+    }
+    process.exitCode = 1;
+    return;
+  }
   const python = String(option("--python", "python3"));
   const nodeVersion = process.version;
   const npmVersion = run("npm --version", cwd) || "not found";
@@ -2680,7 +2848,7 @@ Usage:
   autoresearch inspect [--dir PATH]
   autoresearch idea [--dir PATH] [--goal TEXT] [--write]
   autoresearch prompt [--goal TEXT] [--focus hyperparameters|architecture|attention|training-ladder] [--agent NAME]
-  autoresearch doctor [--dir PATH] [--python PATH]
+  autoresearch doctor [--dir PATH] [--python PATH] [--repair-plan]
   autoresearch replay [--dir PATH] [--id RUN_ID]
   autoresearch record [--dir PATH] [--id ID] [--status STATUS] [--metric key=value] [--note TEXT]    (manual escape hatch; prefer 'run')
   autoresearch run [--dir PATH] [--id ID] [--command CMD] [--metric NAME] [--regex PATTERN] [--timeout SECONDS] [--allow-unsafe]
