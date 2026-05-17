@@ -3076,6 +3076,430 @@ function cmdTag() {
   }
 }
 
+function cmdArchive() {
+  const cwd = targetDir();
+  const name = String(option("--name", "archive-" + new Date().toISOString().slice(0, 10)));
+  const includeArtifacts = hasFlag("--include-artifacts");
+  const outFile = String(option("--out", name + ".tar.gz"));
+  const force = hasFlag("--force");
+
+  const rlDir = path.join(cwd, ".researchloop");
+  if (!fs.existsSync(rlDir)) {
+    console.error("No .researchloop directory found.");
+    process.exitCode = 1;
+    return;
+  }
+
+  const absOut = path.resolve(cwd, outFile);
+  if (fs.existsSync(absOut) && !force) {
+    console.error("Archive already exists: " + absOut + ". Use --force to overwrite.");
+    process.exitCode = 1;
+    return;
+  }
+
+  const files = [
+    ".researchloop/scratchpad/runs.jsonl",
+    ".researchloop/goal.md",
+    ".researchloop/plan.md",
+    ".researchloop/baseline.md",
+    ".researchloop/eval.yaml",
+    ".researchloop/safety.yaml",
+    ".researchloop/winners/",
+  ];
+
+  const includes = [];
+  for (const f of files) {
+    const fp = path.join(cwd, f);
+    if (fs.existsSync(fp)) includes.push(f);
+  }
+
+  const winnersDir = path.join(cwd, ".researchloop/winners");
+  if (fs.existsSync(winnersDir)) {
+    includes.push(".researchloop/winners/");
+  }
+
+  if (includeArtifacts) {
+    const runsDir = path.join(cwd, ".researchloop/scratchpad/runs");
+    if (fs.existsSync(runsDir)) includes.push(".researchloop/scratchpad/runs/");
+  }
+
+  if (includes.length === 0) {
+    console.error("Nothing to archive.");
+    process.exitCode = 1;
+    return;
+  }
+
+  const filesArg = includes.join(" ");
+  const tarCmd = "tar -czf \"" + absOut + "\" " + includes.map((f) => "\"" + f + "\"").join(" ");
+
+  try {
+    execSync(tarCmd, { cwd: cwd, encoding: "utf8", timeout: 30000 });
+    const stat = fs.statSync(absOut);
+    const sizeStr = stat.size >= 1048576
+      ? (stat.size / 1048576).toFixed(1) + " MB"
+      : (stat.size / 1024).toFixed(0) + " KB";
+    console.log("Archive created: " + absOut + " (" + sizeStr + ")");
+    console.log("Contents: " + filesArg);
+  } catch (err) {
+    console.error("Archive failed: " + (err.stderr || err.message));
+    process.exitCode = 1;
+  }
+}
+
+function cmdRestore() {
+  const cwd = targetDir();
+  const archiveIdx = args.findIndex((a) => a === "restore");
+  // For "archive restore --file <path>", we want the positional arg after "restore" that is not a flag
+  let archiveFile = "";
+  if (archiveIdx !== -1 && args[archiveIdx + 1]) {
+    const nextArg = args[archiveIdx + 1];
+    archiveFile = nextArg.startsWith("--") ? "" : nextArg;
+  }
+  archiveFile = String(option("--file", archiveFile));
+  const force = hasFlag("--force");
+
+  if (!archiveFile) {
+    console.error("Usage: autoresearch archive restore --file <archive.tar.gz> [--force] [--dir PATH]");
+    process.exitCode = 1;
+    return;
+  }
+
+  if (!fs.existsSync(archiveFile)) {
+    console.error("Archive not found: " + archiveFile);
+    process.exitCode = 1;
+    return;
+  }
+
+  const rlDir = path.join(cwd, ".researchloop");
+  if (fs.existsSync(rlDir) && !force) {
+    console.error(".researchloop/ already exists. Use --force to overwrite.");
+    process.exitCode = 1;
+    return;
+  }
+
+  const absArchive = path.isAbsolute(archiveFile) ? archiveFile : path.resolve(cwd, archiveFile);
+  const cmd = "tar -xzf \"" + absArchive + "\" -C \"" + cwd + "\"";
+  try {
+    execSync(cmd, { encoding: "utf8", timeout: 30000 });
+    console.log("Archive restored to " + cwd);
+  } catch (err) {
+    console.error("Restore failed: " + (err.stderr || err.message));
+    process.exitCode = 1;
+  }
+}
+
+function cmdSnapshot() {
+  const cwd = targetDir();
+  const rlDir = path.join(cwd, ".researchloop");
+  const snapshotIdx = args.findIndex((a) => a === "snapshot");
+  const subcommand = args[snapshotIdx + 1] || "";
+  // snapshot name is the positional arg after subcommand, or --name
+  let nameFromPositional = "";
+  if (snapshotIdx !== -1 && args[snapshotIdx + 2] && !args[snapshotIdx + 2].startsWith("--")) {
+    nameFromPositional = args[snapshotIdx + 2];
+  }
+  const snapshotName = String(option("--name", nameFromPositional));
+  const note = String(option("--note", ""));
+  const force = hasFlag("--force");
+
+  if (subcommand === "save") {
+    const name = snapshotName || "snapshot-" + new Date().toISOString().slice(0, 10);
+    const snapshotDir = path.join(rlDir, "snapshots", name);
+
+    if (fs.existsSync(snapshotDir) && !force) {
+      console.error("Snapshot '" + name + "' already exists. Use --force to overwrite.");
+      process.exitCode = 1;
+      return;
+    }
+
+    // Ensure snapshots dir
+    const snapshotsBase = path.join(rlDir, "snapshots");
+    fs.mkdirSync(snapshotDir, { recursive: true });
+
+    // Files to snapshot
+    const files = ["scratchpad/runs.jsonl", "goal.md", "plan.md", "baseline.md", "eval.yaml", "safety.yaml"];
+    for (const f of files) {
+      const src = path.join(rlDir, f);
+      if (fs.existsSync(src)) {
+        const destPath = path.join(snapshotDir, f);
+        fs.mkdirSync(path.dirname(destPath), { recursive: true });
+        fs.copyFileSync(src, destPath);
+      }
+    }
+
+    // Copy winners dir if exists
+    const winnersSrc = path.join(rlDir, "winners");
+    if (fs.existsSync(winnersSrc)) {
+      copyDir(winnersSrc, path.join(snapshotDir, "winners"));
+    }
+
+    // Write metadata
+    const runsFile = path.join(rlDir, "scratchpad", "runs.jsonl");
+    let runCount = 0;
+    let bestMetric = null;
+    if (fs.existsSync(runsFile)) {
+      const rows = parseRunsLedger(runsFile);
+      runCount = rows.filter((r) => r && !r.parse_error).length;
+      const lastRow = rows.filter((r) => r && !r.parse_error).pop();
+      if (lastRow && lastRow.metrics) {
+        bestMetric = JSON.stringify(lastRow.metrics);
+      }
+    }
+
+    const metadata = {
+      name,
+      created_at: new Date().toISOString(),
+      note,
+      run_count: runCount,
+      best_metric: bestMetric,
+    };
+    fs.writeFileSync(path.join(snapshotDir, "metadata.json"), JSON.stringify(metadata, null, 2));
+
+    console.log("Snapshot saved: " + name);
+    console.log("  runs: " + runCount + ", best: " + (bestMetric || "none"));
+  } else if (subcommand === "list") {
+    const snapshotsBase = path.join(rlDir, "snapshots");
+    if (!fs.existsSync(snapshotsBase)) {
+      console.log("No snapshots found.");
+      return;
+    }
+
+    const entries = fs.readdirSync(snapshotsBase).filter((f) => {
+      return fs.statSync(path.join(snapshotsBase, f)).isDirectory();
+    });
+
+    if (entries.length === 0) {
+      console.log("No snapshots found.");
+      return;
+    }
+
+    console.log("Snapshots:");
+    for (const entry of entries.sort()) {
+      const metaFile = path.join(snapshotsBase, entry, "metadata.json");
+      if (fs.existsSync(metaFile)) {
+        const meta = JSON.parse(fs.readFileSync(metaFile, "utf8"));
+        console.log("  " + entry + " — " + meta.run_count + " runs, best: " + (meta.best_metric || "none") + ", " + meta.created_at);
+      } else {
+        console.log("  " + entry);
+      }
+    }
+  } else if (subcommand === "restore") {
+    if (!snapshotName) {
+      console.error("Usage: autoresearch snapshot restore <name> [--force] [--dir PATH]");
+      process.exitCode = 1;
+      return;
+    }
+
+    const snapshotDir = path.join(rlDir, "snapshots", snapshotName);
+    if (!fs.existsSync(snapshotDir)) {
+      console.error("Snapshot not found: " + snapshotName);
+      process.exitCode = 1;
+      return;
+    }
+
+    // Check for new runs if not force
+    if (!force && fs.existsSync(path.join(rlDir, "scratchpad", "runs.jsonl"))) {
+      const currentRuns = parseRunsLedger(path.join(rlDir, "scratchpad", "runs.jsonl"));
+      const snapshotRuns = fs.existsSync(path.join(snapshotDir, "scratchpad", "runs.jsonl"))
+        ? parseRunsLedger(path.join(snapshotDir, "scratchpad", "runs.jsonl"))
+        : [];
+      if (currentRuns.length > snapshotRuns.length) {
+        console.error("New runs exist since snapshot. Use --force to overwrite.");
+        process.exitCode = 1;
+        return;
+      }
+    }
+
+    // Restore files
+    const files = ["scratchpad/runs.jsonl", "goal.md", "plan.md", "baseline.md", "eval.yaml", "safety.yaml"];
+    for (const f of files) {
+      const src = path.join(snapshotDir, f);
+      if (fs.existsSync(src)) {
+        const destPath = path.join(rlDir, f);
+        fs.mkdirSync(path.dirname(destPath), { recursive: true });
+        fs.copyFileSync(src, destPath);
+      } else if (fs.existsSync(path.join(rlDir, f))) {
+        fs.unlinkSync(path.join(rlDir, f));
+      }
+    }
+
+    // Restore winners
+    const winnersSrc = path.join(snapshotDir, "winners");
+    if (fs.existsSync(winnersSrc)) {
+      if (fs.existsSync(path.join(rlDir, "winners"))) {
+        fs.rmSync(path.join(rlDir, "winners"), { recursive: true });
+      }
+      copyDir(winnersSrc, path.join(rlDir, "winners"));
+    }
+
+    console.log("Snapshot restored: " + snapshotName);
+  } else if (subcommand === "diff") {
+    if (!snapshotName) {
+      console.error("Usage: autoresearch snapshot diff <name> [--dir PATH]");
+      process.exitCode = 1;
+      return;
+    }
+
+    const snapshotDir = path.join(rlDir, "snapshots", snapshotName);
+    if (!fs.existsSync(snapshotDir)) {
+      console.error("Snapshot not found: " + snapshotName);
+      process.exitCode = 1;
+      return;
+    }
+
+    const snapshotRunsFile = path.join(snapshotDir, "scratchpad", "runs.jsonl");
+    const currentRunsFile = path.join(rlDir, "scratchpad", "runs.jsonl");
+    const snapshotRuns = fs.existsSync(snapshotRunsFile) ? parseRunsLedger(snapshotRunsFile) : [];
+    const currentRuns = fs.existsSync(currentRunsFile) ? parseRunsLedger(currentRunsFile) : [];
+
+    const snapshotIds = new Set(snapshotRuns.filter((r) => r && r.id).map((r) => r.id));
+    const newRuns = currentRuns.filter((r) => r && r.id && !snapshotIds.has(r.id));
+
+    console.log("Runs added since snapshot: " + newRuns.length);
+    for (const run of newRuns) {
+      console.log("  " + run.id + " — " + JSON.stringify(run.metrics || {}));
+    }
+  } else {
+    console.log("Usage: autoresearch snapshot <save|list|restore|diff> [options]");
+    console.log("  save <name> [--note TEXT] [--force]    Save a snapshot");
+    console.log("  list                                     List all snapshots");
+    console.log("  restore <name> [--force]                 Restore a snapshot");
+    console.log("  diff <name>                              Show changes since snapshot");
+  }
+}
+
+function cmdSeedTrack() {
+  const cwd = targetDir();
+  const ledger = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
+  const seedTrackIdx = args.findIndex((a) => a === "seed-track");
+  const subcommand = seedTrackIdx !== -1 && args[seedTrackIdx + 1] && !args[seedTrackIdx + 1].startsWith("--") ? args[seedTrackIdx + 1] : "";
+  // For "seed-track <run-id> --seeds N": positional arg after subcommand is run-id
+  // For "seed-track report --id <run-id>": run-id from --id flag
+  let runId = String(option("--id", ""));
+  if (subcommand !== "report" && !runId && seedTrackIdx !== -1 && args[seedTrackIdx + 1] && !args[seedTrackIdx + 1].startsWith("--")) {
+    runId = args[seedTrackIdx + 1];
+  }
+  const numSeeds = parseInt(String(option("--seeds", "3")), 10);
+  const seedFlag = String(option("--seed-flag", "--seed"));
+  const metricName = String(option("--metric", "val_loss"));
+
+  if (subcommand === "report") {
+    if (!runId) {
+      console.error("Usage: autoresearch seed-track report --id <run-id> [--metric NAME] [--dir PATH]");
+      process.exitCode = 1;
+      return;
+    }
+
+    if (!fs.existsSync(ledger)) {
+      console.error("No run ledger found.");
+      process.exitCode = 1;
+      return;
+    }
+
+    const rows = parseRunsLedger(ledger);
+    const seedGroup = rows.find((r) => r && r.id === runId && r.seed_group);
+    // If original run has no seed_group, look for seed runs with parent_id === runId
+    let groupId = seedGroup ? seedGroup.seed_group : null;
+    if (!groupId) {
+      const childSeedRun = rows.find((r) => r && r.parent_id === runId && r.seed_group);
+      if (childSeedRun) groupId = childSeedRun.seed_group;
+    }
+    if (!groupId) {
+      console.error("Run " + runId + " has no seed_group. Use seed-track to create seed runs.");
+      process.exitCode = 1;
+      return;
+    }
+
+    const seedRuns = rows.filter((r) => r && r.seed_group === groupId);
+
+    if (seedRuns.length === 0) {
+      console.error("No seed runs found for group " + groupId);
+      process.exitCode = 1;
+      return;
+    }
+
+    const values = seedRuns
+      .map((r) => r.metrics && r.metrics[metricName])
+      .filter((v) => v != null && typeof v === "number");
+
+    if (values.length === 0) {
+      console.error("Metric " + metricName + " not found in seed runs.");
+      process.exitCode = 1;
+      return;
+    }
+
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    const variance = values.reduce((s, x) => s + (x - mean) ** 2, 0) / values.length;
+    const std = Math.sqrt(variance);
+
+    console.log("Seed group: " + groupId);
+    console.log("  seeds: " + seedRuns.length);
+    console.log("  mean: " + mean.toFixed(4));
+    console.log("  std: " + std.toFixed(4));
+    console.log("  min: " + Math.min(...values).toFixed(4));
+    console.log("  max: " + Math.max(...values).toFixed(4));
+
+    return;
+  }
+
+  // Default: create seed runs
+  if (!runId) {
+    console.error("Usage: autoresearch seed-track <run-id> --seeds N [--seed-flag FLAG] [--dir PATH]");
+    console.error("       autoresearch seed-track report --id <run-id> [--metric NAME] [--dir PATH]");
+    process.exitCode = 1;
+    return;
+  }
+
+  if (!fs.existsSync(ledger)) {
+    console.error("No run ledger found.");
+    process.exitCode = 1;
+    return;
+  }
+
+  const rows = parseRunsLedger(ledger);
+  const originalRun = rows.find((r) => r && r.id === runId);
+  if (!originalRun) {
+    console.error("Run not found: " + runId);
+    process.exitCode = 1;
+    return;
+  }
+
+  // Generate a seed group ID
+  const seedGroup = "sg-" + runId + "-" + Date.now();
+
+  console.log("Seeding " + numSeeds + " runs from " + runId + "...");
+  for (let i = 1; i <= numSeeds; i++) {
+    const seedValue = i;
+    const newId = runId + "-seed-" + seedValue;
+
+    // Build new command with seed flag
+    const originalCmd = originalRun.command || "";
+    const newCmd = originalCmd.includes(seedFlag)
+      ? originalCmd.replace(new RegExp(seedFlag + "\s*\d+"), seedFlag + " " + seedValue)
+      : originalCmd + " " + seedFlag + " " + seedValue;
+
+    console.log("  seed " + seedValue + ": " + newId);
+
+    // Write a seed run entry to runs.jsonl
+    const seedRow = {
+      ...originalRun,
+      id: newId,
+      seed_group: seedGroup,
+      seed_value: seedValue,
+      parent_id: runId,
+      command: newCmd,
+      status: "pending",
+      timestamp: new Date().toISOString(),
+      notes: "seed run " + seedValue + " of " + numSeeds,
+    };
+
+    fs.appendFileSync(ledger, JSON.stringify(seedRow) + "\n");
+  }
+
+  console.log("Created " + numSeeds + " seed runs in group " + seedGroup);
+  console.log("Run `autoresearch seed-track report --id " + runId + " --metric " + metricName + "` to see results.");
+}
+
 function cmdHelp() {
   console.log(`AutoResearch-AI ${packageVersion()}
 
@@ -3100,6 +3524,14 @@ Usage:
   autoresearch diff-runs --id-a <id> --id-b <id> [--format text|json|markdown] [--dir PATH]
   autoresearch prune [--older-than Nd] [--status STATUS] [--dry-run] [--no-keep-promoted] [--dir PATH]
   autoresearch data-fingerprint [--dir PATH]
+  autoresearch archive [--name NAME] [--include-artifacts] [--out FILE.tar.gz] [--force] [--dir PATH]
+  autoresearch archive restore --file <archive.tar.gz> [--force] [--dir PATH]
+  autoresearch snapshot save <name> [--note TEXT] [--force] [--dir PATH]
+  autoresearch snapshot list [--dir PATH]
+  autoresearch snapshot restore <name> [--force] [--dir PATH]
+  autoresearch snapshot diff <name> [--dir PATH]
+  autoresearch seed-track <run-id> --seeds N [--seed-flag FLAG] [--dir PATH]
+  autoresearch seed-track report --id <run-id> [--metric NAME] [--dir PATH]
   autoresearch model-card --id <run-id> [--out FILE.md] [--dir PATH]
   autoresearch tag --id <run-id> [--add TAG] [--remove TAG] [--list] [--dir PATH]
   autoresearch --version
@@ -3163,6 +3595,16 @@ async function main() {
     cmdTag();
   } else if (command === "data-fingerprint") {
     cmdDataFingerprint();
+  } else if (command === "archive") {
+    if (args.includes("restore")) {
+      cmdRestore();
+    } else {
+      cmdArchive();
+    }
+  } else if (command === "snapshot") {
+    cmdSnapshot();
+  } else if (command === "seed-track") {
+    cmdSeedTrack();
   } else {
     console.error(`Unknown command: ${command}`);
     cmdHelp();
