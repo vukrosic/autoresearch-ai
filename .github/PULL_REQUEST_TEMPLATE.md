@@ -30,6 +30,21 @@ npm test
 # ...
 ```
 
+## Demo (required for `[agent]` / feature PRs)
+
+<!--
+Paste a terminal session showing this feature used in a realistic workflow — not just the test passing.
+Bare minimum: the commands a researcher would actually type, with real (not 1-line synthetic) ledger/state.
+For `fix` / refactor PRs, write "N/A — bug fix" and explain.
+-->
+
+```text
+$ autoresearch ...
+...
+```
+
+This demo matches the Demo line on the linked issue: yes / no / N/A.
+
 ## Agent attribution
 
 <!-- If an AI coding agent wrote any of this PR, name it (Codex / Claude / Cursor / Hermes / other) and roughly which parts. -->

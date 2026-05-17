@@ -1,0 +1,104 @@
+name: Agent-ready feature
+description: A feature specified completely enough that a coding agent (Codex / Claude / Cursor) can implement it without follow-up questions.
+title: "[agent] <verb> — <one-line summary>"
+labels: ["agent-friendly", "claim-next"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This template is for features intended to be picked up by an AI coding agent through the orchestrator. Every field below is required — missing fields are the #1 reason agent PRs land but don't help anyone.
+
+        If your idea isn't ready for this level of detail, open a regular feature request instead and let it sit under the `needs-validation` label until it is.
+
+  - type: input
+    id: researcher_line
+    attributes:
+      label: Researcher line
+      description: One sentence. "A researcher [running scenario X] needs [Y] because [Z]." If you can't write this, the feature is decorative — close the issue.
+      placeholder: "A PhD student running an overnight sweep needs autoresearch to stop on a max-cost budget because unattended runs burn the GPU budget by morning."
+    validations:
+      required: true
+
+  - type: textarea
+    id: demo_line
+    attributes:
+      label: Demo line
+      description: A 60-second usage scenario in a real workflow. Not the test. The actual command someone types and the realistic context. The PR must include a terminal recording or pasted output matching this.
+      placeholder: |
+        After `autoresearch goal "lower val_loss"` and 3 runs, the researcher runs:
+        $ autoresearch budget --max-runs 5 --max-cost 4.00 --max-hours 6
+        Budget set. The next `autoresearch team` invocation halts when any limit is reached and writes BUDGET_HALT.md with what was spent.
+    validations:
+      required: true
+
+  - type: textarea
+    id: composes_with
+    attributes:
+      label: Composes with
+      description: Name the 2-3 existing commands this makes better. If standalone, this feature is polish — reconsider priority.
+      placeholder: |
+        - `team` — reads budget state, halts on limit
+        - `run` — records cost per run that budget consumes
+        - `report` — final report includes budget used vs. limit
+    validations:
+      required: true
+
+  - type: input
+    id: goal_id
+    attributes:
+      label: Goal ID (if applicable)
+      description: If this maps to a G## in GOALS.md, name it. New work that doesn't map can leave this blank — we'll assign one.
+      placeholder: "G23 (or leave blank)"
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Pass/fail checks for the engineering contract. The agent should be able to tick each one off.
+      placeholder: |
+        - [ ] `autoresearch budget --max-runs N` writes `.researchloop/budget.json` with the limit
+        - [ ] `autoresearch team` exits non-zero with a clear message if any limit is exceeded
+        - [ ] A `BUDGET_HALT.md` is written when the halt fires
+        - [ ] `scripts/test-budget.sh` covers happy path + each limit type
+        - [ ] `npm test` is green
+    validations:
+      required: true
+
+  - type: textarea
+    id: anti_features
+    attributes:
+      label: Anti-features (out of scope)
+      description: What this feature explicitly does NOT do. Prevents scope creep when the agent gets clever.
+      placeholder: |
+        - Does NOT integrate with cloud billing APIs to fetch real cost.
+        - Does NOT modify `run` itself — `team` is the only halter.
+        - Does NOT support per-experiment budget overrides (separate issue).
+
+  - type: textarea
+    id: files
+    attributes:
+      label: Files the agent will touch
+      description: Best-guess list. Helps the agent stay focused and avoids surprise refactors.
+      placeholder: |
+        - `bin/researchloop.js` — add `cmdBudget`
+        - `scripts/test-budget.sh` — new
+        - `docs/getting-started.md` — one paragraph
+        - `package.json` — add to `test` script
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: agent_ready_confirm
+    attributes:
+      label: Pre-flight
+      options:
+        - label: Researcher line is a real workflow, not a hypothesis. (If I'm guessing, this goes to `needs-validation` instead.)
+          required: true
+        - label: Demo line shows usage in a non-synthetic scenario.
+          required: true
+        - label: Composes-with lists at least 2 existing commands.
+          required: true
+        - label: Acceptance criteria are independently checkable (pass/fail, not "looks good").
+          required: true
+        - label: I have read [AGENTS.md](../../AGENTS.md) and [CONTRIBUTING.md](../../CONTRIBUTING.md).
+          required: true
