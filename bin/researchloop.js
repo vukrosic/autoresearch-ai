@@ -1614,9 +1614,100 @@ function parseMetricFromOutput(output, metricName, customRegexSource) {
   return null;
 }
 
-function spawnCommand(commandText, cwd, timeoutMs, logFile, timeoutReason = "timeout") {
+// Per-run artifact directory contract (G32).
+// Each run / baseline writes a self-describing bundle into runDir so
+// downstream tools (replay, promote, dashboard, external trainers) can
+// consume a run without re-parsing runs.jsonl.
+
+function writeArtifactEnvJson(runDir, env) {
+  fs.writeFileSync(path.join(runDir, "env.json"), `${JSON.stringify(env, null, 2)}\n`);
+}
+
+function writeArtifactCodeDiff(runDir, cwd) {
+  const result = runCapture("git diff HEAD 2>&1", cwd);
+  const content = result.ok ? result.output : "";
+  fs.writeFileSync(path.join(runDir, "code.diff"), content ? `${content}\n` : "");
+}
+
+function writeArtifactConfigJson(runDir, fields) {
+  fs.writeFileSync(path.join(runDir, "config.json"), `${JSON.stringify(fields, null, 2)}\n`);
+}
+
+function writeArtifactMetricsJsonl(runDir, metricName, metricSeries) {
+  const file = path.join(runDir, "metrics.jsonl");
+  if (!metricSeries || metricSeries.length === 0) {
+    fs.writeFileSync(file, "");
+    return;
+  }
+  const lines = metricSeries
+    .map((value, index) => JSON.stringify({ metric: metricName, step: index + 1, value }))
+    .join("\n");
+  fs.writeFileSync(file, `${lines}\n`);
+}
+
+function startSystemSampler(runDir, intervalMs = 5000) {
+  const file = path.join(runDir, "system.jsonl");
+  fs.writeFileSync(file, "");
+  const sample = () => {
+    const load = os.loadavg();
+    const row = {
+      ts: new Date().toISOString(),
+      load_avg_1m: load[0],
+      load_avg_5m: load[1],
+      load_avg_15m: load[2],
+      mem_total_bytes: os.totalmem(),
+      mem_free_bytes: os.freemem(),
+    };
+    try {
+      fs.appendFileSync(file, `${JSON.stringify(row)}\n`);
+    } catch {
+      // run dir may have been removed mid-sample; ignore
+    }
+  };
+  sample();
+  const timer = setInterval(sample, intervalMs);
+  return () => {
+    clearInterval(timer);
+  };
+}
+
+function writeArtifactManifest(runDir) {
+  const entries = fs.readdirSync(runDir, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    if (entry.name === "MANIFEST.json") continue;
+    const fullPath = path.join(runDir, entry.name);
+    let stat;
+    try {
+      stat = fs.statSync(fullPath);
+    } catch {
+      continue;
+    }
+    let sha256 = null;
+    try {
+      const buf = fs.readFileSync(fullPath);
+      sha256 = createHash("sha256").update(buf).digest("hex");
+    } catch {
+      sha256 = null;
+    }
+    files.push({
+      path: entry.name,
+      size_bytes: stat.size,
+      sha256,
+    });
+  }
+  files.sort((a, b) => a.path.localeCompare(b.path));
+  const manifest = {
+    generated_at: new Date().toISOString(),
+    files,
+  };
+  fs.writeFileSync(path.join(runDir, "MANIFEST.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+}
+
+function spawnCommand(commandText, cwd, timeoutMs, logFile, timeoutReason = "timeout", childEnv = process.env) {
   return new Promise((resolve) => {
-    const child = spawn(commandText, { cwd, shell: true });
+    const child = spawn(commandText, { cwd, shell: true, env: childEnv });
     const chunks = [];
     let timedOut = false;
     const logStream = fs.createWriteStream(logFile);
@@ -1764,6 +1855,22 @@ async function cmdRun(isBaseline) {
     ? "safety"
     : "timeout";
 
+  const enableSystemSampling = !hasFlag("--no-system-sampling");
+  writeArtifactEnvJson(runDir, env);
+  writeArtifactCodeDiff(runDir, cwd);
+  writeArtifactConfigJson(runDir, {
+    run_id: id,
+    autoresearch_command: prefix,
+    is_baseline: isBaseline,
+    inner_command: cmdText,
+    metric: metricName,
+    metric_regex: regexSource,
+    timeout_ms: effectiveTimeoutMs,
+    timeout_reason: timeoutReason,
+    allow_unsafe: allowUnsafe,
+    safety_max_minutes_per_run: safetyPolicy.maxMinutesPerRun ?? null,
+  });
+
   console.log(`autoresearch ${prefix}`);
   console.log(`command: ${cmdText}`);
   console.log(`metric: ${metricName}`);
@@ -1774,8 +1881,15 @@ async function cmdRun(isBaseline) {
   console.log(`log: ${path.relative(cwd, logFile)}`);
   console.log("---");
 
+  const stopSampler = enableSystemSampling ? startSystemSampler(runDir) : () => {};
+  const childEnv = { ...process.env, RESEARCHLOOP_RUN_DIR: runDir };
   const startedAt = new Date().toISOString();
-  const result = await spawnCommand(cmdText, cwd, effectiveTimeoutMs, logFile, timeoutReason);
+  let result;
+  try {
+    result = await spawnCommand(cmdText, cwd, effectiveTimeoutMs, logFile, timeoutReason, childEnv);
+  } finally {
+    stopSampler();
+  }
   const finishedAt = new Date().toISOString();
 
   let status;
@@ -1816,6 +1930,8 @@ async function cmdRun(isBaseline) {
     env,
   };
   appendRunRow(cwd, row);
+  writeArtifactMetricsJsonl(runDir, metricName, metricSeries);
+  writeArtifactManifest(runDir);
 
   const thread = path.join(cwd, ".researchloop", "scratchpad", "THREAD.md");
   ensureDir(path.dirname(thread));

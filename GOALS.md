@@ -45,10 +45,10 @@ Goals are organized into tiers. Tier 0 must land before any tier above it can sh
 
 | Tier | Theme | Goals | Suggested parallel agents |
 |---|---|---|---|
-| **0** | Safety + foundations | G25, G14 | 2 |
+| **0** | Safety + foundations | ~~G25~~, ~~G14~~ (both shipped) | — |
 | **1** | Loop intelligence (baseline → topic → papers → hypothesis → propose → rank) | G26, G27, G28, G29, G30, G01, G02, G03 | 4–5 |
 | **2** | Evaluation layer | G04, G05, G06 | 2 (sequential within: G04 → G05/G06) |
-| **3** | Reliability & reproducibility | G09, G10, G11, G12, G31 | 3–4 |
+| **3** | Reliability & reproducibility | G09, G10, G11, G12, G31, G32 | 3–4 |
 | **4** | Scale (sweeps + multi-agent queue + query) | G07, G08, G18, G19, G13 | 3–4 |
 | **5** | Reporting & dashboard | G20, G21, G23, G15, G16, G17 | 3 |
 | **6** | Integrations | G22, G24 | 2 |
@@ -102,6 +102,8 @@ Two workers may not edit the same template file unless one is the integration ow
 
 ### G25 — Agent command sandbox / allowlist
 
+**Status.** Shipped. See `loadSafetyPolicy` / `evaluateCommandSafety` in `bin/researchloop.js` (~L204), `templates/base/safety.yaml`, and `scripts/test-safety.sh`. All Acceptance lines pass against current code.
+
 **Motivation.** An autonomous agent will eventually run `rm -rf` or download a 200 GB checkpoint. We need a guardrail in place *before* any sweep runner ships in the wild.
 
 **Deliverables.**
@@ -123,6 +125,8 @@ Two workers may not edit the same template file unless one is the integration ow
 ---
 
 ### G14 — Environment capture per run
+
+**Status.** Shipped. See `captureEnv` in `bin/researchloop.js` (~L362) and `scripts/test-env.sh`. Env lands in `row.env` of `runs.jsonl`; `replay` and `doctor` warn on mismatch. **G32** persists `env.json` as a standalone file inside the run directory.
 
 **Motivation.** "Reproducible" is a lie without recording git SHA, Python, Torch, GPU, OS, CUDA driver. Today none of this is captured.
 
@@ -494,6 +498,38 @@ Two workers may not edit the same template file unless one is the integration ow
 **Files owned.** `bin/researchloop.js`, `scripts/test-doctor-repair.sh`.
 
 **Depends on.** None. **Effort.** S. **Agent role.** Worker — CLI feature.
+
+---
+
+### G32 — Per-run artifact directory contract
+
+**Motivation.** Every `run` and `baseline` already creates a per-run directory at `.researchloop/scratchpad/runs/<id>/`, but writes only `log.txt` into it. "Reproducible" needs more than env capture in a JSONL row — it needs a self-describing on-disk artifact bundle that downstream tools (replay, promote, dashboard, external trainers) can consume without re-parsing `runs.jsonl`.
+
+**Deliverables.** After every `run` / `baseline`, the run directory contains:
+
+- `log.txt` — already exists, unchanged.
+- `env.json` — standalone copy of the same `env` object already written to `row.env` (dual-write).
+- `code.diff` — `git diff HEAD` captured at run start; empty file when working tree is clean.
+- `config.json` — autoresearch invocation context: inner command, run id, metric, metric regex, timeout, allow_unsafe flag, baseline-vs-run, started_at.
+- `metrics.jsonl` — one line per parsed metric sample (`{step, metric, value}`); dual-write of `row.metric_history`.
+- `system.jsonl` — periodic `os.loadavg()` + `os.totalmem()` + `os.freemem()` samples while the command runs (default every 5s; opt out with `--no-system-sampling`).
+- `MANIFEST.json` — inventory of every file in the directory with `{path, size_bytes, sha256}`, plus `generated_at`. Written last.
+
+The child process receives `RESEARCHLOOP_RUN_DIR` as an environment variable so training scripts can write their own artifacts (e.g. `predictions.jsonl`, custom configs) into the same directory; the manifest will pick them up automatically.
+
+**Acceptance.**
+- After a successful `autoresearch run --command "echo val_loss=0.42"` against a temp repo, the run directory contains exactly: `log.txt`, `env.json`, `code.diff`, `config.json`, `metrics.jsonl`, `system.jsonl`, `MANIFEST.json`.
+- `MANIFEST.json` lists each of those files with a real size and a valid sha256 hex digest; the hash of `log.txt` re-computed by an external tool matches the manifest.
+- `env.json` parses as JSON and contains the same keys as `row.env` in `runs.jsonl`.
+- `--no-system-sampling` suppresses `system.jsonl` entirely.
+- `code.diff` is empty for a clean tree; non-empty when an unstaged file change is present.
+- Existing tests (`npm test`) continue to pass; no schema changes to `runs.jsonl` (this goal is additive on disk).
+
+**Test plan.** `scripts/test-artifact-contract.sh` runs a fake command in a temp git repo, asserts the file list, validates JSON shape of `env.json` / `config.json` / `MANIFEST.json`, recomputes sha256 for one file and compares, exercises the `--no-system-sampling` flag, exercises the dirty-tree `code.diff` case.
+
+**Files owned.** `bin/researchloop.js` (artifact writer functions + integration in `cmdRunOrBaseline`), `scripts/test-artifact-contract.sh` (new), `package.json` (wire test into `npm test`).
+
+**Depends on.** None. Builds on G14 (env capture, shipped). Forward-compatible with G06 (curves), G09 (checkpoints), G30 (provenance) — those goals add files into the same dir, the manifest captures them. **Effort.** S–M. **Agent role.** Worker — CLI feature.
 
 ---
 
