@@ -880,8 +880,13 @@ function cmdReport() {
   console.log(`runs: ${rows.length}`);
   console.log(`complete: ${complete}`);
   console.log(`parse_errors: ${errors}`);
+  const totalWallSeconds = parsed.filter((r) => r && !r.parse_error && r.wall_seconds).reduce((s, r) => s + (r.wall_seconds || 0), 0);
+  if (totalWallSeconds > 0) {
+    console.log(`wall_time: ${Math.round(totalWallSeconds)}s total`);
+  }
   if (parsed.length) {
-    console.log(`last: ${JSON.stringify(parsed[parsed.length - 1], null, 2)}`);
+    const last = parsed[parsed.length - 1];
+    console.log(`last: ${JSON.stringify(last, null, 2)}`);
   }
 }
 
@@ -2398,10 +2403,25 @@ async function cmdRun(isBaseline) {
     status = "complete_no_metric";
   }
 
+  const wallSeconds = Math.round((new Date(finishedAt) - new Date(startedAt)) / 1000);
+  let estCostUsd = null;
+  const costConfigPath = path.join(cwd, ".researchloop", "cost.yaml");
+  if (fs.existsSync(costConfigPath)) {
+    try {
+      const costRaw = fs.readFileSync(costConfigPath, "utf8");
+      const hourlyMatch = costRaw.match(/hourly_usd:\s*([0-9.]+)/i);
+      if (hourlyMatch && hourlyMatch[1]) {
+        estCostUsd = parseFloat((wallSeconds / 3600 * parseFloat(hourlyMatch[1])).toFixed(4));
+      }
+    } catch { /* skip */ }
+  }
+
   const row = {
     id,
     timestamp: finishedAt,
     started_at: startedAt,
+    ended_at: finishedAt,
+    wall_seconds: wallSeconds,
     status,
     agent: `autoresearch ${prefix}`,
     command: cmdText,
@@ -2412,6 +2432,7 @@ async function cmdRun(isBaseline) {
     notes: "",
     env,
     data_fingerprint: dataFingerprint,
+    est_cost_usd: estCostUsd,
   };
   appendRunRow(cwd, row);
   writeArtifactMetricsJsonl(runDir, metricName, metricSeries);
