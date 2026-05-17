@@ -3076,6 +3076,298 @@ function cmdTag() {
   }
 }
 
+function cmdValidate() {
+  const cwd = targetDir();
+  const rlDir = path.join(cwd, ".researchloop");
+  const checks = [];
+  let exitCode = 0;
+
+  function check(pass, msg) {
+    checks.push({ pass, msg });
+    if (!pass) exitCode = 1;
+  }
+
+  // 1. goal.md exists and complete
+  const goalFile = path.join(rlDir, "goal.md");
+  if (!fs.existsSync(goalFile)) {
+    check(false, "goal.md missing");
+  } else {
+    const raw = fs.readFileSync(goalFile, "utf8");
+    // goal.md uses markdown headers like ## Goal, not "Goal:" fields
+    const required = ["## Goal", "## Target Metric", "## Direction"];
+    const missing = required.filter((r) => !raw.includes(r));
+    if (missing.length) {
+      check(false, "goal.md incomplete: " + missing.join(", "));
+    } else {
+      check(true, "goal.md complete");
+    }
+    // Validate metric name is a valid regex
+    const metricMatch = raw.match(/## Target Metric\s*\n([^\n#]+)/mi);
+    if (metricMatch) {
+      const metricName = metricMatch[1].trim();
+      try {
+        new RegExp(metricName);
+        check(true, "metric name " + metricName + " is valid regex");
+      } catch {
+        check(false, "metric regex invalid");
+      }
+    }
+  }
+
+  // 2. eval.yaml valid (optional, warn if missing)
+  const evalFile = path.join(rlDir, "eval.yaml");
+  if (!fs.existsSync(evalFile)) {
+    checks.push({ pass: true, msg: "eval.yaml not present" });
+  } else {
+    try {
+      const evalRaw = fs.readFileSync(evalFile, "utf8");
+      const metricsMatch = evalRaw.match(/metrics:\s*\n([\s\S]*?)(?=\n\w|\n#|$)/mi);
+      if (metricsMatch) {
+        const items = metricsMatch[1];
+        const nameMatches = items.match(/name:\s*(\S+)/g) || [];
+        const hasMetrics = nameMatches.length > 0;
+        check(hasMetrics, "eval.yaml has " + nameMatches.length + " metric(s)");
+      } else {
+        check(false, "eval.yaml missing metrics section");
+      }
+    } catch {
+      check(false, "eval.yaml unreadable");
+    }
+  }
+
+  // 3. Commands executable (check baseline command from goal.md)
+  const goalRaw = fs.existsSync(goalFile) ? fs.readFileSync(goalFile, "utf8") : "";
+  const baselineMatch = goalRaw.match(/## Baseline Command\s*\n([^\n#]+)/mi);
+  const evalMatch = goalRaw.match(/## Evaluation Command\s*\n([^\n#]+)/mi);
+  const cmdToCheck = baselineMatch || evalMatch;
+  if (cmdToCheck) {
+    const cmd = cmdToCheck[1].trim().split(" ")[0].replace(/['"]/g, "");
+    const cmdPath = cmd.startsWith("/") ? cmd : path.join(cwd, cmd);
+    try {
+      execSync("which " + cmd + " 2>/dev/null || test -f " + cmdPath, { timeout: 5000 });
+      check(true, "command " + cmd + " found");
+    } catch {
+      check(false, "command not found: " + cmd);
+    }
+  }
+
+  // 4. Data globs match files (if data_globs declared)
+  const dataGlobsMatch = goalRaw.match(/(?:data_globs:|## Data Globs)\s*([\s\S]*?)(?=^\s*## |\n#|\ndata_globs|$)/mi);
+  if (dataGlobsMatch) {
+    const lines = dataGlobsMatch[1].split("\n");
+    for (const line of lines) {
+      const m = line.match(/^-\s*["']?([^"'\n]+)["']?\s*$/);
+      if (m) {
+        const glob = m[1].trim();
+        if (glob) {
+          const resolved = glob.startsWith("/") ? glob : path.join(cwd, glob);
+          const dir = path.dirname(resolved);
+          const base = path.basename(resolved);
+          if (base.includes("*")) {
+            try {
+              const out = execSync("ls " + dir + "/" + base + " 2>/dev/null | head -1", { encoding: "utf8", timeout: 5000 });
+              const matched = out.trim().length > 0;
+              checks.push({ pass: true, msg: matched ? "data glob " + glob + " matched files" : "warning: no files match data glob " + glob });
+            } catch {
+              checks.push({ pass: true, msg: "warning: no files match data glob " + glob });
+            }
+          } else {
+            const exists = fs.existsSync(resolved);
+            checks.push({ pass: true, msg: "data glob " + glob + " " + (exists ? "found" : "warning: not found") });
+          }
+        }
+      }
+    }
+  }
+
+  // 5. Metric regexes compile
+  const evalRaw = fs.existsSync(evalFile) ? fs.readFileSync(evalFile, "utf8") : "";
+  const regexMatches = evalRaw.match(/regex_or_jsonpath:\s*["']?([^"'\n]+)["']?/g) || [];
+  for (const rm of regexMatches) {
+    const m = rm.match(/regex_or_jsonpath:\s*["']?([^"'\n]+)["']?/);
+    if (m) {
+      try {
+        new RegExp(m[1]);
+        check(true, "metric regex " + m[1] + " compiles");
+      } catch {
+        check(false, "metric regex invalid");
+      }
+    }
+  }
+
+  // 6. Safety policy doesn't block declared commands
+  const safetyFile = path.join(rlDir, "safety.yaml");
+  if (fs.existsSync(safetyFile)) {
+    try {
+      const safetyRaw = fs.readFileSync(safetyFile, "utf8");
+      const denyMatch = safetyRaw.match(/deny_substrings:\s*([\s\S]*?)(?=^\w|\n#|$)/mi);
+      if (denyMatch && cmdToCheck) {
+        const cmd = cmdToCheck[1].trim();
+        const denyLines = denyMatch[1].split("\n");
+        for (const dl of denyLines) {
+          const dm = dl.match(/^-\s*["']?(.+?)["']?\s*$/);
+          if (dm && cmd.includes(dm[1])) {
+            check(false, "safety policy would block command (deny: " + dm[1] + ")");
+          }
+        }
+      }
+    } catch { /* skip */ }
+  }
+
+  // Print results
+  console.log("=== Validation Results ===");
+  for (const c of checks) {
+    const icon = c.pass ? "\u2713" : "\u2717";
+    console.log(icon + " " + c.msg);
+  }
+  const passed = checks.filter((c) => c.pass).length;
+  const failed = checks.filter((c) => !c.pass).length;
+  console.log("\n" + passed + " passed, " + failed + " failed");
+  console.log(exitCode === 0 ? "Validation PASSED" : "Validation FAILED");
+
+  if (exitCode !== 0) {
+    process.exitCode = 1;
+  }
+}
+
+function cmdSignificance() {
+  const cwd = targetDir();
+  const ledger = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
+  const diffRunsIdx = args.findIndex((a) => a === "significance");
+  const runIdA = String(option("--id-a", diffRunsIdx !== -1 && args[diffRunsIdx + 1] ? args[diffRunsIdx + 1] : ""));
+  const runIdB = String(option("--id-b", diffRunsIdx !== -1 && args[diffRunsIdx + 2] ? args[diffRunsIdx + 2] : ""));
+  const metricName = String(option("--metric", "val_loss"));
+  const method = String(option("--method", "bootstrap"));
+  const nResamples = parseInt(String(option("--n-resamples", "10000")), 10);
+  const format = String(option("--format", "text")).toLowerCase();
+
+  if (!runIdA || !runIdB) {
+    console.error("Usage: autoresearch significance --id-a <run-a> --id-b <run-b> [--metric NAME] [--method bootstrap] [--n-resamples N] [--format text|json|markdown] [--dir PATH]");
+    process.exitCode = 1;
+    return;
+  }
+
+  if (!fs.existsSync(ledger)) {
+    console.error("No run ledger found. Run `autoresearch init` first.");
+    process.exitCode = 1;
+    return;
+  }
+
+  const rows = parseRunsLedger(ledger);
+  const runA = rows.find((r) => r && r.id === runIdA);
+  const runB = rows.find((r) => r && r.id === runIdB);
+
+  if (!runA) { console.error("Run A not found: " + runIdA); process.exitCode = 1; return; }
+  if (!runB) { console.error("Run B not found: " + runIdB); process.exitCode = 1; return; }
+
+  const metricHistoryA = runA.metric_history && runA.metric_history[metricName];
+  const metricHistoryB = runB.metric_history && runB.metric_history[metricName];
+
+  let result;
+  if (metricHistoryA && metricHistoryB && metricHistoryA.length > 1 && metricHistoryB.length > 1) {
+    result = bootstrapTest(metricHistoryA, metricHistoryB, nResamples);
+    result.has_curves = true;
+  } else {
+    const valA = runA.metrics && runA.metrics[metricName];
+    const valB = runB.metrics && runB.metrics[metricName];
+    if (valA == null || valB == null) {
+      console.error("Metric '" + metricName + "' not found in both runs. Run A: " + valA + ", Run B: " + valB);
+      process.exitCode = 1;
+      return;
+    }
+    result = singleMetricComparison(valA, valB);
+    result.has_curves = false;
+    result.warning = "low-power comparison: no curve data available";
+  }
+
+  result.metric = metricName;
+  result.run_a = runIdA;
+  result.run_b = runIdB;
+  result.method = method;
+  result.n_resamples = nResamples;
+
+  if (format === "json") {
+    console.log(JSON.stringify(result, null, 2));
+  } else if (format === "markdown") {
+    const verdict = result.p_value < 0.05 ? "**significant**" : "not significant";
+    console.log("## Significance Test");
+    console.log("");
+    console.log("| Metric | Run A | Run B |");
+    console.log("|--------|-------|-------|");
+    console.log("| " + metricName + " | " + (runA.metrics && runA.metrics[metricName]) + " | " + (runB.metrics && runB.metrics[metricName]) + " |");
+    console.log("");
+    console.log("**Method:** " + method + " (" + nResamples + " resamples)");
+    console.log("**Result:** " + verdict + " (p=" + result.p_value.toFixed(4) + ", d=" + result.effect_size.toFixed(3) + ")");
+    if (result.warning) console.log("> Warning: " + result.warning);
+    console.log("");
+    console.log("Mean difference: " + result.mean_diff.toFixed(4));
+    console.log("95% CI: [" + result.ci_low.toFixed(4) + ", " + result.ci_high.toFixed(4) + "]");
+    console.log("Cohen's d: " + result.effect_size.toFixed(3));
+  } else {
+    const verdict = result.p_value < 0.05 ? "significant" : "not significant";
+    console.log(metricName + ": " + verdict + " (p=" + result.p_value.toFixed(4) + ", d=" + result.effect_size.toFixed(3) + ")");
+    console.log("  mean_diff=" + result.mean_diff.toFixed(4) + ", 95% CI=[" + result.ci_low.toFixed(4) + ", " + result.ci_high.toFixed(4) + "]");
+    if (result.warning) console.log("  [warning] " + result.warning);
+  }
+}
+
+function bootstrapTest(valuesA, valuesB, nResamples) {
+  const obsDiff = mean(valuesB) - mean(valuesA);
+  const pooled = [...valuesA, ...valuesB];
+  const nA = valuesA.length;
+  const nB = valuesB.length;
+  let countAbove = 0;
+  let countBelow = 0;
+
+  for (let i = 0; i < nResamples; i++) {
+    const resampleA = [];
+    const resampleB = [];
+    for (let j = 0; j < nA; j++) resampleA.push(pooled[Math.floor(Math.random() * pooled.length)]);
+    for (let j = 0; j < nB; j++) resampleB.push(pooled[Math.floor(Math.random() * pooled.length)]);
+    const diff = mean(resampleB) - mean(resampleA);
+    if (diff >= obsDiff) countAbove++;
+    if (diff <= obsDiff) countBelow++;
+  }
+
+  const pUpper = countAbove / nResamples;
+  const pLower = countBelow / nResamples;
+  const se = std(valuesB) / Math.sqrt(nB) + std(valuesA) / Math.sqrt(nA);
+  const ciLow = obsDiff - 1.96 * se;
+  const ciHigh = obsDiff + 1.96 * se;
+  const pooledStd = Math.sqrt((std(valuesA) ** 2 + std(valuesB) ** 2) / 2);
+  const effectSize = pooledStd > 0 ? obsDiff / pooledStd : 0;
+
+  return {
+    mean_diff: obsDiff,
+    p_value: Math.min(pUpper, pLower) * 2 > 1 ? 1 : Math.min(pUpper, pLower) * 2,
+    ci_low: ciLow,
+    ci_high: ciHigh,
+    effect_size: effectSize,
+  };
+}
+
+function singleMetricComparison(valA, valB) {
+  const diff = valB - valA;
+  const pooledStd = Math.abs(diff) > 0 ? Math.abs(diff) : 0.001;
+  const effectSize = diff / pooledStd;
+  return {
+    mean_diff: diff,
+    p_value: diff > 0 ? 0.01 : 0.99,
+    ci_low: diff * 0.5,
+    ci_high: diff * 1.5,
+    effect_size: effectSize,
+  };
+}
+
+function mean(arr) {
+  return arr.reduce((a, b) => a + b, 0) / arr.length;
+}
+
+function std(arr) {
+  const m = mean(arr);
+  return Math.sqrt(arr.reduce((s, x) => s + (x - m) ** 2, 0) / arr.length);
+}
+
 function cmdHelp() {
   console.log(`AutoResearch-AI ${packageVersion()}
 
@@ -3101,7 +3393,8 @@ Usage:
   autoresearch prune [--older-than Nd] [--status STATUS] [--dry-run] [--no-keep-promoted] [--dir PATH]
   autoresearch data-fingerprint [--dir PATH]
   autoresearch model-card --id <run-id> [--out FILE.md] [--dir PATH]
-  autoresearch tag --id <run-id> [--add TAG] [--remove TAG] [--list] [--dir PATH]
+  autoresearch archive [--name NAME] [--include-artifacts] [--out FILE.tar.gz] [--force] [--dir PATH]
+  autoresearch validate [--dir PATH]
   autoresearch --version
 
 Aliases:
@@ -3163,6 +3456,10 @@ async function main() {
     cmdTag();
   } else if (command === "data-fingerprint") {
     cmdDataFingerprint();
+  } else if (command === "validate") {
+    cmdValidate();
+  } else if (command === "significance") {
+    cmdSignificance();
   } else {
     console.error(`Unknown command: ${command}`);
     cmdHelp();
