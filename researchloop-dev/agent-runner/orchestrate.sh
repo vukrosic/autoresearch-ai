@@ -78,13 +78,22 @@ slug_for_issue() {
 
 spawn_implementer() {
   local issue_num="$1" branch="$2" worktree="$3"
-  local body
-  body=$(gh issue view "$issue_num" --json body --jq '.body')
+  local body_file="$STATE_DIR/issue-$issue_num.body.md"
+  gh issue view "$issue_num" --json body --jq '.body' > "$body_file"
 
   local prompt_file="$STATE_DIR/prompt-$issue_num.md"
-  awk -v body="$body" -v br="$branch" -v wt="$worktree" -v n="$issue_num" '
-    { gsub(/\$ISSUE_BODY/, body); gsub(/\$BRANCH/, br); gsub(/\$WORKTREE/, wt); gsub(/\$ISSUE_NUMBER/, n); print }
-  ' "$PROMPTS_DIR/implement.md" > "$prompt_file"
+  python3 - "$PROMPTS_DIR/implement.md" "$body_file" "$branch" "$worktree" "$issue_num" > "$prompt_file" <<'PYEOF'
+import sys, pathlib
+template = pathlib.Path(sys.argv[1]).read_text()
+body = pathlib.Path(sys.argv[2]).read_text()
+branch, worktree, issue_num = sys.argv[3], sys.argv[4], sys.argv[5]
+out = (template
+       .replace("$ISSUE_BODY", body)
+       .replace("$BRANCH", branch)
+       .replace("$WORKTREE", worktree)
+       .replace("$ISSUE_NUMBER", issue_num))
+sys.stdout.write(out)
+PYEOF
 
   log "implementer prompt → $prompt_file"
 
@@ -129,24 +138,22 @@ spawn_implementer() {
 
 spawn_reviewer() {
   local pr_num="$1" issue_num="$2"
-  local diff body
-  diff=$(gh pr diff "$pr_num")
-  body=$(gh issue view "$issue_num" --json body --jq '.body')
+  local diff_file="$STATE_DIR/pr-$pr_num.diff"
+  local body_file="$STATE_DIR/issue-$issue_num.body.md"
+  gh pr diff "$pr_num" > "$diff_file"
+  gh issue view "$issue_num" --json body --jq '.body' > "$body_file"
 
   local prompt_file="$STATE_DIR/review-prompt-$pr_num.md"
-  {
-    sed -e "s/\$PR_NUMBER/$pr_num/g" -e "s/\$ISSUE_NUMBER/$issue_num/g" "$PROMPTS_DIR/review.md"
-    echo
-    echo "## Issue body"
-    echo
-    echo "$body"
-    echo
-    echo "## PR diff"
-    echo
-    echo '```diff'
-    echo "$diff"
-    echo '```'
-  } > "$prompt_file"
+  python3 - "$PROMPTS_DIR/review.md" "$body_file" "$diff_file" "$pr_num" "$issue_num" > "$prompt_file" <<'PYEOF'
+import sys, pathlib
+template = pathlib.Path(sys.argv[1]).read_text()
+body = pathlib.Path(sys.argv[2]).read_text()
+diff = pathlib.Path(sys.argv[3]).read_text()
+pr_num, issue_num = sys.argv[4], sys.argv[5]
+out = template.replace("$PR_NUMBER", pr_num).replace("$ISSUE_NUMBER", issue_num).replace("$DIFF", "(see PR diff section below)")
+out += "\n\n## Issue body\n\n" + body + "\n\n## PR diff\n\n```diff\n" + diff + "\n```\n"
+sys.stdout.write(out)
+PYEOF
 
   log "reviewer prompt → $prompt_file"
 
