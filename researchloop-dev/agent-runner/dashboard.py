@@ -33,9 +33,10 @@ body{font:14px/1.5 ui-monospace,Menlo,Consolas,monospace;margin:0;background:#0d
 header{padding:12px 18px;border-bottom:1px solid #30363d;background:#161b22;display:flex;gap:18px;align-items:center;flex-wrap:wrap;}
 header h1{margin:0;font-size:15px;color:#f0f6fc;font-weight:600;}
 header span{color:#8b949e;font-size:12px;}
-main{display:grid;grid-template-columns:280px 1fr;height:calc(100vh - 50px);}
+main{display:grid;grid-template-columns:340px 1fr;height:calc(100vh - 50px);}
 aside{border-right:1px solid #30363d;overflow-y:auto;background:#0d1117;}
-aside h2{font-size:11px;text-transform:uppercase;color:#8b949e;letter-spacing:0.08em;margin:14px 18px 6px;}
+aside h2{font-size:11px;text-transform:uppercase;color:#8b949e;letter-spacing:0.08em;margin:14px 18px 6px;display:flex;justify-content:space-between;align-items:center;}
+aside h2 .count{color:#6e7681;font-weight:normal;text-transform:none;letter-spacing:0;}
 aside .file{padding:6px 18px;cursor:pointer;border-left:3px solid transparent;font-size:13px;}
 aside .file:hover{background:#161b22;}
 aside .file.active{background:#161b22;border-left-color:#1f6feb;color:#58a6ff;}
@@ -54,15 +55,38 @@ section h2 button.on{background:#1f6feb;color:#fff;border-color:#1f6feb;}
 .worktree .commits{color:#8b949e;font-size:11px;margin-top:2px;}
 .worktree.live .name::before{content:"● ";color:#3fb950;animation:pulse 1.2s infinite;}
 @keyframes pulse{50%{opacity:0.4;}}
-.issue{padding:10px 18px;border-bottom:1px solid #21262d;font-size:12px;}
-.issue .num{color:#8b949e;}
-.issue .ttl{color:#c9d1d9;margin-bottom:6px;}
+.filters{padding:0 18px 8px;display:flex;gap:4px;flex-wrap:wrap;}
+.filters button{background:#0d1117;color:#8b949e;border:1px solid #30363d;border-radius:12px;padding:3px 10px;cursor:pointer;font-size:11px;font-family:inherit;}
+.filters button:hover{color:#c9d1d9;}
+.filters button.on{background:#1f6feb;color:#fff;border-color:#1f6feb;}
+.issue,.pr{padding:10px 18px;border-bottom:1px solid #21262d;font-size:12px;}
+.issue .num,.pr .num{color:#8b949e;}
+.issue .ttl,.pr .ttl{color:#c9d1d9;margin-bottom:6px;}
 .issue.busy .ttl::before{content:"⏳ ";color:#d29922;}
-.issue .row{display:flex;gap:6px;flex-wrap:wrap;}
-.issue button{background:#21262d;color:#c9d1d9;border:1px solid #30363d;border-radius:5px;padding:4px 8px;cursor:pointer;font-size:11px;font-family:inherit;flex:1;}
-.issue button:hover:not(:disabled){background:#1f6feb;color:#fff;border-color:#1f6feb;}
-.issue button:disabled{opacity:0.4;cursor:not-allowed;}
+.issue.parked .ttl{color:#6e7681;}
+.issue .lbls,.pr .lbls{font-size:10px;color:#6e7681;margin-bottom:6px;}
+.issue .lbls .lbl,.pr .lbls .lbl{display:inline-block;background:#161b22;padding:1px 6px;border-radius:8px;margin-right:3px;color:#8b949e;}
+.issue .lbls .lbl.claim-next{background:#0e3a1a;color:#3fb950;}
+.issue .lbls .lbl.in-progress{background:#3a2f0e;color:#d29922;}
+.issue .lbls .lbl.needs-validation{background:#222;color:#6e7681;}
+.issue .lbls .lbl.keystone{background:#4a0f2a;color:#f778ba;}
+.issue .row,.pr .row{display:flex;gap:6px;flex-wrap:wrap;}
+.issue button,.pr button{background:#21262d;color:#c9d1d9;border:1px solid #30363d;border-radius:5px;padding:4px 8px;cursor:pointer;font-size:11px;font-family:inherit;flex:1;}
+.issue button:hover:not(:disabled),.pr button:hover:not(:disabled){background:#1f6feb;color:#fff;border-color:#1f6feb;}
+.issue button:disabled,.pr button:disabled{opacity:0.4;cursor:not-allowed;}
 .issue button.headless{background:#0d1117;}
+.pr .badges{font-size:10px;color:#6e7681;margin-bottom:6px;}
+.pr .badges .b{display:inline-block;padding:1px 6px;border-radius:3px;margin-right:4px;background:#161b22;}
+.pr .badges .b.draft{color:#8b949e;}
+.pr .badges .b.approved{background:#0e3a1a;color:#3fb950;}
+.pr .badges .b.changes_requested{background:#4a0e0e;color:#ff7b72;}
+.pr .badges .b.ci-pass{background:#0e3a1a;color:#3fb950;}
+.pr .badges .b.ci-fail{background:#4a0e0e;color:#ff7b72;}
+.pr .badges .b.ci-pending{background:#3a2f0e;color:#d29922;}
+.pr button.merge{background:#1a3a1a;color:#56d364;border-color:#234a23;}
+.pr button.merge:hover:not(:disabled){background:#0e6e0e;color:#fff;border-color:#0e6e0e;}
+.pr button.review{background:#1a1a3a;color:#79c0ff;border-color:#23234a;}
+.pr button.review:hover:not(:disabled){background:#0e2e6e;color:#fff;border-color:#0e2e6e;}
 #toast{position:fixed;bottom:20px;right:20px;background:#161b22;color:#c9d1d9;padding:10px 16px;border-radius:6px;border:1px solid #30363d;font-size:12px;display:none;z-index:100;}
 #toast.err{border-color:#f85149;color:#ff7b72;}
 #toast.ok{border-color:#3fb950;color:#56d364;}
@@ -75,7 +99,16 @@ section h2 button.on{background:#1f6feb;color:#fff;border-color:#1f6feb;}
 </header>
 <main>
   <aside>
-    <h2>Claim-next issues</h2>
+    <h2>Open PRs <span class="count" id="prCount"></span></h2>
+    <div id="prs"><div class="empty">loading…</div></div>
+    <h2>Issues <span class="count" id="issueCount"></span></h2>
+    <div class="filters" id="filters">
+      <button data-f="claim-next" class="on">claim-next</button>
+      <button data-f="all">all</button>
+      <button data-f="good first issue">good first</button>
+      <button data-f="agent-friendly">agent</button>
+      <button data-f="needs-validation">parked</button>
+    </div>
     <div id="issues"><div class="empty">loading…</div></div>
     <h2>Active worktrees</h2>
     <div id="worktrees"><div class="empty">none</div></div>
@@ -164,25 +197,118 @@ async function listWorktrees() {
   } catch(e) { console.error(e); }
 }
 
+let issueFilter = 'claim-next';
+let allIssues = [];
+
 async function listIssues() {
   try {
     const r = await fetch('/api/issues');
     const data = await r.json();
-    const el = document.getElementById('issues');
     if (data.issues && data.issues[0] && data.issues[0].error) {
-      el.innerHTML = `<div class="empty">gh error: ${data.issues[0].error}</div>`;
+      document.getElementById('issues').innerHTML = `<div class="empty">gh error: ${data.issues[0].error}</div>`;
       return;
     }
-    if (!data.issues.length) { el.innerHTML = '<div class="empty">no claim-next issues</div>'; return; }
-    el.innerHTML = data.issues.map(it => `
-      <div class="issue ${it.in_progress ? 'busy' : ''}">
+    allIssues = data.issues || [];
+    document.getElementById('issueCount').textContent = `${allIssues.length} open`;
+    renderIssues();
+  } catch(e) { console.error(e); }
+}
+
+function renderIssues() {
+  const el = document.getElementById('issues');
+  const filtered = issueFilter === 'all'
+    ? allIssues
+    : allIssues.filter(it => it.labels.includes(issueFilter));
+  if (!filtered.length) { el.innerHTML = `<div class="empty">no issues match "${issueFilter}"</div>`; return; }
+  el.innerHTML = filtered.map(it => {
+    const interesting = it.labels.filter(l => ['claim-next','in-progress','needs-validation','keystone','good first issue','agent-friendly'].includes(l));
+    const labelChips = interesting.map(l => `<span class="lbl ${l.replace(/[^a-z0-9-]/g,'-')}">${l}</span>`).join('');
+    return `
+      <div class="issue ${it.in_progress ? 'busy' : ''} ${it.parked ? 'parked' : ''}">
         <div class="ttl"><span class="num">#${it.number}</span> ${escapeHtml(it.title)}</div>
+        ${labelChips ? `<div class="lbls">${labelChips}</div>` : ''}
         <div class="row">
           <button onclick="launchIssue(${it.number}, 'watch')" ${it.in_progress ? 'disabled' : ''} title="Spawn orchestrator and auto-switch terminal to its log">▶ launch & watch</button>
           <button class="headless" onclick="launchIssue(${it.number}, 'headless')" ${it.in_progress ? 'disabled' : ''} title="Spawn orchestrator in background; don't switch terminal view">⌁ headless</button>
         </div>
       </div>
-    `).join('');
+    `;
+  }).join('');
+}
+
+async function listPRs() {
+  try {
+    const r = await fetch('/api/prs');
+    const data = await r.json();
+    const el = document.getElementById('prs');
+    if (data.prs && data.prs[0] && data.prs[0].error) {
+      el.innerHTML = `<div class="empty">gh error: ${data.prs[0].error}</div>`;
+      return;
+    }
+    document.getElementById('prCount').textContent = `${data.prs.length} open`;
+    if (!data.prs.length) { el.innerHTML = '<div class="empty">no open PRs</div>'; return; }
+    el.innerHTML = data.prs.map(pr => {
+      const decision = pr.reviewDecision || '';
+      const decBadge = decision ? `<span class="b ${decision.toLowerCase()}">${decision.replace('_',' ').toLowerCase()}</span>` : '';
+      const ciBadge = `<span class="b ci-${pr.ci}">CI: ${pr.ci}</span>`;
+      const draftBadge = pr.isDraft ? '<span class="b draft">draft</span>' : '';
+      const mergeable = pr.mergeable === 'MERGEABLE';
+      const mergeDisabled = !mergeable || pr.isDraft || decision === 'CHANGES_REQUESTED';
+      return `
+        <div class="pr">
+          <div class="ttl"><span class="num">#${pr.number}</span> ${escapeHtml(pr.title)}</div>
+          <div class="badges">${draftBadge}${decBadge}${ciBadge}</div>
+          <div class="row">
+            <button class="review" onclick="reviewPR(${pr.number})" title="Spawn reviewer agent (Claude). Posts a structured verdict comment.">🔍 review</button>
+            <button class="merge" onclick="mergePR(${pr.number})" ${mergeDisabled ? 'disabled' : ''} title="${mergeDisabled ? 'PR is draft / not mergeable / changes requested' : 'gh pr merge --squash --delete-branch'}">✓ squash-merge</button>
+            <button onclick="viewPRDiff(${pr.number})" title="Show the diff in the terminal pane">view diff</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch(e) { console.error(e); }
+}
+
+async function reviewPR(num) {
+  showToast(`spawning reviewer on PR #${num}…`, '');
+  try {
+    const r = await fetch('/api/review', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({pr: num})
+    });
+    const data = await r.json();
+    if (data.error) { showToast(`error: ${data.error}`, 'err'); return; }
+    showToast(`reviewer spawned on #${num} → tail review-${num}.md when done`, 'ok');
+    // Auto-switch to the review-spawn log so user can watch
+    setTimeout(() => { listFiles(); selectFile(data.log); }, 1500);
+  } catch(e) { showToast(`review failed: ${e}`, 'err'); }
+}
+
+async function mergePR(num) {
+  if (!confirm(`Squash-merge PR #${num} into main and delete the branch? This is final.`)) return;
+  showToast(`merging PR #${num}…`, '');
+  try {
+    const r = await fetch('/api/merge', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({pr: num, strategy: 'squash'})
+    });
+    const data = await r.json();
+    if (data.error) { showToast(`merge error: ${data.error}`, 'err'); return; }
+    showToast(`✓ merged #${num} (squash)`, 'ok');
+    listPRs(); listIssues();
+  } catch(e) { showToast(`merge failed: ${e}`, 'err'); }
+}
+
+async function viewPRDiff(num) {
+  // Spawn nothing — just write the diff to a state file and open it.
+  showToast(`fetching diff for #${num}…`, '');
+  try {
+    const r = await fetch('/api/file?name=pr-' + num + '.diff');
+    if (r.status === 404) {
+      showToast(`no cached diff for #${num} — run review first`, 'err');
+      return;
+    }
+    selectFile(`pr-${num}.diff`);
   } catch(e) { console.error(e); }
 }
 
@@ -283,10 +409,19 @@ document.getElementById('followBtn').onclick = (e) => {
 document.getElementById('replayBtn').onclick = replay;
 document.getElementById('clearBtn').onclick = () => { if (termAttached) { term.reset(); cursor = 0; } };
 
-listFiles(); listWorktrees(); listIssues();
+// Filter chip handlers
+document.getElementById('filters').addEventListener('click', e => {
+  if (e.target.tagName !== 'BUTTON') return;
+  issueFilter = e.target.dataset.f;
+  document.querySelectorAll('#filters button').forEach(b => b.classList.toggle('on', b.dataset.f === issueFilter));
+  renderIssues();
+});
+
+listFiles(); listWorktrees(); listIssues(); listPRs();
 setInterval(listFiles, 5000);
 setInterval(listWorktrees, 4000);
 setInterval(listIssues, 20000);
+setInterval(listPRs, 15000);
 </script>
 </body></html>"""
 
@@ -303,8 +438,9 @@ def list_state_files():
     return out
 
 
-# Simple in-memory cache so the issues panel doesn't hammer the gh API.
+# Simple in-memory caches so panels don't hammer the gh API.
 _ISSUES_CACHE = {"ts": 0, "data": None}
+_PRS_CACHE = {"ts": 0, "data": None}
 
 
 def list_issues():
@@ -312,19 +448,93 @@ def list_issues():
         return _ISSUES_CACHE["data"]
     try:
         out = subprocess.run(
-            ["gh", "issue", "list", "--state", "open", "--label", "claim-next",
-             "--limit", "30", "--json", "number,title,labels,url"],
+            ["gh", "issue", "list", "--state", "open",
+             "--limit", "100", "--json", "number,title,labels,url"],
             capture_output=True, text=True, timeout=20, check=True,
         ).stdout
         issues = json.loads(out)
-        # mark each with in_progress / has_pr flags
         for it in issues:
             it["labels"] = [l["name"] for l in it.get("labels", [])]
             it["in_progress"] = "in-progress" in it["labels"]
+            it["claim_next"] = "claim-next" in it["labels"]
+            it["parked"] = "needs-validation" in it["labels"]
         _ISSUES_CACHE.update({"ts": time.time(), "data": issues})
         return issues
     except Exception as e:
         return [{"error": str(e)}]
+
+
+def list_prs():
+    if _PRS_CACHE["data"] and time.time() - _PRS_CACHE["ts"] < 20:
+        return _PRS_CACHE["data"]
+    try:
+        out = subprocess.run(
+            ["gh", "pr", "list", "--state", "open", "--limit", "60",
+             "--json", "number,title,isDraft,headRefName,reviewDecision,mergeable,labels,statusCheckRollup"],
+            capture_output=True, text=True, timeout=20, check=True,
+        ).stdout
+        prs = json.loads(out)
+        for pr in prs:
+            pr["labels"] = [l["name"] for l in pr.get("labels", [])]
+            # rollup CI state
+            checks = pr.get("statusCheckRollup") or []
+            ci_states = [(c.get("conclusion") or c.get("status") or "").upper() for c in checks]
+            if not ci_states:
+                pr["ci"] = "none"
+            elif any(s == "FAILURE" for s in ci_states):
+                pr["ci"] = "fail"
+            elif all(s in ("SUCCESS", "COMPLETED", "NEUTRAL", "SKIPPED") for s in ci_states):
+                pr["ci"] = "pass"
+            else:
+                pr["ci"] = "pending"
+            del pr["statusCheckRollup"]
+        _PRS_CACHE.update({"ts": time.time(), "data": prs})
+        return prs
+    except Exception as e:
+        return [{"error": str(e)}]
+
+
+def invalidate_caches():
+    _ISSUES_CACHE["ts"] = 0
+    _PRS_CACHE["ts"] = 0
+
+
+def spawn_review(pr_num: int):
+    if not (1 <= pr_num <= 9999):
+        return {"error": "bad pr number"}
+    script = REPO_ROOT / "researchloop-dev" / "agent-runner" / "orchestrate.sh"
+    log_file = STATE_DIR / f"review-spawn-{pr_num}.out"
+    try:
+        fh = open(log_file, "w")
+        subprocess.Popen(
+            [str(script), "--review", str(pr_num)],
+            cwd=str(REPO_ROOT),
+            stdout=fh, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except Exception as e:
+        return {"error": f"spawn failed: {e}"}
+    invalidate_caches()
+    return {"started": True, "pr": pr_num, "log": f"review-spawn-{pr_num}.out"}
+
+
+def merge_pr(pr_num: int, strategy: str = "squash"):
+    if not (1 <= pr_num <= 9999):
+        return {"error": "bad pr number"}
+    if strategy not in ("squash", "merge", "rebase"):
+        return {"error": "bad strategy"}
+    try:
+        # gh pr merge handles draft check internally; --squash is the safest default.
+        result = subprocess.run(
+            ["gh", "pr", "merge", str(pr_num), f"--{strategy}", "--delete-branch"],
+            capture_output=True, text=True, timeout=60,
+        )
+        if result.returncode != 0:
+            return {"error": (result.stderr or result.stdout or "merge failed").strip()}
+    except Exception as e:
+        return {"error": f"merge failed: {e}"}
+    invalidate_caches()
+    return {"merged": True, "pr": pr_num, "strategy": strategy, "output": result.stdout.strip()}
 
 
 def list_running_orchestrators():
@@ -445,6 +655,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._send_json({"worktrees": list_worktrees(), "running": list_running_orchestrators()})
         if u.path == "/api/issues":
             return self._send_json({"issues": list_issues()})
+        if u.path == "/api/prs":
+            return self._send_json({"prs": list_prs()})
         if u.path == "/api/file":
             qs = dict(p.split("=", 1) for p in (u.query.split("&") if u.query else []) if "=" in p)
             name = unquote(qs.get("name", ""))
@@ -478,21 +690,39 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         u = urlparse(self.path)
+        content_length = int(self.headers.get("Content-Length", "0"))
+        body = self.rfile.read(content_length).decode() if content_length else ""
+        try:
+            payload = json.loads(body or "{}")
+        except json.JSONDecodeError:
+            return self._send_json({"error": "bad json"}, 400)
+
         if u.path == "/api/launch":
-            content_length = int(self.headers.get("Content-Length", "0"))
-            body = self.rfile.read(content_length).decode() if content_length else ""
             try:
-                payload = json.loads(body or "{}")
-            except json.JSONDecodeError:
-                return self._send_json({"error": "bad json"}, 400)
-            issue = payload.get("issue")
-            mode = payload.get("mode", "watch")
-            try:
-                issue = int(issue)
+                issue = int(payload.get("issue"))
             except (TypeError, ValueError):
                 return self._send_json({"error": "issue must be int"}, 400)
+            mode = payload.get("mode", "watch")
             result = launch_orchestrator(issue, mode)
             return self._send_json(result, 200 if result.get("started") else 400)
+
+        if u.path == "/api/review":
+            try:
+                pr = int(payload.get("pr"))
+            except (TypeError, ValueError):
+                return self._send_json({"error": "pr must be int"}, 400)
+            result = spawn_review(pr)
+            return self._send_json(result, 200 if result.get("started") else 400)
+
+        if u.path == "/api/merge":
+            try:
+                pr = int(payload.get("pr"))
+            except (TypeError, ValueError):
+                return self._send_json({"error": "pr must be int"}, 400)
+            strategy = payload.get("strategy", "squash")
+            result = merge_pr(pr, strategy)
+            return self._send_json(result, 200 if result.get("merged") else 400)
+
         self.send_response(404)
         self.end_headers()
 

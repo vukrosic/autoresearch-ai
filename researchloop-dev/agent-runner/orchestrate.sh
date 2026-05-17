@@ -194,18 +194,21 @@ PYEOF
   fi
 
   local review_out="$STATE_DIR/review-$pr_num.md"
-  # Reviewer is read-only: it only reads the diff and posts a comment.
-  # No write permission needed; default sandbox is enough.
+  # Reviewer needs Bash(gh:*) so it can fetch PR/issue context and post the
+  # verdict comment itself. We allowlist only `gh` and read tools — no
+  # general shell, no edits. acceptEdits is required to enable Bash at all
+  # in claude -p; allowedTools narrows the surface back down.
   case "$REVIEWER" in
     claude)
       run_timeout "$AGENT_TIMEOUT" "$CLAUDE_BIN" -p \
         "$(cat "$prompt_file")" \
-        --permission-mode default \
+        --permission-mode acceptEdits \
+        --allowedTools "Bash(gh:*) Read Grep" \
         > "$review_out"
       ;;
     codex)
       run_timeout "$AGENT_TIMEOUT" "$CODEX_BIN" exec \
-        --sandbox read-only \
+        --sandbox workspace-write \
         --skip-git-repo-check \
         "$(cat "$prompt_file")" \
         > "$review_out"
