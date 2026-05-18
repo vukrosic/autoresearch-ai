@@ -2778,6 +2778,199 @@ async function cmdScanPapers() {
   console.log(`papers written to: ${path.relative(cwd, papersDir)}`);
 }
 
+
+function renderPaperReadMarkdown(entry, goalText) {
+  const pubDate = entry.published ? entry.published.slice(0, 10) : "";
+  const goalLine = goalText ? goalText : "No goal set";
+  return [
+    `# ${entry.title || entry.arxivId}`,
+    "",
+    `arXiv: ${entry.arxivId}`,
+    `Published: ${pubDate}`,
+    `Authors: ${entry.authors.join(", ")}`,
+    `Link: ${entry.idUrl}`,
+    "",
+    "## Claim",
+    "",
+    entry.title ? `${entry.title}.` : "TODO. Fill in after reading.",
+    "",
+    "## Mechanism",
+    "",
+    entry.summary
+      ? entry.summary.split(/[.!?]/).slice(0, 2).filter(Boolean).join(".") + "."
+      : "TODO. Fill in after reading.",
+    "",
+    "## Limits",
+    "",
+    "Not stated in abstract. Review full paper for limitations.",
+    "",
+    "## How to port this",
+    "",
+    "TODO. Review full paper and fill in.",
+    "",
+    "## Baseline relevance",
+    "",
+    `Current goal: ${goalLine}. Review whether this paper's mechanism could improve the metric.`,
+    "",
+  ].join("\n");
+}
+
+function mergePaperReadSections(existing, entry, goalText) {
+  const lines = existing.split("\n");
+  const sections = ["## Claim", "## Mechanism", "## Limits", "## How to port this", "## Baseline relevance"];
+  const updated = [];
+
+  let inTodoSection = false;
+  let currentSection = "";
+
+  for (const line of lines) {
+    const sectionHeader = sections.find((s) => line.trim() === s);
+    if (sectionHeader) {
+      currentSection = sectionHeader;
+      inTodoSection = false;
+      updated.push(line);
+      continue;
+    }
+
+    // Check if this line looks like a TODO or placeholder
+    const trimmed = line.trim();
+    if (
+      currentSection &&
+      (trimmed.startsWith("TODO") ||
+        trimmed.startsWith("Not stated in abstract") ||
+        trimmed.startsWith("Current goal:") ||
+        trimmed.startsWith("Review whether") ||
+        trimmed === "")
+    ) {
+      inTodoSection = true;
+    }
+
+    if (!inTodoSection) {
+      updated.push(line);
+    }
+  }
+
+  // Now rebuild: replace TODO sections with fresh content
+  let result = updated.join("\n");
+
+  // Replace Claim TODO
+  if (entry.title) {
+    result = result.replace(
+      /## Claim\n\nTODO\. Fill in after reading\./,
+      `## Claim\n\n${entry.title}.`
+    );
+  }
+  // Replace Mechanism TODO
+  if (entry.summary) {
+    const mech = entry.summary.split(/[.!?]/).slice(0, 2).filter(Boolean).join(".") + ".";
+    result = result.replace(
+      /## Mechanism\n\nTODO\. Fill in after reading\./,
+      `## Mechanism\n\n${mech}`
+    );
+  }
+  // Replace Baseline relevance
+  const goalLine = goalText || "No goal set";
+  result = result.replace(
+    /## Baseline relevance\n\nCurrent goal: .*/,
+    `## Baseline relevance\n\nCurrent goal: ${goalLine}. Review whether this paper's mechanism could improve the metric.`
+  );
+
+  return result;
+}
+
+async function cmdPaperRead() {
+  const cwd = targetDir();
+  // Find positional args (non-flag, non-flag-values) for paper-read
+  const nonFlagArgs = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i].startsWith("-")) {
+      // skip the flag and its value
+      if (i + 1 < args.length && !args[i + 1].startsWith("-")) i++;
+      continue;
+    }
+    nonFlagArgs.push(args[i]);
+  }
+  // nonFlagArgs[0] = "paper-read", nonFlagArgs[1] = <paper-id>
+  const paperId = nonFlagArgs[1] || null;
+  if (!paperId) {
+    console.error("paper-read: missing <paper-id>. Usage: autoresearch paper-read <paper-id> [--from arxiv|local] [--dir PATH] [--offline]");
+    process.exitCode = 1;
+    return;
+  }
+
+  const fromSource = option("--from", "arxiv");
+  const offline = hasFlag("--offline") || !!process.env.RESEARCHLOOP_OFFLINE;
+  const cacheDirOpt = option("--cache-dir", null);
+  const cacheDir = cacheDirOpt && typeof cacheDirOpt === "string" ? cacheDirOpt : arxivCacheDir();
+
+  console.log("autoresearch paper-read");
+  console.log(`paper-id: ${paperId}`);
+  console.log(`from: ${fromSource}`);
+
+  const papersDir = path.join(cwd, ".researchloop", "scratchpad", "papers");
+  ensureDir(papersDir);
+  const safeId = paperId.replace(/[/\\]/g, "_");
+  const paperFile = path.join(papersDir, `${safeId}.md`);
+
+  // Check for existing local file
+  if (fromSource === "local" && fs.existsSync(paperFile)) {
+    console.log(`using cached: ${path.relative(cwd, paperFile)}`);
+    return;
+  }
+
+  // Fetch from arXiv
+  const queryId = paperId.replace(/v\d+$/, "");
+  const query = `id:${queryId}`;
+
+  let xml;
+  try {
+    xml = await fetchArxivXml({ query, limit: 1, since: null, cacheDir, offline });
+  } catch (err) {
+    console.error(`paper-read failed: ${err.message}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const entries = parseArxivEntries(xml);
+  // Find the matching entry (handle version suffix)
+  const entry = entries.find((e) => e.arxivId === paperId || e.arxivId.replace(/v\d+$/, "") === queryId);
+
+  if (!entry) {
+    console.error(`paper-read: no entry found for ${paperId}${offline ? " (offline mode)" : ""}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const goalFields = readGoalFields(cwd);
+  const goalText = [goalFields.goal, goalFields.metric, goalFields.direction].filter(Boolean).join(" | ");
+
+  let content;
+  if (fs.existsSync(paperFile)) {
+    // Merge: update only TODO/placeholder sections
+    const existing = fs.readFileSync(paperFile, "utf8");
+    content = mergePaperReadSections(existing, entry, goalText);
+    console.log(`merged into: ${path.relative(cwd, paperFile)}`);
+  } else {
+    content = renderPaperReadMarkdown(entry, goalText);
+    console.log(`written: ${path.relative(cwd, paperFile)}`);
+  }
+
+  fs.writeFileSync(paperFile, content);
+
+  // Log to THREAD
+  const thread = path.join(cwd, ".researchloop", "scratchpad", "THREAD.md");
+  ensureDir(path.dirname(thread));
+  fs.appendFileSync(
+    thread,
+    `- ${new Date().toISOString()} paper-read id="${paperId}" title="${(entry.title || "").slice(0, 80)}"\n`
+  );
+
+  console.log("---");
+  console.log(`title: ${entry.title}`);
+  console.log(`authors: ${entry.authors.join(", ")}`);
+}
+
+
 function cmdTeam() {
   const cwd = targetDir();
   const force = hasFlag("--force");
@@ -4354,6 +4547,7 @@ Usage:
   autoresearch run [--dir PATH] [--id ID] [--command CMD] [--metric NAME] [--regex PATTERN] [--timeout SECONDS] [--allow-unsafe]
   autoresearch baseline [--dir PATH] [--id ID] [--command CMD] [--metric NAME] [--regex PATTERN] [--timeout SECONDS] [--allow-unsafe]
   autoresearch scan-papers [--dir PATH] [--query TEXT] [--limit N] [--since YYYY-MM] [--cache-dir PATH] [--offline]
+autoresearch paper-read <paper-id> [--from arxiv|local] [--dir PATH] [--cache-dir PATH] [--offline]
   autoresearch compare [--dir PATH] [--metric NAME] [--direction lower|higher]
   autoresearch team [--dir PATH] [--workers N] [--goal TEXT] [--force]
   autoresearch dashboard [--dir PATH] [--host HOST] [--port PORT]
@@ -4423,6 +4617,8 @@ async function main() {
     }
   } else if (command === "scan-papers") {
     await cmdScanPapers();
+  } else if (command === "paper-read") {
+    await cmdPaperRead();
   } else if (command === "compare") {
     cmdCompare();
   } else if (command === "team") {

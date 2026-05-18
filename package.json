@@ -31,7 +31,7 @@
   "scripts": {
     "smoke": "node ./bin/researchloop.js --help",
     "smoke:e2e": "bash ./scripts/smoke-e2e.sh",
-    "test": "npm run smoke && npm run smoke:e2e && npm run test:setup && npm run test:compare && npm run test:run && npm run test:scan-papers && npm run test:goal && npm run test:idea && npm run test:team && npm run test:dashboard && npm run test:prompts && npm run test:focus-prompts && npm run test:site && npm run test:adapters && npm run test:artifact-contract",
+    "test": "npm run smoke && npm run smoke:e2e && npm run test:setup && npm run test:compare && npm run test:run && npm run test:scan-papers && npm run test:paper-read && npm run test:goal && npm run test:idea && npm run test:team && npm run test:dashboard && npm run test:prompts && npm run test:focus-prompts && npm run test:site && npm run test:adapters && npm run test:artifact-contract",
     "test:release": "npm test && npm run test:packed",
     "test:goal": "bash ./scripts/test-goal.sh",
     "test:idea": "bash ./scripts/test-idea.sh",
@@ -40,6 +40,7 @@
     "test:compare": "bash ./scripts/test-compare.sh",
     "test:run": "bash ./scripts/test-run.sh",
     "test:scan-papers": "bash ./scripts/test-scan-papers.sh",
+    "test:paper-read": "bash ./scripts/test-paper-read.sh",
     "test:team": "bash ./scripts/test-team.sh",
     "test:prompts": "bash ./scripts/test-prompts.sh",
     "test:focus-prompts": "bash ./scripts/test-focus-prompts.sh",
