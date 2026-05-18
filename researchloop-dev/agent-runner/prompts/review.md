@@ -19,9 +19,13 @@ You are an independent reviewer of a PR submitted by another coding agent agains
 - Cite line numbers for every complaint.
 - If a check passes, say so explicitly — silence reads as "didn't check."
 
+## How to deliver your verdict
+
+You have a writable env var `$REVIEW_OUT` pointing at an empty file (e.g. `state/review-86.md`). **Write your full verdict to that file** and then exit. The wrapper around you posts the file via `gh pr comment $PR_NUMBER -F $REVIEW_OUT` once you stop. Do NOT call `gh pr comment` yourself. Do NOT only echo the verdict to the chat — the chat is for thinking; the file is the deliverable.
+
 ## Required output format
 
-Post your review as a single GitHub PR comment with this structure verbatim. Do not omit sections. Do not add sections.
+Write to `$REVIEW_OUT` exactly this markdown structure. Do not omit sections. Do not add sections.
 
 ```markdown
 # Reviewer-agent verdict

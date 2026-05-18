@@ -87,7 +87,23 @@ section h2 button.on{background:#1f6feb;color:#fff;border-color:#1f6feb;}
 .filters button.on{background:#1f6feb;color:#fff;border-color:#1f6feb;}
 .issue,.pr{padding:10px 18px;border-bottom:1px solid #21262d;font-size:12px;}
 .issue .num,.pr .num{color:#8b949e;}
-.issue .ttl,.pr .ttl{color:#c9d1d9;margin-bottom:6px;}
+.issue .ttl,.pr .ttl{color:#c9d1d9;margin-bottom:6px;display:flex;align-items:baseline;gap:6px;}
+.issue .ttl .caret{cursor:pointer;color:#6e7681;font-size:10px;width:10px;flex-shrink:0;user-select:none;}
+.issue .ttl .caret:hover{color:#58a6ff;}
+.issue .ttl .title-text{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.issue .ttl .ext{color:#6e7681;text-decoration:none;font-size:11px;opacity:0;transition:opacity 0.1s;flex-shrink:0;}
+.issue:hover .ttl .ext{opacity:1;}
+.issue .ttl .ext:hover{color:#58a6ff;}
+.issue.open .ttl .title-text{white-space:normal;}
+.issue .body{display:none;margin:6px 0 8px 16px;padding:8px 10px;background:#0d1117;border-left:2px solid #30363d;border-radius:0 3px 3px 0;font-size:11px;color:#c9d1d9;line-height:1.5;max-height:340px;overflow-y:auto;}
+.issue.open .body{display:block;}
+.issue .body pre{background:#161b22;padding:6px 8px;border-radius:3px;overflow-x:auto;font-size:10px;margin:4px 0;}
+.issue .body code{background:#161b22;padding:0 4px;border-radius:2px;font-size:10px;}
+.issue .body pre code{background:transparent;padding:0;}
+.issue .body b{color:#58a6ff;display:block;margin-top:6px;}
+.issue .body a{color:#58a6ff;}
+.issue .body-loading,.issue .body-err{color:#6e7681;font-style:italic;padding:4px 0;}
+.issue .body-err{color:#ff7b72;}
 .issue.busy .ttl::before{content:"⏳ ";color:#d29922;}
 .issue.parked .ttl{color:#6e7681;}
 .issue .lbls,.pr .lbls{font-size:10px;color:#6e7681;margin-bottom:6px;}
@@ -113,6 +129,20 @@ section h2 button.on{background:#1f6feb;color:#fff;border-color:#1f6feb;}
 .pr button.merge:hover:not(:disabled){background:#0e6e0e;color:#fff;border-color:#0e6e0e;}
 .pr button.review{background:#1a1a3a;color:#79c0ff;border-color:#23234a;}
 .pr button.review:hover:not(:disabled){background:#0e2e6e;color:#fff;border-color:#0e2e6e;}
+.pr button.review.done{background:#161b22;color:#6e7681;border-color:#21262d;}
+.pr button.review.done:hover:not(:disabled){background:#21262d;color:#8b949e;border-color:#30363d;}
+.pr button.merge.interactive{background:#1a3a2a;color:#56d364;border-color:#234a32;}
+.pr button.merge.interactive:hover:not(:disabled){background:#0e6e3e;color:#fff;border-color:#0e6e3e;}
+.pr a.reviewed{display:inline-block;margin-left:6px;padding:0 5px;border-radius:8px;background:#21262d;color:#7d8590;font-size:10px;text-decoration:none;border:1px solid #30363d;vertical-align:1px;}
+.pr a.reviewed:hover{background:#2d333b;color:#c9d1d9;border-color:#58a6ff;}
+aside h2 .hdr-btn{float:right;background:#0d1117;color:#8b949e;border:1px solid #30363d;border-radius:4px;padding:2px 8px;font-size:11px;font-family:inherit;cursor:pointer;margin-left:6px;font-weight:normal;}
+aside h2 .hdr-btn:hover{color:#c9d1d9;border-color:#58a6ff;}
+#pr-bar{padding:6px 12px;background:#0d1117;border-bottom:1px solid #21262d;font-size:11px;color:#8b949e;display:none;}
+#pr-bar.show{display:block;}
+#pr-bar a{color:#58a6ff;text-decoration:none;}
+#pr-bar a:hover{text-decoration:underline;}
+#pr-bar .sep{color:#30363d;margin:0 8px;}
+#pr-bar .verdict-link{color:#56d364;}
 #toast{position:fixed;bottom:20px;right:20px;background:#161b22;color:#c9d1d9;padding:10px 16px;border-radius:6px;border:1px solid #30363d;font-size:12px;display:none;z-index:100;}
 #toast.err{border-color:#f85149;color:#ff7b72;}
 #toast.ok{border-color:#3fb950;color:#56d364;}
@@ -128,22 +158,27 @@ section h2 button.on{background:#1f6feb;color:#fff;border-color:#1f6feb;}
 </header>
 <main>
   <aside>
-    <h2>Live terminals</h2>
-    <div id="ptys"><div class="empty">no terminals · click + new shell</div></div>
-    <h2>Open PRs <span class="count" id="prCount"></span></h2>
-    <div id="prs"><div class="empty">loading…</div></div>
-    <h2>Issues <span class="count" id="issueCount"></span></h2>
+    <h2>Issues <span class="count" id="issueCount"></span>
+      <button class="hdr-btn" onclick="proposeIssue()" title="Open an interactive codex --yolo session that drafts a new agent-feature issue body (Researcher line, Demo, Acceptance, Anti-features, Files). When codex exits, the shell stays open with a ready-to-run gh issue create command.">📝 propose</button>
+    </h2>
     <div class="filters" id="filters">
-      <button data-f="claim-next" class="on" title="Issues open for an agent to grab. The orchestrator picks the lowest-numbered one by default.">claim-next</button>
-      <button data-f="all" title="All open issues, including validated, in-progress, and parked ones.">all</button>
+      <button data-f="all" class="on" title="All open issues, including validated, in-progress, and parked ones.">all</button>
+      <button data-f="claim-next" title="Issues open for an agent to grab. The orchestrator picks the lowest-numbered one by default.">claim-next</button>
       <button data-f="good first issue" title="Triaged as approachable for a new contributor or new agent.">good first</button>
       <button data-f="agent-friendly" title="Self-contained scope that fits the agent contract (single file, demo, anti-features).">agent</button>
       <button data-f="needs-validation" title="Speculative — waiting on a real user to confirm before opening for agents.">parked</button>
     </div>
     <div id="issues"><div class="empty">loading…</div></div>
+    <h2>Open PRs <span class="count" id="prCount"></span></h2>
+    <div id="prs"><div class="empty">loading…</div></div>
+    <h2>Live terminals</h2>
+    <div id="ptys"><div class="empty">no terminals · click + new shell</div></div>
     <h2>Active worktrees</h2>
     <div id="worktrees"><div class="empty">none</div></div>
-    <h2>State files</h2>
+    <h2>State files
+      <button class="hdr-btn" onclick="cleanupState(true)" title="Dry-run: list state files older than 7 days that the cleanup would remove. Nothing is deleted.">🧹 audit</button>
+      <button class="hdr-btn" onclick="cleanupState(false)" title="Delete state files older than 7 days (implementer/orchestrator logs, prompts, diffs, drafts). Worktrees and the .gitignore are never touched.">🧹 prune</button>
+    </h2>
     <div id="files"><div class="empty">scanning…</div></div>
   </aside>
   <div id="toast"></div>
@@ -157,7 +192,8 @@ section h2 button.on{background:#1f6feb;color:#fff;border-color:#1f6feb;}
         <button id="killBtn" title="Kill the current PTY session">close ✕</button>
       </span>
     </h2>
-    <div id="term-wrap"><div id="hint">🖥️ <b>codex --yolo</b> next to an issue: preps the worktree and launches codex (gpt-5.4-mini) interactively with the issue's prompt already loaded. You can type at it like a real terminal.<br>💻 <b>+ new shell</b> in header: plain interactive shell in the repo root.<br>📁 Click any state file on the left to tail an agent's log.</div></div>
+    <div id="pr-bar"></div>
+    <div id="term-wrap"><div id="hint">🖥️ <b>codex --yolo</b> next to an issue: preps the worktree and launches codex (gpt-5.4-mini) interactively with the issue's prompt already loaded. You can type at it like a real terminal.<br>🔍 <b>codex --yolo review</b> next to a PR: same interactive mode, with the PR diff + linked issue body pre-loaded as the review prompt.<br>📝 <b>propose</b> in the Issues header: drafts a new agent-feature issue body interactively with codex.<br>💻 <b>+ new shell</b> in header: plain interactive shell in the repo root.<br>📁 Click any state file on the left to tail an agent's log.<br>🧹 <b>State files</b> header: <i>audit</i> shows what's old, <i>prune</i> deletes it.</div></div>
   </section>
 </main>
 <script>
@@ -244,8 +280,9 @@ async function listWorktrees() {
   } catch(e) { console.error(e); }
 }
 
-let issueFilter = 'claim-next';
+let issueFilter = 'all';
 let allIssues = [];
+const _issueBodyCache = new Map();   // num -> body markdown
 
 async function listIssues() {
   try {
@@ -271,9 +308,15 @@ function renderIssues() {
     const interesting = it.labels.filter(l => ['claim-next','in-progress','needs-validation','keystone','good first issue','agent-friendly'].includes(l));
     const labelChips = interesting.map(l => `<span class="lbl ${l.replace(/[^a-z0-9-]/g,'-')}">${l}</span>`).join('');
     return `
-      <div class="issue ${it.in_progress ? 'busy' : ''} ${it.parked ? 'parked' : ''}">
-        <div class="ttl"><span class="num">#${it.number}</span> ${escapeHtml(it.title)}</div>
+      <div class="issue ${it.in_progress ? 'busy' : ''} ${it.parked ? 'parked' : ''}" data-num="${it.number}">
+        <div class="ttl">
+          <span class="caret" data-action="toggle" title="Show issue body (Researcher / Demo / Acceptance / Anti-features / Files)">▸</span>
+          <span class="num">#${it.number}</span>
+          <span class="title-text" title="${escapeHtml(it.title)}">${escapeHtml(it.title)}</span>
+          <a class="ext" href="${escapeHtml(it.url)}" target="_blank" title="Open issue on GitHub">↗</a>
+        </div>
         ${labelChips ? `<div class="lbls">${labelChips}</div>` : ''}
+        <div class="body" id="ibody-${it.number}"></div>
         <div class="row">
           <button onclick="launchIssueShell(${it.number})" title="Prep worktree + run codex --yolo (gpt-5.4-mini) interactively with this issue's prompt">🖥️ codex --yolo</button>
           <button onclick="launchIssue(${it.number}, 'watch')" ${it.in_progress ? 'disabled' : ''} title="Spawn orchestrator (headless codex exec); auto-switch terminal to log">▶ watch</button>
@@ -282,6 +325,52 @@ function renderIssues() {
       </div>
     `;
   }).join('');
+}
+
+// Event delegation for issue caret clicks — toggles the body panel.
+document.getElementById('issues').addEventListener('click', async (e) => {
+  const c = e.target.closest('.caret');
+  if (!c) return;
+  const row = c.closest('.issue');
+  if (!row) return;
+  const num = row.dataset.num;
+  const body = document.getElementById('ibody-' + num);
+  const open = row.classList.toggle('open');
+  c.textContent = open ? '▾' : '▸';
+  if (!open) { body.innerHTML = ''; return; }
+  if (_issueBodyCache.has(num)) {
+    body.innerHTML = renderIssueBody(_issueBodyCache.get(num));
+    return;
+  }
+  body.innerHTML = '<div class="body-loading">loading…</div>';
+  try {
+    const r = await fetch('/api/issue?num=' + num);
+    const d = await r.json();
+    if (d.error) { body.innerHTML = `<div class="body-err">${escapeHtml(d.error)}</div>`; return; }
+    _issueBodyCache.set(num, d.body || '_(empty body)_');
+    body.innerHTML = renderIssueBody(d.body || '_(empty body)_');
+  } catch(err) {
+    body.innerHTML = `<div class="body-err">fetch failed: ${escapeHtml(String(err))}</div>`;
+  }
+});
+
+// Tiny markdown — only what we need for issue bodies: headings, code blocks,
+// inline code, links, line breaks. Anything else falls through as plain text.
+function renderIssueBody(md) {
+  let html = escapeHtml(md);
+  // ```fenced code```
+  html = html.replace(/```([a-z]*)\n([\s\S]*?)```/g, (_, lang, code) => `<pre><code>${code}</code></pre>`);
+  // ### / ## / # headings
+  html = html.replace(/^###\s+(.+)$/gm, '<b>$1</b>');
+  html = html.replace(/^##\s+(.+)$/gm, '<b>$1</b>');
+  html = html.replace(/^#\s+(.+)$/gm, '<b>$1</b>');
+  // [text](url)
+  html = html.replace(/\[([^\]]+)\]\(([^\)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+  // `inline code`
+  html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  // remaining newlines
+  html = html.replace(/\n/g, '<br>');
+  return html;
 }
 
 async function listPRs() {
@@ -302,13 +391,22 @@ async function listPRs() {
       const draftBadge = pr.isDraft ? '<span class="b draft">draft</span>' : '';
       const mergeable = pr.mergeable === 'MERGEABLE';
       const mergeDisabled = !mergeable || pr.isDraft || decision === 'CHANGES_REQUESTED';
+      const reviewed = !!pr.reviewed_by_codex;
+      const reviewUrl = pr.review_url || pr.url + '#issuecomment';
+      const reviewBadge = reviewed
+        ? `<a href="${escapeHtml(reviewUrl)}" target="_blank" class="b reviewed" title="codex already posted a verdict on this PR — click to open">codex ✓</a>`
+        : '';
+      const reviewTitle = reviewed
+        ? `codex already reviewed this PR — re-run only if the diff changed materially. Click "codex ✓" badge to read the verdict.`
+        : `Run codex --yolo (gpt-5.4-mini) interactively over the PR diff + issue body. Codex writes its verdict to a file; after it exits, the wrapper auto-posts to the PR and captures the comment URL.`;
       return `
         <div class="pr">
-          <div class="ttl"><span class="num">#${pr.number}</span> ${escapeHtml(pr.title)}</div>
+          <div class="ttl"><span class="num">#${pr.number}</span> ${escapeHtml(pr.title)}${reviewBadge}</div>
           <div class="badges">${draftBadge}${decBadge}${ciBadge}</div>
           <div class="row">
-            <button class="review" onclick="reviewPR(${pr.number})" title="Spawn reviewer agent (codex exec, gpt-5.4-mini, workspace-write sandbox). Reads the diff + issue body, posts a structured verdict comment.">🔍 codex review</button>
-            <button class="merge" onclick="mergePR(${pr.number})" ${mergeDisabled ? 'disabled' : ''} title="${mergeDisabled ? 'PR is draft / not mergeable / changes requested' : 'gh pr merge --squash --delete-branch'}">✓ squash-merge</button>
+            <button class="review${reviewed ? ' done' : ''}" onclick="reviewPR(${pr.number})" title="${escapeHtml(reviewTitle)}">${reviewed ? '🔁 re-review' : '🔍 codex --yolo review'}</button>
+            <button class="merge interactive" onclick="mergeInteractive(${pr.number})" title="Open an interactive codex --yolo session that merges PR #${pr.number} into main. If the squash-merge fails on conflicts, codex rebases onto main, resolves conflicts (asking you if uncertain), pushes, and retries. Push notification fires when it needs you.">🟢 codex --yolo merge</button>
+            <button class="merge" onclick="mergePR(${pr.number})" ${mergeDisabled ? 'disabled' : ''} title="${mergeDisabled ? 'PR is draft / not mergeable / changes requested' : 'gh pr merge --squash --delete-branch — no agent, just the gh call'}">✓ quick squash-merge</button>
             <button onclick="viewPRDiff(${pr.number})" title="Show the diff in the terminal pane">view diff</button>
           </div>
         </div>
@@ -317,7 +415,11 @@ async function listPRs() {
   } catch(e) { console.error(e); }
 }
 
+// Per-session PR metadata (set when the PTY is one of pr-review/merge-pr).
+const sessionPRInfo = new Map();  // sid -> {pr, url, review_url_file, kind}
+
 async function reviewPR(num) {
+  requestNotifPermission();
   showToast(`preparing review for PR #${num}…`, '');
   try {
     const r = await fetch('/api/pty/new', {
@@ -326,14 +428,33 @@ async function reviewPR(num) {
     });
     const data = await r.json();
     if (data.error) { showToast(`error: ${data.error}`, 'err'); return; }
-    showToast(`codex review of PR #${num} (${data.model || 'default'}) running live`, 'ok');
+    sessionPRInfo.set(data.sid, {pr: num, url: data.pr_url, review_url_file: data.review_url_file, kind: 'review'});
+    showToast(`PR #${num} → codex --yolo (${data.model || 'gpt-5.4-mini'}) running. Verdict will auto-post on exit.`, 'ok');
     await listPtys();
     selectPty(data.sid, data.label || `review PR #${num}`);
   } catch(e) { showToast(`review failed: ${e}`, 'err'); }
 }
 
+async function mergeInteractive(num) {
+  requestNotifPermission();
+  if (!confirm(`Launch codex --yolo to merge PR #${num} into main? It will try gh pr merge first; on conflicts it rebases, asks you on non-mechanical conflicts, and retries.`)) return;
+  showToast(`spawning codex --yolo merger for PR #${num}…`, '');
+  try {
+    const r = await fetch('/api/pty/new', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({kind:'merge-pr', pr: num, rows: term.rows, cols: term.cols})
+    });
+    const data = await r.json();
+    if (data.error) { showToast(`error: ${data.error}`, 'err'); return; }
+    sessionPRInfo.set(data.sid, {pr: num, url: data.pr_url, kind: 'merge'});
+    showToast(`PR #${num} → codex --yolo merger running. Notifications enabled for prompts.`, 'ok');
+    await listPtys();
+    selectPty(data.sid, data.label || `merge PR #${num}`);
+  } catch(e) { showToast(`merge launch failed: ${e}`, 'err'); }
+}
+
 async function mergePR(num) {
-  if (!confirm(`Squash-merge PR #${num} into main and delete the branch? This is final.`)) return;
+  if (!confirm(`Squash-merge PR #${num} into main and delete the branch? No agent — just gh pr merge. This is final.`)) return;
   showToast(`merging PR #${num}…`, '');
   try {
     const r = await fetch('/api/merge', {
@@ -345,6 +466,51 @@ async function mergePR(num) {
     showToast(`✓ merged #${num} (squash)`, 'ok');
     listPRs(); listIssues();
   } catch(e) { showToast(`merge failed: ${e}`, 'err'); }
+}
+
+// ---------- browser push notifications ----------
+let _notifAsked = false;
+function requestNotifPermission() {
+  if (_notifAsked || !('Notification' in window)) return;
+  _notifAsked = true;
+  if (Notification.permission === 'default') {
+    Notification.requestPermission().catch(()=>{});
+  }
+}
+function fireNotif(title, body, onclick) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  try {
+    const n = new Notification(title, {body, tag: title, renotify: false});
+    if (onclick) n.onclick = () => { window.focus(); onclick(); n.close(); };
+    setTimeout(() => n.close(), 12000);
+  } catch(e) { console.warn('notif failed', e); }
+}
+
+// ---------- PR bar (clickable header above terminal) ----------
+function renderPRBar(sid) {
+  const bar = document.getElementById('pr-bar');
+  const info = sessionPRInfo.get(sid);
+  if (!info || !info.pr) { bar.className = ''; bar.innerHTML = ''; return; }
+  const kindLabel = info.kind === 'review' ? 'reviewing' : (info.kind === 'merge' ? 'merging' : '');
+  const prLink = info.url
+    ? `<a href="${escapeHtml(info.url)}" target="_blank">PR #${info.pr} ↗</a>`
+    : `PR #${info.pr}`;
+  let verdictLink = '';
+  if (info.review_url_file) {
+    // Try to read the saved verdict URL — written only after codex exits + we posted.
+    fetch('/api/file?name=' + encodeURIComponent('review-' + info.pr + '.url'))
+      .then(r => r.ok ? r.text() : '')
+      .then(txt => {
+        const url = (txt || '').trim();
+        if (url && /^https?:/.test(url)) {
+          const verdictEl = document.getElementById('pr-bar-verdict');
+          if (verdictEl) verdictEl.innerHTML = `<span class="sep">·</span><a class="verdict-link" href="${escapeHtml(url)}" target="_blank">verdict ↗</a>`;
+        }
+      }).catch(()=>{});
+    verdictLink = `<span id="pr-bar-verdict"></span>`;
+  }
+  bar.className = 'show';
+  bar.innerHTML = `<b>${kindLabel}</b> ${prLink}<span class="sep">·</span>codex --yolo${verdictLink}`;
 }
 
 async function viewPRDiff(num) {
@@ -412,6 +578,7 @@ function selectFile(name) {
   document.getElementById('title').textContent = '📄 ' + name;
   document.querySelectorAll('aside .file').forEach(el => el.classList.toggle('active', el.dataset.name === name));
   document.querySelectorAll('aside .pty').forEach(el => el.classList.remove('active'));
+  document.getElementById('pr-bar').className = '';
   attachTerm();
   term.reset();
   pollOnce();
@@ -431,6 +598,7 @@ function selectPty(sid, label) {
   document.getElementById('title').textContent = '💻 ' + (label || sid);
   document.querySelectorAll('aside .file').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('aside .pty').forEach(el => el.classList.toggle('active', el.dataset.sid === sid));
+  renderPRBar(sid);
   attachTerm();
   term.reset();
   // Defer the resize until after attach so xterm rows/cols are populated.
@@ -539,12 +707,30 @@ document.getElementById('filters').addEventListener('click', e => {
   renderIssues();
 });
 
+const _prevPtyAlive = new Map();  // sid -> bool, used to detect alive→dead transitions
 async function listPtys() {
   try {
     const r = await fetch('/api/pty/list');
     const data = await r.json();
     const el = document.getElementById('ptys');
     const sessions = data.sessions || [];
+    // Detect alive→dead transitions and fire notifications, then refresh PRs
+    // so the reviewed badge appears if the session just posted a verdict.
+    let didTransition = false;
+    for (const s of sessions) {
+      const prev = _prevPtyAlive.get(s.sid);
+      if (prev === true && !s.alive) {
+        didTransition = true;
+        const info = sessionPRInfo.get(s.sid);
+        const title = info && info.pr
+          ? `codex ${info.kind} finished · PR #${info.pr}`
+          : `codex session finished`;
+        const body = s.label || s.sid;
+        fireNotif(title, body, () => selectPty(s.sid, s.label));
+      }
+      _prevPtyAlive.set(s.sid, s.alive);
+    }
+    if (didTransition) { listPRs(); listIssues(); }
     if (!sessions.length) { el.innerHTML = '<div class="empty">no terminals · click + new shell</div>'; return; }
     el.innerHTML = sessions.map(s => {
       const cwd = s.cwd.replace(/^.*?\.agent-worktrees\//, '.agent-worktrees/').replace(/^.*?\/autoresearch-ai\/(?:\.claude\/worktrees\/[^/]+\/)?/, '');
@@ -600,6 +786,39 @@ async function launchIssueShell(num) {
     selectPty(data.sid, data.label || `#${num}`);
     listIssues(); listWorktrees();
   } catch(e) { showToast('launch failed: ' + e, 'err'); }
+}
+
+async function proposeIssue() {
+  const hint = (prompt('rough slug for the new issue (lowercase, dashes — codex will write the real title). Leave blank for a timestamped draft.', '') || '').trim();
+  if (hint === null) return;
+  showToast(`spawning codex --yolo to draft a new issue…`, '');
+  try {
+    const r = await fetch('/api/pty/new', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({kind:'propose-issue', slug: hint, rows: term.rows, cols: term.cols})});
+    const data = await r.json();
+    if (data.error) { showToast('error: ' + data.error, 'err'); return; }
+    showToast(`propose · ${data.slug} → codex --yolo running. Draft: ${data.draft_file}`, 'ok');
+    await listPtys();
+    selectPty(data.sid, data.label || `propose · ${data.slug}`);
+    listFiles();
+  } catch(e) { showToast('propose failed: ' + e, 'err'); }
+}
+
+async function cleanupState(dryRun) {
+  const days = parseInt(prompt(dryRun ? 'audit state files older than how many days?' : 'PRUNE state files older than how many days? (deletes implementer/orchestrator logs, prompts, diffs, drafts)', '7'), 10);
+  if (!Number.isFinite(days) || days < 0) return;
+  if (!dryRun && !confirm(`Delete state files older than ${days} day(s)? Worktrees and .gitignore are untouched.`)) return;
+  try {
+    const r = await fetch('/api/state/cleanup', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({stale_days: days, dry_run: !!dryRun})});
+    const d = await r.json();
+    if (d.error) { showToast('error: ' + d.error, 'err'); return; }
+    const mb = (d.freed_bytes / 1048576).toFixed(2);
+    const verb = d.dry_run ? 'would free' : 'freed';
+    showToast(`${verb} ${mb} MB · ${d.removed.length} file(s) ${d.dry_run ? 'flagged' : 'removed'} · ${d.kept_count} kept`, 'ok');
+    if (d.removed.length) console.table(d.removed);
+    listFiles();
+  } catch(e) { showToast('cleanup failed: ' + e, 'err'); }
 }
 
 document.getElementById('newShellBtn').onclick = () => newShell(null, 'shell · repo root');
@@ -659,6 +878,9 @@ document.addEventListener('mouseout', (e) => {
 });
 window.addEventListener('scroll', hideTip, true);
 window.addEventListener('blur', hideTip);
+
+// Browsers gate Notifications behind a user gesture — ask on the first click.
+window.addEventListener('click', () => requestNotifPermission(), {once: true, capture: true});
 
 listFiles(); listWorktrees(); listIssues(); listPRs(); listPtys();
 setInterval(listFiles, 5000);
@@ -1029,7 +1251,7 @@ def list_prs():
     try:
         out = subprocess.run(
             ["gh", "pr", "list", "--state", "open", "--limit", "60",
-             "--json", "number,title,isDraft,headRefName,reviewDecision,mergeable,labels,statusCheckRollup"],
+             "--json", "number,title,isDraft,headRefName,url,reviewDecision,mergeable,labels,statusCheckRollup,comments"],
             capture_output=True, text=True, timeout=20, check=True,
         ).stdout
         prs = json.loads(out)
@@ -1047,6 +1269,20 @@ def list_prs():
             else:
                 pr["ci"] = "pending"
             del pr["statusCheckRollup"]
+            # Did codex already post a verdict? Look for our signature header.
+            comments = pr.get("comments") or []
+            pr["reviewed_by_codex"] = any(
+                (c.get("body") or "").startswith("# Reviewer-agent verdict")
+                for c in comments
+            )
+            # If we have a locally-saved comment URL, surface it.
+            url_file = STATE_DIR / f"review-{pr['number']}.url"
+            try:
+                if url_file.exists():
+                    pr["review_url"] = url_file.read_text().strip() or None
+            except Exception:
+                pass
+            del pr["comments"]
         _PRS_CACHE.update({"ts": time.time(), "data": prs})
         return prs
     except Exception as e:
@@ -1124,6 +1360,70 @@ def prepare_pr_review(pr_num: int):
         "issue": int(issue_num) if issue_num else None,
         "prompt_file": str(prompt_file),
         "diff_size": len(diff),
+    }
+
+
+def prepare_merge(pr_num: int):
+    """Render the merger prompt for a PR. Returns the prompt file path and
+    the PR's head branch name so the wrapper can checkout if needed."""
+    if not (1 <= pr_num <= 9999):
+        return {"error": "bad pr number"}
+    try:
+        info = subprocess.run(
+            ["gh", "pr", "view", str(pr_num), "--json",
+             "headRefName,url,mergeable,isDraft,reviewDecision"],
+            capture_output=True, text=True, timeout=15, check=True,
+        ).stdout
+        meta = json.loads(info)
+    except subprocess.CalledProcessError as e:
+        return {"error": f"gh pr view #{pr_num}: {(e.stderr or '').strip() or e}"}
+    branch = meta.get("headRefName") or ""
+    template_path = PROMPTS_DIR / "merge.md"
+    if not template_path.exists():
+        return {"error": "prompts/merge.md missing"}
+    tpl = template_path.read_text()
+    prompt = (tpl.replace("$PR_NUMBER", str(pr_num))
+                 .replace("$PR_BRANCH", branch)
+                 .replace("$REPO_ROOT", str(REPO_ROOT)))
+    prompt_file = STATE_DIR / f"merge-prompt-{pr_num}.md"
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    prompt_file.write_text(prompt)
+    return {
+        "pr": pr_num,
+        "branch": branch,
+        "url": meta.get("url"),
+        "prompt_file": str(prompt_file),
+    }
+
+
+def prepare_proposal(slug_hint: str = ""):
+    """Materialise the proposer prompt + an empty draft file.
+
+    Unlike issue/PR prep this does not touch GitHub — it just renders the
+    proposer template into state/ and points the wrapper at a fresh draft
+    file the agent will fill in. Slug is for filenames only; the issue
+    title comes out of the codex session.
+    """
+    slug = re.sub(r"[^a-z0-9]+", "-", (slug_hint or "").lower()).strip("-")[:32]
+    if not slug:
+        slug = "draft-" + time.strftime("%Y%m%d-%H%M%S")
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    draft_file  = STATE_DIR / f"proposal-{slug}.md"
+    prompt_file = STATE_DIR / f"proposal-prompt-{slug}.md"
+    template_path = PROMPTS_DIR / "propose.md"
+    if not template_path.exists():
+        return {"error": "prompts/propose.md missing"}
+    tpl = template_path.read_text()
+    prompt = (tpl.replace("$DRAFT_FILE", str(draft_file))
+                 .replace("$SLUG", slug)
+                 .replace("$REPO_ROOT", str(REPO_ROOT)))
+    prompt_file.write_text(prompt)
+    if not draft_file.exists():
+        draft_file.write_text("")  # empty placeholder so $DRAFT_FILE always exists
+    return {
+        "slug": slug,
+        "prompt_file": str(prompt_file),
+        "draft_file": str(draft_file),
     }
 
 
@@ -1290,6 +1590,34 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._send_json({"files": list_state_files()})
         if u.path == "/api/worktrees":
             return self._send_json({"worktrees": list_worktrees(), "running": list_running_orchestrators()})
+        if u.path == "/api/issue":
+            qs = dict(p.split("=", 1) for p in (u.query.split("&") if u.query else []) if "=" in p)
+            try:
+                num = int(unquote(qs.get("num", "")))
+            except ValueError:
+                return self._send_json({"error": "bad num"}, 400)
+            if not (1 <= num <= 9999):
+                return self._send_json({"error": "bad num"}, 400)
+            # Skip --jq here — it forces gh to take the GraphQL path on some
+            # commands and that's been hanging / EOF-ing intermittently. Plain
+            # --json comes back over REST and is reliable.
+            try:
+                r = subprocess.run(
+                    ["gh", "issue", "view", str(num), "--json", "body,title,labels,url"],
+                    capture_output=True, text=True, timeout=15, check=True,
+                )
+                raw = json.loads(r.stdout)
+                return self._send_json({
+                    "body":   raw.get("body", ""),
+                    "title":  raw.get("title", ""),
+                    "url":    raw.get("url", ""),
+                    "labels": [l.get("name") for l in raw.get("labels", []) if isinstance(l, dict)],
+                })
+            except subprocess.CalledProcessError as e:
+                return self._send_json({"error": (e.stderr or "").strip() or str(e)}, 500)
+            except json.JSONDecodeError as e:
+                return self._send_json({"error": f"bad gh JSON: {e}"}, 500)
+
         if u.path == "/api/issues":
             return self._send_json({"issues": list_issues()})
         if u.path == "/api/prs":
@@ -1426,54 +1754,211 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
                 model = payload.get("model") or CODEX_MODEL
                 bin_  = payload.get("bin")   or CODEX_BIN
-                # `--sandbox workspace-write` is sufficient — the reviewer
-                # doesn't run commands, just generates text on stdout.
-                # We tee stdout into review-PR.md, and if the run produced
-                # any output, post it to the PR as a comment.
+                yolo  = payload.get("yolo_flag") or CODEX_YOLO
+
+                pr_url_file = STATE_DIR / f"review-{pr}.url"
+                pr_url_file.unlink(missing_ok=True)
+                env_extra = {
+                    "PR_NUMBER": str(pr),
+                    "REVIEW_OUT": str(review_out),
+                    "REVIEW_URL_FILE": str(pr_url_file),
+                    "PROMPT_FILE": prompt_file,
+                    "PS1": "\\[\\e[35m\\]review·PR#" + str(pr) + "\\[\\e[0m\\]:\\W$ ",
+                }
+
+                # Interactive codex --yolo. The reviewer prompt instructs codex
+                # to WRITE its verdict to $REVIEW_OUT and exit (not echo to chat),
+                # so we get a clean markdown file we can auto-post after exit.
+                # `--save-to` is captured by gh and we write the comment URL into
+                # $REVIEW_URL_FILE so the dashboard can surface it above the term.
                 wrapper = (
-                    'echo "──── codex review of PR #{pr} (model {model}) ────"; '
-                    'echo "      prompt: {prompt}"; '
-                    'echo "      out:    {out}"; '
+                    'touch $REVIEW_OUT; '
+                    'echo "──── starting {bin} ({yolo_short}) review of PR #{pr} ────"; '
+                    'echo "      model:  {model}"; '
+                    'echo "      prompt: $PROMPT_FILE"; '
+                    'echo "      out:    $REVIEW_OUT  (codex writes verdict here)"; '
                     'echo "────"; '
-                    '{bin} exec --sandbox workspace-write --skip-git-repo-check '
-                        '-m {model_q} -- "$(cat {prompt_q})" '
-                        '| tee {out_q}; '
-                    'ec=${{PIPESTATUS[0]}}; '
+                    '{bin} {yolo} -m {model_q} -- "$(cat {prompt_q})"; '
+                    'ec=$?; '
                     'echo; '
-                    'if [ "$ec" = "0" ] && [ -s {out_q} ]; then '
-                        'echo "──── posting verdict comment to PR #{pr} ────"; '
-                        'gh pr comment {pr} --body-file {out_q} && echo "✓ posted"; '
+                    'echo "──── {bin} exited (code $ec) ────"; '
+                    'if [ -s "$REVIEW_OUT" ]; then '
+                        'echo "  $REVIEW_OUT has $(wc -l < $REVIEW_OUT) lines — posting to PR #{pr}…"; '
+                        'url=$(gh pr comment {pr} -F $REVIEW_OUT 2>&1); '
+                        'echo "  $url"; '
+                        'echo "$url" | grep -Eo \'https://github.com/[^ ]+\' | head -1 > $REVIEW_URL_FILE; '
+                        'echo "  comment url saved to $REVIEW_URL_FILE"; '
                     'else '
-                        'echo "──── codex exited $ec — NOT auto-posting ({out} is empty or codex failed) ────"; '
+                        'echo "  $REVIEW_OUT is empty — codex did not produce a verdict file."; '
+                        'echo "  to post manually: gh pr comment {pr} -F $REVIEW_OUT (after writing it)"; '
                     'fi; '
                     'echo; '
-                    'echo "(session staying open — Ctrl-D to exit)"; '
                     'exec {shell} -i'
                 ).format(
                     pr=pr,
                     model=model,
                     model_q=shlex.quote(model),
                     bin=shlex.quote(bin_),
-                    prompt=prompt_file,
+                    yolo=yolo,
+                    yolo_short="yolo" if ("bypass" in yolo or "yolo" in yolo) else yolo,
                     prompt_q=shlex.quote(prompt_file),
-                    out=str(review_out),
-                    out_q=shlex.quote(str(review_out)),
                     shell=shlex.quote(USER_SHELL),
                 )
                 argv = ["bash", "-c", wrapper]
                 sess = spawn_pty(argv, cwd=str(REPO_ROOT),
-                                 env_extra={"PR_NUMBER": str(pr), "REVIEW_OUT": str(review_out)},
+                                 env_extra=env_extra,
                                  label=f"codex review · PR #{pr}",
+                                 rows=rows, cols=cols)
+                # Best-effort fetch PR URL so the UI can render a clickable link.
+                pr_url = None
+                try:
+                    pr_url = subprocess.run(
+                        ["gh", "pr", "view", str(pr), "--json", "url", "--jq", ".url"],
+                        capture_output=True, text=True, timeout=10, check=True,
+                    ).stdout.strip() or None
+                except Exception:
+                    pass
+                return self._send_json({
+                    "sid": sess["sid"],
+                    "label": sess["label"],
+                    "cwd": sess["cwd"],
+                    "pr": pr,
+                    "pr_url": pr_url,
+                    "issue": prep.get("issue"),
+                    "model": model,
+                    "prompt_file": prompt_file,
+                    "review_out": str(review_out),
+                    "review_url_file": str(pr_url_file),
+                })
+
+            if kind == "merge-pr":
+                try:
+                    pr = int(payload.get("pr"))
+                except (TypeError, ValueError):
+                    return self._send_json({"error": "pr must be int"}, 400)
+                prep = prepare_merge(pr)
+                if prep.get("error"):
+                    return self._send_json(prep, 400)
+                prompt_file = prep["prompt_file"]
+                branch = prep["branch"]
+                pr_url = prep.get("url")
+
+                model = payload.get("model") or CODEX_MODEL
+                bin_  = payload.get("bin")   or CODEX_BIN
+                yolo  = payload.get("yolo_flag") or CODEX_YOLO
+
+                env_extra = {
+                    "PR_NUMBER": str(pr),
+                    "PR_BRANCH": branch,
+                    "PROMPT_FILE": prompt_file,
+                    "PS1": "\\[\\e[31m\\]merge·PR#" + str(pr) + "\\[\\e[0m\\]:\\W$ ",
+                }
+                wrapper = (
+                    'echo "──── starting {bin} ({yolo_short}) merge of PR #{pr} ────"; '
+                    'echo "      model:  {model}"; '
+                    'echo "      branch: $PR_BRANCH"; '
+                    'echo "      prompt: $PROMPT_FILE"; '
+                    'echo "────"; '
+                    '{bin} {yolo} -m {model_q} -- "$(cat {prompt_q})"; '
+                    'ec=$?; '
+                    'echo; '
+                    'echo "──── {bin} exited (code $ec) — dropping to shell ────"; '
+                    'echo "  PR state: $(gh pr view {pr} --json state,mergedAt --jq \'.state + (if .mergedAt then \" (merged \" + .mergedAt + \")\" else \"\" end)\' 2>/dev/null)"; '
+                    'exec {shell} -i'
+                ).format(
+                    pr=pr,
+                    model=model,
+                    model_q=shlex.quote(model),
+                    bin=shlex.quote(bin_),
+                    yolo=yolo,
+                    yolo_short="yolo" if ("bypass" in yolo or "yolo" in yolo) else yolo,
+                    prompt_q=shlex.quote(prompt_file),
+                    shell=shlex.quote(USER_SHELL),
+                )
+                argv = ["bash", "-c", wrapper]
+                sess = spawn_pty(argv, cwd=str(REPO_ROOT),
+                                 env_extra=env_extra,
+                                 label=f"codex merge · PR #{pr}",
                                  rows=rows, cols=cols)
                 return self._send_json({
                     "sid": sess["sid"],
                     "label": sess["label"],
                     "cwd": sess["cwd"],
                     "pr": pr,
-                    "issue": prep.get("issue"),
+                    "pr_url": pr_url,
+                    "branch": branch,
                     "model": model,
                     "prompt_file": prompt_file,
-                    "review_out": str(review_out),
+                })
+
+            if kind == "propose-issue":
+                slug_hint = (payload.get("slug") or "").strip()
+                prep = prepare_proposal(slug_hint)
+                if prep.get("error"):
+                    return self._send_json(prep, 400)
+                slug = prep["slug"]
+                prompt_file = prep["prompt_file"]
+                draft_file  = prep["draft_file"]
+
+                model = payload.get("model") or CODEX_MODEL
+                bin_  = payload.get("bin")   or CODEX_BIN
+                yolo  = payload.get("yolo_flag") or CODEX_YOLO
+
+                env_extra = {
+                    "DRAFT_FILE": draft_file,
+                    "PROPOSAL_SLUG": slug,
+                    "PROMPT_FILE": prompt_file,
+                    "PS1": "\\[\\e[32m\\]propose·" + slug + "\\[\\e[0m\\]:\\W$ ",
+                }
+
+                # Same shape as the issue terminal — interactive codex --yolo,
+                # then drop to shell with the gh create command pre-printed.
+                wrapper = (
+                    'echo "──── starting {bin} ({yolo_short}) — propose new issue ────"; '
+                    'echo "      model:  {model}"; '
+                    'echo "      slug:   {slug}"; '
+                    'echo "      draft:  $DRAFT_FILE  (codex will fill this in)"; '
+                    'echo "      prompt: $PROMPT_FILE"; '
+                    'echo "────"; '
+                    '{bin} {yolo} -m {model_q} -- "$(cat {prompt_q})"; '
+                    'ec=$?; '
+                    'echo; '
+                    'echo "──── {bin} exited (code $ec) — dropping to shell ────"; '
+                    'if [ -s "$DRAFT_FILE" ]; then '
+                        'echo "  draft saved to $DRAFT_FILE — preview:"; '
+                        'echo "  ────"; '
+                        'head -20 "$DRAFT_FILE" | sed \'s/^/  | /\'; '
+                        'echo "  ────"; '
+                        'title=$(head -1 "$DRAFT_FILE" | sed \'s/^# *//\'); '
+                        'echo "  to create the issue:"; '
+                        'echo "    gh issue create --title \\"$title\\" --body-file $DRAFT_FILE --label agent-friendly --label claim-next"; '
+                    'else '
+                        'echo "  $DRAFT_FILE is empty — codex did not produce a draft."; '
+                    'fi; '
+                    'exec {shell} -i'
+                ).format(
+                    bin=shlex.quote(bin_),
+                    yolo=yolo,
+                    yolo_short="yolo" if ("bypass" in yolo or "yolo" in yolo) else yolo,
+                    slug=slug,
+                    model=model,
+                    model_q=shlex.quote(model),
+                    prompt_q=shlex.quote(prompt_file),
+                    shell=shlex.quote(USER_SHELL),
+                )
+                argv = ["bash", "-c", wrapper]
+                sess = spawn_pty(argv, cwd=str(REPO_ROOT),
+                                 env_extra=env_extra,
+                                 label=f"propose · {slug}",
+                                 rows=rows, cols=cols)
+                return self._send_json({
+                    "sid": sess["sid"],
+                    "label": sess["label"],
+                    "cwd": sess["cwd"],
+                    "slug": slug,
+                    "model": model,
+                    "prompt_file": prompt_file,
+                    "draft_file": draft_file,
                 })
 
             if kind == "issue-shell":
@@ -1563,6 +2048,52 @@ class Handler(http.server.BaseHTTPRequestHandler):
             sid = payload.get("sid", "")
             ok = kill_pty(sid)
             return self._send_json({"ok": ok})
+
+        if u.path == "/api/state/cleanup":
+            try:
+                stale_days = int(payload.get("stale_days", 7))
+            except (TypeError, ValueError):
+                return self._send_json({"error": "stale_days must be int"}, 400)
+            dry = bool(payload.get("dry_run", False))
+            cutoff = time.time() - max(0, stale_days) * 86400
+            # Sanctioned prefixes — never touch .gitignore or unknown files.
+            CLEAN_PREFIXES = (
+                "implementer-", "orchestrator-", "review-spawn-",
+                "review-prompt-", "review-",
+                "pr-", "issue-", "prompt-",
+                "proposal-", "proposal-prompt-",
+            )
+            removed, kept = [], []
+            total_freed = 0
+            for p in sorted(STATE_DIR.iterdir()):
+                if not p.is_file():
+                    continue
+                if not any(p.name.startswith(pfx) for pfx in CLEAN_PREFIXES):
+                    continue
+                try:
+                    st = p.stat()
+                except OSError:
+                    continue
+                if st.st_mtime < cutoff:
+                    if not dry:
+                        try:
+                            p.unlink()
+                        except OSError as e:
+                            kept.append({"name": p.name, "reason": str(e)})
+                            continue
+                    removed.append({"name": p.name, "size": st.st_size,
+                                    "age_days": round((time.time() - st.st_mtime) / 86400, 1)})
+                    total_freed += st.st_size
+                else:
+                    kept.append({"name": p.name, "size": st.st_size,
+                                 "age_days": round((time.time() - st.st_mtime) / 86400, 1)})
+            return self._send_json({
+                "dry_run": dry,
+                "stale_days": stale_days,
+                "removed": removed,
+                "kept_count": len(kept),
+                "freed_bytes": total_freed,
+            })
 
         self.send_response(404)
         self.end_headers()
