@@ -178,11 +178,20 @@ The startup plan is in `docs/startup/`.
 - `autoresearch inspect` now writes a `multi_gpu` block into `repo-profile.json` that detects torchrun, accelerate, deepspeed, and pytorch-lightning launchers and emits suggested command shapes.
 - `autoresearch record` appends a structured run result to `runs.jsonl` (use for manual rows).
 - `autoresearch compare` ranks runs by a chosen metric and reports GPU-hours and peak memory when present.
-- `autoresearch report` summarizes the run ledger.
+- `autoresearch report` summarizes the run ledger, including total wall time and estimated cost when `.researchloop/cost.yaml` is configured.
 - `autoresearch dashboard` starts a local localhost dashboard for experiment tracking.
 - `autoresearch doctor` checks basic local tooling.
 
 GPU stats are captured automatically per run when `nvidia-smi` is present: `gpu_util_max_pct`, `gpu_util_mean_pct`, `gpu_memory_peak_mb`, `gpu_memory_total_mb`, and `gpu_hours` are written into the ledger row. The fields exist (null) on non-GPU hosts so the schema stays stable.
+
+Run timing is captured automatically for every `run` and `baseline`: `started_at`, `ended_at`, and `wall_seconds` are written to `runs.jsonl`. To estimate cost, add `.researchloop/cost.yaml`:
+
+```yaml
+gpu: H100
+hourly_usd: 2.50
+```
+
+New run rows then include `est_cost_usd`, computed as `wall_seconds / 3600 * hourly_usd`.
 
 ### Proposal and analysis
 
@@ -231,6 +240,8 @@ GPU stats are captured automatically per run when `nvidia-smi` is present: `gpu_
 - `npm run test:anomalies` checks spike, plateau, and divergence detection in text and JSON output.
 - `npm run test:loop` checks the ratchet loop tracks running-best across iterations and persists `loop_state.json`.
 - `npm run test:gpu-ledger` checks the GPU fields are present (and null) on non-GPU hosts and that `compare` skips GPU lines.
+- `npm run test:cost` checks `started_at`, `ended_at`, `wall_seconds`, `est_cost_usd` arithmetic, and report cost totals.
+- `npm run test:query` checks `autoresearch query` filtering, sorting, limits, nested fields, JSONL output, empty results, and syntax errors.
 - `npm run test:verify` checks `verify --id` reproduces deterministic runs and reports drift when the recorded metric does not match.
 - `npm run test:preflight` checks preflight gates (command, safety, metric, disk, memory, GPU, baseline) in both text and JSON outputs.
 - `npm run test:multi-gpu-detect` checks torchrun / accelerate / deepspeed / pytorch-lightning launchers are detected in `inspect`.

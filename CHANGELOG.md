@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+Improved:
+
+- `autoresearch report` now prints total estimated cost when any run row has `est_cost_usd`.
+- G23 cost accounting is now fully documented: every run records `started_at`, `ended_at`, and `wall_seconds`; optional `.researchloop/cost.yaml` populates `est_cost_usd`.
+
+Tests:
+
+- New: `test:cost`, wired into `npm test`.
+- New: `test:query`, wired into `npm test`; also fixes empty table results to print a header row instead of placeholder text.
+
 ## 0.5.1 — 2026-05-20
 
 New commands:

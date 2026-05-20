@@ -1034,6 +1034,14 @@ function cmdReport() {
   if (totalWallSeconds > 0) {
     console.log(`wall_time: ${Math.round(totalWallSeconds)}s total`);
   }
+  const costRows = parsed
+    .filter((r) => r && !r.parse_error)
+    .map((r) => Number(r.est_cost_usd))
+    .filter((v) => Number.isFinite(v));
+  if (costRows.length > 0) {
+    const totalEstimatedCost = costRows.reduce((sum, value) => sum + value, 0);
+    console.log(`estimated_cost_usd: ${totalEstimatedCost.toFixed(4)} total`);
+  }
   if (parsed.length) {
     const last = parsed[parsed.length - 1];
     console.log(`last: ${JSON.stringify(last, null, 2)}`);
@@ -4560,16 +4568,13 @@ function cmdQuery() {
     return;
   }
 
-  if (result.length === 0) {
-    console.log("(no rows match)");
-    return;
-  }
-
   const allKeys = new Set(["id", "status", "timestamp", "value"]);
-  for (const row of result) {
+  for (const row of (result.length ? result : runs)) {
     if (row.metrics) for (const k of Object.keys(row.metrics)) allKeys.add("metrics." + k);
     if (row.params) for (const k of Object.keys(row.params)) allKeys.add("params." + k);
   }
+  for (const { field } of predicates) allKeys.add(field);
+  if (sortField) allKeys.add(sortField);
   const cols = Array.from(allKeys);
 
   const lines = [];

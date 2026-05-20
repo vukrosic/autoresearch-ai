@@ -49,8 +49,8 @@ Goals are organized into tiers. Tier 0 must land before any tier above it can sh
 | **1** | Loop intelligence (baseline → topic → papers → hypothesis → propose → rank) | G26, G27, G28, G29, G30, G01, G02, G03 | 4–5 |
 | **2** | Evaluation layer | G04, G05, G06 | 2 (sequential within: G04 → G05/G06) |
 | **3** | Reliability & reproducibility | G09, G10, G11, G12, G31, G32 | 3–4 |
-| **4** | Scale (sweeps + multi-agent queue + query) | G07, G08, G18, G19, G13 | 3–4 |
-| **5** | Reporting & dashboard | G20, G21, G23, G15, G16, G17 | 3 |
+| **4** | Scale (sweeps + multi-agent queue + query) | G07, G08, G18, G19, ~~G13~~ | 3–4 |
+| **5** | Reporting & dashboard | G20, G21, ~~G23~~, G15, G16, G17 | 3 |
 | **6** | Integrations | G22, G24 | 2 |
 
 **Gate.** [G00 — Dogfood loop on `llm-research-kit`](#g00--dogfood-loop-on-llm-research-kit) must pass before declaring 0.4.0 done. It uses whatever subset of Tier 1+2 has shipped.
@@ -638,6 +638,8 @@ The child process receives `RESEARCHLOOP_RUN_DIR` as an environment variable so 
 
 ### G13 — `autoresearch query` over runs.jsonl
 
+**Status.** Shipped. `cmdQuery` supports filters, sorting, limits, table output, and JSONL output; `scripts/test-query.sh` uses a frozen fixture and is wired into `npm test`.
+
 **Motivation.** `compare` and `report` are fixed views. Agents need ad-hoc filters: "show all runs where lr > 1e-3 AND val_loss < 0.5 sorted by val_acc desc".
 
 **Deliverables.**
@@ -703,6 +705,8 @@ The child process receives `RESEARCHLOOP_RUN_DIR` as an environment variable so 
 ---
 
 ### G23 — Cost and wall-clock accounting
+
+**Status.** Shipped. `executeRun` writes timing and cost fields to each run row, `autoresearch report` summarizes estimated cost, and `scripts/test-cost.sh` is wired into `npm test`.
 
 **Motivation.** "What did this experiment cost?" should be answerable. Today we have no time recorded per run.
 
