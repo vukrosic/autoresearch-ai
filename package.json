@@ -31,7 +31,7 @@
   "scripts": {
     "smoke": "node ./bin/researchloop.js --help",
     "smoke:e2e": "bash ./scripts/smoke-e2e.sh",
-    "test": "npm run smoke && npm run smoke:e2e && npm run test:setup && npm run test:compare && npm run test:run && npm run test:scan-papers && npm run test:goal && npm run test:idea && npm run test:team && npm run test:dashboard && npm run test:prompts && npm run test:focus-prompts && npm run test:site && npm run test:adapters && npm run test:artifact-contract && npm run test:sweep && npm run test:seeds && npm run test:anomalies && npm run test:loop && npm run test:gpu-ledger && npm run test:cost && npm run test:query && npm run test:report && npm run test:audit && npm run test:verify && npm run test:preflight && npm run test:multi-gpu-detect && npm run test:resume && npm run test:early-stop && npm run test:gates && npm run test:curves",
+    "test": "npm run smoke && npm run smoke:e2e && npm run test:setup && npm run test:compare && npm run test:run && npm run test:scan-papers && npm run test:goal && npm run test:idea && npm run test:team && npm run test:dashboard && npm run test:prompts && npm run test:focus-prompts && npm run test:site && npm run test:adapters && npm run test:artifact-contract && npm run test:sweep && npm run test:seeds && npm run test:anomalies && npm run test:loop && npm run test:gpu-ledger && npm run test:cost && npm run test:query && npm run test:report && npm run test:audit && npm run test:verify && npm run test:preflight && npm run test:multi-gpu-detect && npm run test:resume && npm run test:early-stop && npm run test:gates && npm run test:curves && npm run test:promote && npm run test:retry",
     "test:release": "npm test && npm run test:packed",
     "test:goal": "bash ./scripts/test-goal.sh",
     "test:idea": "bash ./scripts/test-idea.sh",
@@ -62,7 +62,9 @@
     "test:resume": "bash ./scripts/test-resume.sh",
     "test:early-stop": "bash ./scripts/test-early-stop.sh",
     "test:gates": "bash ./scripts/test-gates.sh",
-    "test:curves": "bash ./scripts/test-curves.sh"
+    "test:curves": "bash ./scripts/test-curves.sh",
+    "test:promote": "bash ./scripts/test-promote.sh",
+    "test:retry": "bash ./scripts/test-retry.sh"
   },
   "keywords": [
     "ai-research",

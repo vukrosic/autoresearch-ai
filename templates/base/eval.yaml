@@ -3,11 +3,12 @@
 # This file is OPTIONAL. If absent, autoresearch falls back to the metric
 # declared in .researchloop/goal.md and applies no gates or early-stop.
 #
-# Two sections are active today:
+# Three sections are active today:
 #   - early_stop: kill the child process when a rule triggers
 #   - gates:      auto-mark each run as promoted / kept / discarded after it ends
+#   - retry:      re-launch the run with a mutated command on matching errors
 #
-# Three sections are reserved for future goals (G06 curves, G09 resume, G12 retry)
+# Two sections are reserved for future goals (G06 curves regex, G09 resume)
 # and are ignored by the current parser if present.
 
 # --- Early-stop rules ------------------------------------------------------
@@ -51,10 +52,32 @@ early_stop: []
 
 gates: []
 
+# --- Retry rules (G12) -----------------------------------------------------
+#
+# When a run ends with status: failed | timeout | spawn_error, the captured
+# output is scanned for the first matching rule. The rule's transform is
+# applied to the command, then the run is re-launched. The retry attempt
+# carries `retry_of: <original-id>` and `parent_id: <previous-attempt-id>`.
+# The original failed row gets a `retry_reason` field.
+#
+# Supported transforms today:
+#   halve:<flag>         e.g. halve:batch_size  -> "--batch_size 64" becomes "--batch_size 32"
+#   set:<flag>=<value>   e.g. set:gradient_checkpointing=true (adds the flag if missing)
+#
+# Each rule:
+#   match:       a regex (case-insensitive) matched against the captured output
+#   transform:   the mutation string
+#   max_retries: cap on retries for this rule (0 disables)
+#
+# Example:
+#   retry:
+#     - {match: "CUDA out of memory|RuntimeError: out of memory", transform: "halve:batch_size", max_retries: 2}
+
+retry: []
+
 # --- Reserved (not yet active) --------------------------------------------
 #
-# metrics:           # G04 multi-metric: full list of metrics with regex/jsonpath
-# curves:            # G06 curve regex declarations
-# checkpoint_glob:   # G09 newest checkpoint to record per run
+# metrics:              # G04 full multi-metric schema (regex / jsonpath / source)
+# curves:               # G06 named curve regex declarations
+# checkpoint_glob:      # G09 newest checkpoint to record per run
 # resume_flag_template: # G09 e.g. "--resume {path}"
-# retry:             # G12 OOM / hardware retry transforms

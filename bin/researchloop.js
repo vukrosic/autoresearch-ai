@@ -2993,6 +2993,85 @@ function parseInlineObject(text) {
   return obj;
 }
 
+// Retry rules (G12): same loader pattern as gates / early_stop.
+function loadEvalRetryRules(cwd) {
+  const evalFile = path.join(cwd, ".researchloop", "eval.yaml");
+  if (!fs.existsSync(evalFile)) return [];
+  const raw = fs.readFileSync(evalFile, "utf8");
+  return parseEvalListSection(raw, "retry");
+}
+
+// Apply a transform string to a command. Supported today:
+//   halve:<flag>         e.g. halve:batch_size  -> "--batch_size 64" becomes "--batch_size 32"
+//   set:<flag>=<value>   e.g. set:gradient_checkpointing=true
+// Returns { command, applied: bool, change: string|null }
+function applyRetryTransform(commandText, transform) {
+  if (!commandText || !transform) return { command: commandText, applied: false, change: null };
+  const halveMatch = String(transform).match(/^halve:([A-Za-z0-9_.-]+)$/);
+  if (halveMatch) {
+    const flag = halveMatch[1];
+    const escapedFlag = flag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // Match --flag VAL, --flag=VAL, -flag VAL, -flag=VAL, or env-style FLAG=VAL.
+    const patterns = [
+      new RegExp(`(--?${escapedFlag})(\\s+)(-?\\d+(?:\\.\\d+)?)`, "i"),
+      new RegExp(`(--?${escapedFlag}=)(-?\\d+(?:\\.\\d+)?)`, "i"),
+      new RegExp(`(\\b${escapedFlag}=)(-?\\d+(?:\\.\\d+)?)`),
+    ];
+    for (const re of patterns) {
+      const m = commandText.match(re);
+      if (m) {
+        // m[0] is full match; m[1..N] are groups; the value is the last group.
+        const valueIdx = m.length - 1;
+        const current = Number(m[valueIdx]);
+        if (!Number.isFinite(current) || current <= 1) continue;
+        const next = Math.max(1, Math.floor(current / 2));
+        // Within String.replace's callback, `groups` starts at m[1] — so the
+        // value is at index `valueIdx - 1`. Keep the prefix groups, drop the
+        // value group, append the halved value.
+        const valueIdxInGroups = valueIdx - 1;
+        const replaced = commandText.replace(re, (_full, ...groups) => {
+          const prefix = groups.slice(0, valueIdxInGroups);
+          return prefix.join("") + String(next);
+        });
+        if (replaced !== commandText) {
+          return { command: replaced, applied: true, change: `${flag}: ${current} -> ${next}` };
+        }
+      }
+    }
+    return { command: commandText, applied: false, change: null };
+  }
+  const setMatch = String(transform).match(/^set:([A-Za-z0-9_.-]+)=(.+)$/);
+  if (setMatch) {
+    const flag = setMatch[1];
+    const value = setMatch[2];
+    const escapedFlag = flag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const present = new RegExp(`(--?${escapedFlag})(\\s+|=)[^\\s]+`, "i").test(commandText);
+    if (present) {
+      const replaced = commandText.replace(
+        new RegExp(`(--?${escapedFlag})(\\s+|=)([^\\s]+)`, "i"),
+        (_full, g1, g2) => `${g1}${g2}${value}`,
+      );
+      return { command: replaced, applied: replaced !== commandText, change: `${flag} <- ${value}` };
+    }
+    // Append the flag.
+    return { command: `${commandText} --${flag} ${value}`, applied: true, change: `${flag} appended as ${value}` };
+  }
+  return { command: commandText, applied: false, change: null };
+}
+
+// Pick a retry rule whose `match` regex appears in the output. Returns the rule or null.
+function findRetryRule(rules, output) {
+  if (!rules || rules.length === 0) return null;
+  for (const rule of rules) {
+    if (!rule || !rule.match) continue;
+    try {
+      const re = new RegExp(rule.match, "i");
+      if (re.test(output)) return rule;
+    } catch { /* invalid regex, skip */ }
+  }
+  return null;
+}
+
 // Resolve "{baseline}-0.02" / "{baseline}*0.95" / literal numbers against a baseline value.
 function resolveGateValue(spec, baselineValue) {
   if (typeof spec === "number") return spec;
@@ -3725,7 +3804,7 @@ async function executeRun(opts) {
       process.exitCode = 1;
     }
   }
-  return { ok: true, id, status, metricValue, metricName, row, gpuAgg, wallSeconds };
+  return { ok: true, id, status, metricValue, metricName, row, gpuAgg, wallSeconds, output: result.output };
 }
 
 async function cmdRun(isBaseline) {
@@ -3758,11 +3837,93 @@ async function cmdRun(isBaseline) {
     return;
   }
 
-  await executeRun({
+  const idOverride = option("--id", null);
+  await executeRunWithRetries({
     cwd, cmdText, metricName, regexSource, timeoutSec, allowUnsafe, isBaseline,
-    idOverride: option("--id", null),
-    enableSystemSampling,
+    idOverride, enableSystemSampling,
   });
+}
+
+// Run once. On `failed | spawn_error | timeout`, scan the captured output for
+// retry rules from eval.yaml (G12), mutate the command (e.g. halve:batch_size),
+// re-launch with parent_id pointing at the original, and record `retry_of`.
+async function executeRunWithRetries(opts) {
+  const cwd = opts.cwd;
+  const retryRules = loadEvalRetryRules(cwd);
+  const maxRetries = retryRules.length > 0
+    ? Math.max(...retryRules.map((r) => Number.isFinite(Number(r.max_retries)) ? Number(r.max_retries) : 2))
+    : 0;
+
+  let currentCmd = opts.cmdText;
+  let attempt = 0;
+  let firstId = null;
+  let lastResult = null;
+  let parentId = null;
+
+  while (true) {
+    const attemptId = attempt === 0
+      ? (opts.idOverride || null)
+      : `${firstId}-retry${attempt}`;
+    const result = await executeRun({
+      ...opts,
+      cmdText: currentCmd,
+      idOverride: attemptId,
+      parentId,
+      extraConfig: attempt > 0 ? { retry_of: firstId, retry_attempt: attempt } : null,
+      suppressExitCode: true,
+    });
+    lastResult = result;
+    if (!result.ok) {
+      process.exitCode = 1;
+      return result;
+    }
+    if (attempt === 0) firstId = result.id;
+    if (attempt > 0) {
+      updateRunRow(cwd, result.id, (row) => {
+        row.retry_of = firstId;
+        row.retry_attempt = attempt;
+        return row;
+      });
+    }
+
+    const retryableStatus = result.status === "failed"
+      || result.status === "spawn_error"
+      || result.status === "timeout";
+
+    if (!retryableStatus || attempt >= maxRetries) {
+      const finalBad = retryableStatus
+        || result.status === "killed_by_safety"
+        || result.status === "killed_by_rule";
+      if (finalBad) process.exitCode = 1;
+      return result;
+    }
+
+    const rule = findRetryRule(retryRules, result.output || "");
+    if (!rule) {
+      if (retryableStatus) process.exitCode = 1;
+      return result;
+    }
+    const transform = applyRetryTransform(currentCmd, rule.transform);
+    if (!transform.applied) {
+      console.error(`autoresearch retry: matched rule but transform did not apply (${rule.transform})`);
+      if (retryableStatus) process.exitCode = 1;
+      return result;
+    }
+
+    // Mark the failed row with retry_reason so the audit trail is clear.
+    updateRunRow(cwd, result.id, (row) => {
+      row.retry_reason = `matched ${rule.match}; transform ${rule.transform} -> ${transform.change}`;
+      return row;
+    });
+
+    console.log("---");
+    console.log(`retry: rule matched (${rule.match}) — applying ${rule.transform}`);
+    console.log(`change: ${transform.change}`);
+    console.log(`next attempt: ${attempt + 1}/${maxRetries}`);
+    currentCmd = transform.command;
+    parentId = result.id;
+    attempt += 1;
+  }
 }
 
 function applySeedToCommand(cmdText, seed) {
@@ -3892,6 +4053,130 @@ function cmdReplay() {
     console.error(
       `WARNING: replay env mismatch ${mismatch.field}: stored=${formatEnvValue(mismatch.expected)} current=${formatEnvValue(mismatch.current)}`
     );
+  }
+}
+
+// Rewrite a row in runs.jsonl in place. We never delete from the ledger;
+// `promote` just flips status + appends gate_reasons so the audit trail stays.
+function updateRunRow(cwd, runId, mutator) {
+  const ledger = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
+  if (!fs.existsSync(ledger)) return false;
+  const raw = fs.readFileSync(ledger, "utf8");
+  const lines = raw.split("\n");
+  let updated = false;
+  const next = lines.map((line) => {
+    if (!line.trim()) return line;
+    try {
+      const obj = JSON.parse(line);
+      if (obj.id === runId) {
+        const mutated = mutator(obj);
+        updated = true;
+        return JSON.stringify(mutated);
+      }
+      return line;
+    } catch {
+      return line;
+    }
+  });
+  if (updated) fs.writeFileSync(ledger, next.join("\n"));
+  return updated;
+}
+
+function copyFileIfExists(src, dest) {
+  if (!fs.existsSync(src)) return false;
+  ensureDir(path.dirname(dest));
+  fs.copyFileSync(src, dest);
+  return true;
+}
+
+function cmdPromote() {
+  const cwd = targetDir();
+  const runId = String(option("--id", positionalText(["--id", "--note", "--dir", "--force"]))).trim();
+  if (!runId) {
+    console.error("autoresearch promote: missing --id <run-id>");
+    process.exitCode = 1;
+    return;
+  }
+  const note = String(option("--note", "")).trim();
+  const force = hasFlag("--force");
+
+  const row = readRunRowById(cwd, runId);
+  if (!row) {
+    console.error(`autoresearch promote: no run found for id: ${runId}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  // Refuse to promote a clearly bad run unless --force.
+  const badStatuses = new Set([
+    "failed", "timeout", "spawn_error", "killed_by_safety", "killed_by_rule", "discarded",
+  ]);
+  if (badStatuses.has(row.status) && !force) {
+    console.error(`autoresearch promote: run status is "${row.status}". Use --force to promote anyway.`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const winnersDir = path.join(cwd, ".researchloop", "winners", runId);
+  ensureDir(winnersDir);
+
+  // Copy the per-run artifact bundle.
+  const runDir = path.join(cwd, ".researchloop", "scratchpad", "runs", runId);
+  const copied = [];
+  for (const name of ["env.json", "code.diff", "config.json", "metrics.jsonl", "system.jsonl", "MANIFEST.json", "log.txt"]) {
+    if (copyFileIfExists(path.join(runDir, name), path.join(winnersDir, name))) {
+      copied.push(name);
+    }
+  }
+
+  // Snapshot goal.md and command.
+  const goalSrc = path.join(cwd, ".researchloop", "goal.md");
+  if (fs.existsSync(goalSrc)) {
+    fs.copyFileSync(goalSrc, path.join(winnersDir, "goal.md"));
+    copied.push("goal.md");
+  }
+  fs.writeFileSync(path.join(winnersDir, "command.txt"), `${row.command || ""}\n`);
+  copied.push("command.txt");
+
+  // Persist the row.
+  const rowFile = path.join(winnersDir, "row.json");
+  fs.writeFileSync(rowFile, `${JSON.stringify(row, null, 2)}\n`);
+  copied.push("row.json");
+
+  // Append a small README-like marker so the directory is self-describing.
+  const promotedAt = new Date().toISOString();
+  const summaryLines = [
+    `# Winner: ${runId}`,
+    "",
+    `- promoted_at: ${promotedAt}`,
+    `- status_before_promote: ${row.status || "unknown"}`,
+    `- command: ${row.command || "(none)"}`,
+  ];
+  const primaryMetric = row.metrics && Object.keys(row.metrics)[0];
+  if (primaryMetric) {
+    summaryLines.push(`- ${primaryMetric}: ${row.metrics[primaryMetric]}`);
+  }
+  if (note) summaryLines.push("", `Note:`, "", note);
+  fs.writeFileSync(path.join(winnersDir, "PROMOTION.md"), summaryLines.join("\n") + "\n");
+  copied.push("PROMOTION.md");
+
+  // Flip the row status to "promoted" and append a gate_reason about manual promotion.
+  const flipped = updateRunRow(cwd, runId, (existing) => {
+    const before = existing.status;
+    existing.status = "promoted";
+    existing.promoted_at = promotedAt;
+    if (note) existing.promotion_note = note;
+    const reasons = Array.isArray(existing.gate_reasons) ? existing.gate_reasons : [];
+    reasons.push(`promoted manually (was: ${before})`);
+    existing.gate_reasons = reasons;
+    return existing;
+  });
+
+  console.log(`promoted: ${runId}`);
+  console.log(`winners_dir: ${path.relative(cwd, winnersDir)}`);
+  console.log(`files: ${copied.length}`);
+  if (!flipped) {
+    console.error("WARNING: could not update ledger row status (ledger missing or row not parseable).");
   }
 }
 
@@ -6515,6 +6800,7 @@ Usage:
   autoresearch topic "<text>" [--mode propose|novel|autonomous] [--dir PATH] [--write]
   autoresearch query "<expression>" [--format jsonl|table] [--dir PATH]
   autoresearch curves --id <run-id> [--format text|json|jsonl] [--dir PATH]
+  autoresearch promote --id <run-id> [--note TEXT] [--force] [--dir PATH]
   autoresearch --version
 
 Aliases:
@@ -6619,6 +6905,8 @@ async function main() {
     await cmdResume();
   } else if (command === "curves" || command === "curve") {
     cmdCurves();
+  } else if (command === "promote") {
+    cmdPromote();
   } else {
     console.error(`Unknown command: ${command}`);
     cmdHelp();

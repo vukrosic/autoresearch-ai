@@ -181,6 +181,7 @@ The startup plan is in `docs/startup/`.
 - `autoresearch report` summarizes the run ledger, including total wall time and estimated cost when `.researchloop/cost.yaml` is configured. Use `--format markdown --out report.md --include-plots` to write a shareable experiment report with SVG plots.
 - `autoresearch audit <file.md>` checks numeric metric claims in a markdown report against `runs.jsonl` and exits non-zero on unmatched claims.
 - `autoresearch curves --id <run-id>` prints the streamed metric series as a unicode sparkline plus min/max/final stats. `--format json|jsonl` for scripting. Curves are now written live to `metrics.jsonl` during the run; the dashboard exposes them at `/api/curves?run=<id>`.
+- `autoresearch promote --id <run-id> [--note TEXT]` copies a winning run's artifacts (env, config, metrics, code diff, log) into `.researchloop/winners/<id>/`, snapshots `goal.md`, writes `PROMOTION.md`, and flips the row's `status` to `promoted`. Refuses to promote a `failed | timeout | killed_by_*` row unless `--force`.
 - `autoresearch dashboard` starts a local localhost dashboard for experiment tracking.
 - `autoresearch doctor` checks basic local tooling.
 
@@ -198,6 +199,11 @@ early_stop:
 gates:
   - {metric: val_loss, op: "<", value: "{baseline}-0.02", action: promote}
   - {metric: val_loss, op: ">", value: "{baseline}",      action: discard}
+
+# Auto-mutate the command and re-launch on matching errors (OOM, etc.).
+retry:
+  - {match: "CUDA out of memory|RuntimeError: out of memory",
+     transform: "halve:batch_size", max_retries: 2}
 ```
 
 Runs that trigger an early-stop rule end with `status: "killed_by_rule"` and a `kill_reason` field on the row. Runs that match a gate end with `status: promoted | kept | discarded` and `gate_reasons`.
@@ -273,6 +279,8 @@ New run rows then include `est_cost_usd`, computed as `wall_seconds / 3600 * hou
 - `npm run test:early-stop` checks that `nan_or_inf` and `>Nx_baseline_after_step_K` early-stop rules kill the child process group within seconds, record `killed_by_rule` + `kill_reason`, and stream `metrics.jsonl` before the kill.
 - `npm run test:gates` checks promotion gates flip `status` to `promoted | kept | discarded` and write `gate_reasons` for each rule.
 - `npm run test:curves` checks `autoresearch curves --id <id>` reads the streamed series, prints a sparkline and summary, and emits JSON/JSONL.
+- `npm run test:promote` checks `autoresearch promote --id <id>` copies the run artifacts into `winners/`, flips the row to `promoted`, refuses bad statuses without `--force`, and errors on missing/unknown ids.
+- `npm run test:retry` checks the eval.yaml `retry:` rules: an OOM error on attempt 1 triggers `halve:batch_size`, attempt 2 succeeds with `retry_of` pointing at the original id; `max_retries: 0` disables retries; no rules means no retry.
 
 ## Contributing
 
