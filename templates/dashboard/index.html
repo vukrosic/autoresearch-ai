@@ -505,6 +505,34 @@
       .queue-item .name { font-size: 13px; color: var(--text); }
       .queue-item .sub  { font-size: 11.5px; color: var(--muted); }
 
+      .lineage-tree { display: grid; gap: 10px; }
+      .lineage-node {
+        display: grid;
+        gap: 8px;
+        padding: 10px 12px;
+        border: 1px dashed var(--line-strong);
+        border-radius: var(--radius-sm);
+        background: rgba(255,255,255,0.02);
+      }
+      .lineage-node.is-clickable { cursor: pointer; }
+      .lineage-node:hover { border-color: var(--line-strong); background: rgba(255,255,255,0.04); }
+      .lineage-node-head {
+        display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;
+      }
+      .lineage-node-title {
+        display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap;
+      }
+      .lineage-node-id { color: var(--text); font-size: 13px; font-weight: 600; word-break: break-word; }
+      .lineage-node-meta {
+        display: flex; flex-wrap: wrap; gap: 6px;
+        color: var(--muted); font-size: 11.5px;
+      }
+      .lineage-children {
+        display: grid; gap: 8px;
+        margin-left: 16px; padding-left: 12px;
+        border-left: 1px solid var(--line);
+      }
+
       .empty {
         color: var(--muted); font-size: 12.5px;
         padding: 14px; text-align: center;
@@ -886,24 +914,18 @@
             </div>
           </article>
 
-          <!-- checkpoints (placeholder) -->
-          <article class="panel placeholder">
+          <!-- run lineage -->
+          <article class="panel">
             <div class="panel-head">
-              <h2>Checkpoints</h2>
-              <div class="head-right"><span class="placeholder-badge">placeholder</span></div>
+              <h2>Run lineage</h2>
+              <div class="head-right">
+                <span class="pill" id="lineageCount">0 nodes</span>
+              </div>
             </div>
             <div class="panel-body">
-              <table class="runs-table">
-                <thead><tr><th>Tag</th><th>Run</th><th>Step</th><th>Size</th><th>Metric</th></tr></thead>
-                <tbody>
-                  <tr><td><span class="pill is-accent">best</span></td><td class="mono">run-A · seed 7</td><td>step 5 000</td><td>184 MB</td><td>2.31</td></tr>
-                  <tr><td><span class="pill is-blue">latest</span></td><td class="mono">run-A · seed 7</td><td>step 7 200</td><td>184 MB</td><td>2.36</td></tr>
-                  <tr><td>—</td><td class="mono">run-B · seed 11</td><td>step 4 000</td><td>184 MB</td><td>2.42</td></tr>
-                </tbody>
-              </table>
+              <div id="lineageMount" class="lineage-tree"></div>
               <p style="color:var(--muted); font-size:12px; margin: 12px 0 0">
-                Will scan <code>checkpoints/</code> in the repo and let you tag, diff configs,
-                or promote a checkpoint to a baseline.
+                Uses <code>parent_id</code> from <code>verify</code>, <code>replay</code>, and <code>resume</code> so the next run in a chain stays visible.
               </p>
             </div>
           </article>
@@ -1622,6 +1644,45 @@
         }).join("");
       }
 
+      function renderLineageNode(node, state) {
+        const metricKey = state.primaryMetric || "";
+        const children = Array.isArray(node.children) ? node.children : [];
+        const metricText = Number.isFinite(Number(node.metric))
+          ? metricLabel(metricKey, node.metric)
+          : "—";
+        const meta = [];
+        meta.push(node.parent_id ? `parent: ${node.parent_id}` : "root");
+        meta.push(`${children.length} child${children.length === 1 ? "" : "ren"}`);
+        if (node.timestamp) meta.push(formatRelative(node.timestamp));
+        return `
+          <div class="lineage-node is-clickable" data-run-id="${escapeHtml(node.id)}">
+            <div class="lineage-node-head">
+              <div class="lineage-node-title">
+                <span class="lineage-node-id mono">${escapeHtml(node.id)}</span>
+                <span class="status-tag ${statusClass(node.status)}">${escapeHtml(node.status || "—")}</span>
+              </div>
+              <span class="pill ${Number.isFinite(Number(node.metric)) ? "is-accent" : ""}">${escapeHtml(metricText)}</span>
+            </div>
+            <div class="lineage-node-meta">
+              ${meta.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+            </div>
+            ${children.length ? `<div class="lineage-children">${children.map((child) => renderLineageNode(child, state)).join("")}</div>` : ""}
+          </div>
+        `;
+      }
+
+      function renderLineage(state) {
+        const lineage = state.lineage || {};
+        const roots = Array.isArray(lineage.roots) ? lineage.roots : [];
+        const count = (nodes) => nodes.reduce((sum, node) => sum + 1 + count(Array.isArray(node.children) ? node.children : []), 0);
+        $("lineageCount").textContent = roots.length ? `${count(roots)} node${count(roots) === 1 ? "" : "s"}` : "0 nodes";
+        if (!roots.length) {
+          $("lineageMount").innerHTML = '<div class="empty">No parent links yet. `replay`, `resume`, and `verify` will build this tree as runs branch.</div>';
+          return;
+        }
+        $("lineageMount").innerHTML = roots.map((root) => renderLineageNode(root, state)).join("");
+      }
+
       // ───── system resources ─────
       function renderResources(state) {
         const sys = state.system || {};
@@ -1882,6 +1943,7 @@
         renderResources(state);
         renderThread(state);
         renderLogTail(state);
+        renderLineage(state);
 
         $("trendLabel").textContent = state.primaryMetric
           ? `Comparing ${state.primaryMetric} across ${(state.traces || []).length} experiments.`
@@ -1908,6 +1970,11 @@
             $("chartMount").innerHTML = multiTraceChart(latestState.traces, latestState.preferHigher);
             $("legendMount").innerHTML = renderLegend(latestState);
           }
+          return;
+        }
+        const lineage = e.target.closest(".lineage-node[data-run-id]");
+        if (lineage) {
+          openRunModal(lineage.dataset.runId);
           return;
         }
         const row = e.target.closest(".runs-table tr.is-clickable");
@@ -1946,6 +2013,7 @@
             <div class="pill"><strong>Finished:</strong> ${escapeHtml(formatTime(run.timestamp))}</div>
             <div class="pill"><strong>Wall time:</strong> ${escapeHtml(run.wall_seconds ? run.wall_seconds + "s" : "—")}</div>
             <div class="pill"><strong>Est. cost:</strong> ${escapeHtml(run.est_cost_usd != null ? "$" + Number(run.est_cost_usd).toFixed(4) : "—")}</div>
+            ${run.parent_id ? `<div class="pill"><strong>Parent:</strong> <span class="mono">${escapeHtml(run.parent_id)}</span></div>` : ""}
             <div class="pill" style="grid-column: span 2"><strong>Agent:</strong> ${escapeHtml(run.agent || "—")}</div>
           </div>
           <div style="margin-bottom:14px">

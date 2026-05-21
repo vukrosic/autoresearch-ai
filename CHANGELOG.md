@@ -4,6 +4,7 @@
 
 New:
 
+- **Run lineage dashboard view (G17).** `/lineage` and `/api/lineage` now render the parent-child run chain created by `replay`, `resume`, and `verify`. The dashboard panel shows roots, descendants, and parent ids, and `test:dashboard` now checks the lineage route and API.
 - **Checkpoint-aware `autoresearch resume` (G09).** `eval.yaml` can now declare `checkpoint_glob` and `resume_flag_template`. `run` records the newest matching checkpoint as `last_checkpoint`; `resume [RUN_ID] --dry-run` prints the exact restart command with the resume flag appended without executing it; configured checkpoint resumes fail clearly when no checkpoint exists.
 - **`autoresearch replay <run-id>` (G10).** Re-executes a recorded command, writes fresh ledger rows carrying `replay_of` and `parent_id`, supports `--n`, prints a metric diff table, and exits non-zero when the replayed primary metric drifts beyond `--tolerance`.
 - **`autoresearch review --id <run-id>` (G19 minimal).** Runs five programmatic checks against a recorded run: `status_ok` (status ∈ complete | promoted | kept), `metric_finite` (primary metric present and finite), `env_captured` (G14 fields populated), `git_clean` (not explicitly dirty; null git context allowed), `curve_present` (at least one streamed sample), and `artifacts_present` (env.json + config.json + MANIFEST.json exist). `--format text|json|markdown` and `--out FILE.md` for persistence. Exits non-zero on any failure. `promote` now invokes this review automatically and blocks unless `--force` or `--skip-review`. A passing review is written to `winners/<id>/review.md`.
@@ -31,6 +32,7 @@ Tests:
 
 - New: `test:early-stop`, `test:gates`, `test:curves`, `test:promote`, `test:retry`, `test:review`, all wired into `npm test`.
 - New: `test:replay`, wired into `npm test`.
+- Expanded: `test:dashboard` now checks the lineage route and API.
 - Expanded: `test:resume` now covers checkpoint capture, dry-run command output, and the no-checkpoint failure path.
 - New: `test:cost`, wired into `npm test`.
 - New: `test:query`, wired into `npm test`; also fixes empty table results to print a header row instead of placeholder text.

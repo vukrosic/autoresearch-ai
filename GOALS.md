@@ -783,6 +783,8 @@ The child process receives `RESEARCHLOOP_RUN_DIR` as an environment variable so 
 
 ### G17 — Experiment lineage view
 
+**Status.** Shipped. The dashboard now exposes `/lineage` and `/api/lineage`, and `scripts/test-dashboard.sh` checks that the parent-child chain created by `replay`, `resume`, and `verify` renders as a stable tree.
+
 **Motivation.** Runs branch — a promoted run is the parent of next-iteration runs. Today this lineage is invisible.
 
 **Deliverables.**

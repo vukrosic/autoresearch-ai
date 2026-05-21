@@ -184,7 +184,7 @@ The startup plan is in `docs/startup/`.
 - `autoresearch curves --id <run-id>` prints the streamed metric series as a unicode sparkline plus min/max/final stats. `--format json|jsonl` for scripting. Curves are now written live to `metrics.jsonl` during the run; the dashboard exposes them at `/api/curves?run=<id>`.
 - `autoresearch promote --id <run-id> [--note TEXT]` copies a winning run's artifacts (env, config, metrics, code diff, log) into `.researchloop/winners/<id>/`, snapshots `goal.md`, writes `PROMOTION.md` + `review.md`, and flips the row's `status` to `promoted`. Refuses to promote a `failed | timeout | killed_by_*` row unless `--force`. Auto-runs the same checks as `autoresearch review` and blocks on failure unless `--force` or `--skip-review`.
 - `autoresearch review --id <run-id>` runs programmatic checks against a recorded run (status healthy, primary metric finite, env captured, working tree not explicitly dirty, curve present, artifact bundle intact). `--format text|json|markdown`, `--out FILE.md` to persist. Exits non-zero on failure. Used as the gate inside `promote`.
-- `autoresearch dashboard` starts a local localhost dashboard for experiment tracking.
+- `autoresearch dashboard` starts a local localhost dashboard for experiment tracking. `/lineage` and `/api/lineage` show the parent-child run chain created by `replay`, `resume`, and `verify`.
 - `autoresearch doctor` checks basic local tooling.
 
 ### Evaluation rules (`.researchloop/eval.yaml`)
@@ -263,7 +263,7 @@ New run rows then include `est_cost_usd`, computed as `wall_seconds / 3600 * hou
 - `npm run test:goal` checks goal saving and prompt handoff.
 - `npm run test:idea` checks the chat-first idea prompt for a blank repo, an llm-research-kit-shaped repo, and a paper-augmented repo.
 - `npm run test:team` checks the multi-agent development board and worker files.
-- `npm run test:dashboard` checks the local dashboard server and API.
+- `npm run test:dashboard` checks the local dashboard server and now covers the lineage route and API.
 - `npm run test:prompts` checks prompt templates for placeholder drift.
 - `npm run test:focus-prompts` checks the hyperparameter, architecture, and attention playbooks.
 - `npm run test:site` checks the public landing page copy (reads the file directly; no server needed).

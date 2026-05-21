@@ -2215,6 +2215,50 @@ function buildRunTraces(cwd, runs, primaryMetric, preferHigher, customRegexSourc
     }));
 }
 
+function buildRunLineage(runs, primaryMetric) {
+  const nodes = new Map();
+  const ordered = [];
+
+  runs
+    .filter((run) => !run.parse_error && run && run.id)
+    .forEach((run, index) => {
+      const metricRaw = primaryMetric ? run.metrics?.[primaryMetric] : null;
+      const metricValue = Number(metricRaw);
+      const node = {
+        id: run.id,
+        status: run.status || "",
+        parent_id: run.parent_id || null,
+        timestamp: run.timestamp || run.started_at || null,
+        metric: Number.isFinite(metricValue) ? metricValue : null,
+        children: [],
+        order: index,
+      };
+      nodes.set(node.id, node);
+      ordered.push(node);
+    });
+
+  const roots = [];
+  for (const node of ordered) {
+    const parentId = node.parent_id;
+    if (parentId && parentId !== node.id && nodes.has(parentId)) {
+      nodes.get(parentId).children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+
+  const strip = (node) => ({
+    id: node.id,
+    status: node.status,
+    parent_id: node.parent_id,
+    timestamp: node.timestamp,
+    metric: node.metric,
+    children: node.children.map(strip),
+  });
+
+  return { roots: roots.map(strip) };
+}
+
 function readExperimentHistory(cwd) {
   const researchDir = path.join(cwd, ".researchloop");
   const goalPath = path.join(researchDir, "goal.md");
@@ -2433,6 +2477,7 @@ function buildDashboardState(cwd) {
   const preferHigher = String(goal.direction || "").toLowerCase().includes("high");
   const summary = summarizeDashboardRuns(runs, primaryMetric, preferHigher);
   const traces = buildRunTraces(cwd, runs, primaryMetric, preferHigher);
+  const lineage = buildRunLineage(runs, primaryMetric);
   const comparison = summarizeTraces(traces, preferHigher);
   const system = readSystemMetrics();
   const thread = readThreadTail(cwd, 24);
@@ -2450,6 +2495,7 @@ function buildDashboardState(cwd) {
     preferHigher,
     summary,
     traces,
+    lineage,
     comparison,
     system,
     thread,
@@ -2573,9 +2619,20 @@ function cmdDashboard() {
       res.end(html);
       return;
     }
+    if (url.pathname === "/lineage") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(html);
+      return;
+    }
     if (url.pathname === "/api/state") {
       res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
       res.end(`${JSON.stringify(buildDashboardState(cwd), null, 2)}\n`);
+      return;
+    }
+    if (url.pathname === "/api/lineage") {
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+      const state = buildDashboardState(cwd);
+      res.end(`${JSON.stringify(state.lineage || { roots: [] }, null, 2)}\n`);
       return;
     }
     if (url.pathname === "/api/runs") {
@@ -2832,6 +2889,261 @@ function rowMetricValue(row, key) {
     return Number.NaN;
   }
   return Number(row.metrics[key]);
+}
+
+// Returns { values, source } for a run row.
+// - Seed aggregate rows (with seeds.values array) contribute every seed value.
+// - Single rows contribute the scalar at metrics[name], if finite.
+// - Returns { values: [], source: "none" } when nothing usable is present.
+function extractRunValues(row, metricName) {
+  if (!row) return { values: [], source: "none" };
+  if (row.seeds && Array.isArray(row.seeds.values)) {
+    const vals = row.seeds.values.filter((v) => Number.isFinite(Number(v))).map(Number);
+    if (vals.length > 0) return { values: vals, source: "seeds" };
+  }
+  const v = Number(row.metrics ? row.metrics[metricName] : NaN);
+  if (Number.isFinite(v)) return { values: [v], source: "scalar" };
+  return { values: [], source: "none" };
+}
+
+// Mulberry32 PRNG — deterministic, no deps. Returns floats in [0, 1).
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function next() {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function arrMean(arr) {
+  if (arr.length === 0) return NaN;
+  return arr.reduce((a, b) => a + b, 0) / arr.length;
+}
+
+// Sample standard deviation (n-1). For n<=1 returns 0 to avoid NaN-cascade in display.
+function arrStd(arr) {
+  if (arr.length <= 1) return 0;
+  const m = arrMean(arr);
+  const ss = arr.reduce((a, b) => a + (b - m) ** 2, 0);
+  return Math.sqrt(ss / (arr.length - 1));
+}
+
+function percentile(sortedAsc, p) {
+  if (sortedAsc.length === 0) return NaN;
+  if (sortedAsc.length === 1) return sortedAsc[0];
+  const idx = (sortedAsc.length - 1) * p;
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  if (lo === hi) return sortedAsc[lo];
+  return sortedAsc[lo] + (sortedAsc[hi] - sortedAsc[lo]) * (idx - lo);
+}
+
+// Permutation test (two-sided) + bootstrap CI on the delta of means.
+//
+// Permutation test answers "is the observed |delta| unlikely under the null
+// that the two groups are exchangeable?" — exact for small n, no t-distribution
+// approximation required.
+//
+// Bootstrap CI: resample within each group, recompute delta. Wide CIs at small
+// n are honest; the caller should not pretend otherwise.
+function runSignificanceTest(valuesA, valuesB, opts = {}) {
+  const nPerm = Math.max(100, Math.min(200000, opts.nPermutations || 10000));
+  const nBoot = Math.max(100, Math.min(200000, opts.nBootstrap || 10000));
+  const seed = Number.isFinite(opts.seed) ? opts.seed : 42;
+  const rng = mulberry32(seed);
+
+  const meanA = arrMean(valuesA);
+  const meanB = arrMean(valuesB);
+  const stdA = arrStd(valuesA);
+  const stdB = arrStd(valuesB);
+  const observedDelta = meanA - meanB;
+
+  const pooled = valuesA.concat(valuesB);
+  const nA = valuesA.length;
+  let countExtreme = 0;
+  for (let i = 0; i < nPerm; i += 1) {
+    const shuffled = pooled.slice();
+    for (let j = shuffled.length - 1; j > 0; j -= 1) {
+      const k = Math.floor(rng() * (j + 1));
+      const tmp = shuffled[j];
+      shuffled[j] = shuffled[k];
+      shuffled[k] = tmp;
+    }
+    let sumA = 0;
+    for (let j = 0; j < nA; j += 1) sumA += shuffled[j];
+    let sumB = 0;
+    for (let j = nA; j < shuffled.length; j += 1) sumB += shuffled[j];
+    const permDelta = sumA / nA - sumB / (shuffled.length - nA);
+    if (Math.abs(permDelta) >= Math.abs(observedDelta) - 1e-12) countExtreme += 1;
+  }
+  const pValue = countExtreme / nPerm;
+
+  const bootDeltas = new Array(nBoot);
+  for (let i = 0; i < nBoot; i += 1) {
+    let sumA = 0;
+    for (let j = 0; j < nA; j += 1) sumA += valuesA[Math.floor(rng() * nA)];
+    let sumB = 0;
+    const nB = valuesB.length;
+    for (let j = 0; j < nB; j += 1) sumB += valuesB[Math.floor(rng() * nB)];
+    bootDeltas[i] = sumA / nA - sumB / nB;
+  }
+  bootDeltas.sort((a, b) => a - b);
+  const ciLow = percentile(bootDeltas, 0.025);
+  const ciHigh = percentile(bootDeltas, 0.975);
+
+  // Pooled SD for Cohen's d; falls back to averaged SD when one group has n=1.
+  let pooledSd = NaN;
+  if (valuesA.length > 1 || valuesB.length > 1) {
+    const num = (Math.max(0, valuesA.length - 1)) * stdA ** 2 + (Math.max(0, valuesB.length - 1)) * stdB ** 2;
+    const den = Math.max(1, valuesA.length + valuesB.length - 2);
+    pooledSd = Math.sqrt(num / den);
+  }
+  const cohensD = Number.isFinite(pooledSd) && pooledSd > 0 ? observedDelta / pooledSd : null;
+
+  return {
+    n_a: valuesA.length,
+    n_b: valuesB.length,
+    mean_a: meanA,
+    mean_b: meanB,
+    std_a: stdA,
+    std_b: stdB,
+    delta: observedDelta,
+    ci_low: ciLow,
+    ci_high: ciHigh,
+    cohens_d: cohensD,
+    p_value: pValue,
+    n_permutations: nPerm,
+    n_bootstrap: nBoot,
+    seed,
+  };
+}
+
+function fmtSig(n, digits = 6) {
+  if (n === null || n === undefined || !Number.isFinite(n)) return "null";
+  return Number(n).toFixed(digits);
+}
+
+async function cmdSignificance() {
+  const cwd = targetDir();
+  const sigIdx = args.findIndex((a) => a === "significance" || a === "sig");
+  const runIdA = String(option("--id-a", sigIdx !== -1 && args[sigIdx + 1] && !args[sigIdx + 1].startsWith("-") ? args[sigIdx + 1] : "")).trim();
+  const runIdB = String(option("--id-b", sigIdx !== -1 && args[sigIdx + 2] && !args[sigIdx + 2].startsWith("-") ? args[sigIdx + 2] : "")).trim();
+  const formatJson = String(option("--format", "text")).toLowerCase() === "json";
+  const alpha = Math.max(0, Math.min(1, parseFloat(String(option("--alpha", "0.05")))));
+  const nPermutations = parseInt(String(option("--n-permutations", "10000")), 10);
+  const nBootstrap = parseInt(String(option("--n-bootstrap", "10000")), 10);
+  const seed = parseInt(String(option("--seed", "42")), 10);
+  const requireSignificant = hasFlag("--require-significant");
+  const directionRaw = option("--direction", null);
+
+  if (!runIdA || !runIdB) {
+    console.error("Usage: autoresearch significance <run-a> <run-b> [--metric NAME] [--alpha N] [--n-permutations N] [--seed N] [--format text|json] [--require-significant] [--dir PATH]");
+    process.exitCode = 1;
+    return;
+  }
+
+  const ledger = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
+  if (!fs.existsSync(ledger)) {
+    console.error("No run ledger found at " + ledger);
+    process.exitCode = 1;
+    return;
+  }
+
+  const rowA = readRunRowById(cwd, runIdA);
+  const rowB = readRunRowById(cwd, runIdB);
+  if (!rowA) { console.error("Run not found: " + runIdA); process.exitCode = 1; return; }
+  if (!rowB) { console.error("Run not found: " + runIdB); process.exitCode = 1; return; }
+
+  let metricName = option("--metric", null);
+  if (!metricName || typeof metricName !== "string") {
+    const fromA = rowA.metrics ? Object.keys(rowA.metrics).filter((k) => !k.endsWith("_std"))[0] : null;
+    const fromB = rowB.metrics ? Object.keys(rowB.metrics).filter((k) => !k.endsWith("_std"))[0] : null;
+    metricName = fromA || fromB || "val_loss";
+  }
+  metricName = String(metricName).trim();
+
+  const extractA = extractRunValues(rowA, metricName);
+  const extractB = extractRunValues(rowB, metricName);
+  if (extractA.values.length === 0) {
+    console.error(`Run ${runIdA} has no usable value for metric "${metricName}".`);
+    process.exitCode = 1;
+    return;
+  }
+  if (extractB.values.length === 0) {
+    console.error(`Run ${runIdB} has no usable value for metric "${metricName}".`);
+    process.exitCode = 1;
+    return;
+  }
+  if (extractA.source === "scalar" && extractB.source === "scalar") {
+    console.error("WARNING: both sides are single-point runs (n=1 vs n=1). Permutation p-value is uninformative; rerun with `--seeds N` on at least one side for a real test.");
+  }
+
+  const stats = runSignificanceTest(extractA.values, extractB.values, {
+    nPermutations,
+    nBootstrap,
+    seed,
+  });
+  const significant = stats.p_value < alpha;
+  const direction = directionRaw && typeof directionRaw === "string" ? String(directionRaw).toLowerCase() : null;
+  let interpretation = "no preference declared";
+  if (direction === "lower" || direction === "min" || direction === "minimize") {
+    interpretation = stats.delta < 0 ? `${runIdA} better (lower)` : (stats.delta > 0 ? `${runIdB} better (lower)` : "tied");
+  } else if (direction === "higher" || direction === "max" || direction === "maximize") {
+    interpretation = stats.delta > 0 ? `${runIdA} better (higher)` : (stats.delta < 0 ? `${runIdB} better (higher)` : "tied");
+  }
+
+  const minN = Math.min(stats.n_a, stats.n_b);
+  const smallN = minN < 3;
+
+  if (formatJson) {
+    const out = {
+      metric: metricName,
+      alpha,
+      run_a: { id: runIdA, n: stats.n_a, mean: stats.mean_a, std: stats.std_a, source: extractA.source },
+      run_b: { id: runIdB, n: stats.n_b, mean: stats.mean_b, std: stats.std_b, source: extractB.source },
+      delta: stats.delta,
+      ci_95: [stats.ci_low, stats.ci_high],
+      cohens_d: stats.cohens_d,
+      p_value: stats.p_value,
+      significant,
+      n_permutations: stats.n_permutations,
+      n_bootstrap: stats.n_bootstrap,
+      seed: stats.seed,
+      direction,
+      interpretation,
+      small_n_warning: smallN,
+    };
+    console.log(JSON.stringify(out, null, 2));
+  } else {
+    console.log(`significance: ${runIdA} vs ${runIdB}`);
+    console.log(`metric: ${metricName}`);
+    console.log(`alpha: ${alpha}`);
+    console.log(`n_permutations: ${stats.n_permutations}`);
+    console.log(`n_bootstrap: ${stats.n_bootstrap}`);
+    console.log(`seed: ${stats.seed}`);
+    console.log("---");
+    console.log("| run | source | n | mean | std |");
+    console.log("| --- | --- | --- | --- | --- |");
+    console.log(`| ${runIdA} | ${extractA.source} | ${stats.n_a} | ${fmtSig(stats.mean_a)} | ${fmtSig(stats.std_a)} |`);
+    console.log(`| ${runIdB} | ${extractB.source} | ${stats.n_b} | ${fmtSig(stats.mean_b)} | ${fmtSig(stats.std_b)} |`);
+    console.log("---");
+    console.log(`delta (${runIdA} - ${runIdB}): ${fmtSig(stats.delta)}`);
+    console.log(`ci_95 (bootstrap): [${fmtSig(stats.ci_low)}, ${fmtSig(stats.ci_high)}]`);
+    console.log(`cohens_d: ${stats.cohens_d === null ? "null" : fmtSig(stats.cohens_d, 3)}`);
+    console.log(`p_value (permutation, two-sided): ${fmtSig(stats.p_value, 4)}`);
+    console.log(`significant: ${significant ? "yes" : "no"} (p${significant ? "<" : ">="}${alpha})`);
+    if (direction) console.log(`interpretation: ${interpretation}`);
+    if (smallN) {
+      console.log(`warning: small n on at least one side (min=${minN}) — CI and effect size are wide`);
+    }
+  }
+
+  if (requireSignificant && !significant) {
+    process.exitCode = 1;
+  }
 }
 
 function parseMetric(metricText) {
@@ -7269,6 +7581,7 @@ Usage:
   autoresearch curves --id <run-id> [--format text|json|jsonl] [--dir PATH]
   autoresearch promote --id <run-id> [--note TEXT] [--force] [--skip-review] [--dir PATH]
   autoresearch review --id <run-id> [--format text|json|markdown] [--out FILE.md] [--dir PATH]
+  autoresearch significance <run-a> <run-b> [--metric NAME] [--alpha N] [--n-permutations N] [--seed N] [--direction lower|higher] [--format text|json] [--require-significant] [--dir PATH]
   autoresearch --version
 
 Aliases:
@@ -7377,6 +7690,8 @@ async function main() {
     cmdPromote();
   } else if (command === "review") {
     cmdReview();
+  } else if (command === "significance" || command === "sig") {
+    await cmdSignificance();
   } else {
     console.error(`Unknown command: ${command}`);
     cmdHelp();
