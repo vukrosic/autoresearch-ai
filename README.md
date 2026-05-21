@@ -173,6 +173,7 @@ The startup plan is in `docs/startup/`.
 - `autoresearch loop --command CMD [--iters N]` closes the ratchet — runs N iterations, keeps the best by metric in `loop_state.json`, with optional `--patch-cmd`, `--revert-on-regression`, and `--commit-on-win`.
 - `autoresearch anomalies [--id RUN_ID]` scans recorded metric history for divergence (NaN/inf), spikes, and plateaus.
 - `autoresearch verify --id <run-id>` re-runs a recorded run from the ledger and reports `deterministic` / `drifted` based on the metric delta. Tolerance via `--tolerance N`.
+- `autoresearch replay [RUN_ID] [--n N]` re-executes a recorded run, appends fresh `replay_of` rows to the ledger, and prints a metric diff table. Exits non-zero when the primary metric drifts beyond `--tolerance`.
 - `autoresearch preflight` checks command/safety/metric/disk/RAM/GPU/baseline before you `run`. `--require-gpu`, `--min-disk-gb`, `--min-mem-gb` for hard gates; `--format json` for scripting.
 - `autoresearch resume [RUN_ID] [--dry-run]` re-launches a failed or timed-out run. Exposes `$RESEARCHLOOP_RESUME=1`, `$RESEARCHLOOP_RESUME_FROM=<source-id>`, `$RESEARCHLOOP_RESUME_DIR=<prior-run-dir>`, and, when configured, `$RESEARCHLOOP_RESUME_CHECKPOINT(_REL)` so your training script can load its last checkpoint. With `checkpoint_glob` + `resume_flag_template` in `eval.yaml`, it appends the resume flag to the original command and prints the exact command before running. Auto-picks the latest resumable run when no id is provided.
 - `autoresearch inspect` now writes a `multi_gpu` block into `repo-profile.json` that detects torchrun, accelerate, deepspeed, and pytorch-lightning launchers and emits suggested command shapes.
@@ -239,7 +240,7 @@ New run rows then include `est_cost_usd`, computed as `wall_seconds / 3600 * hou
 
 - `autoresearch baseline-status` shows the current baseline lock state.
 - `autoresearch baseline --lock` / `--unlock` locks or unlocks the baseline.
-- `autoresearch replay --id <run-id>` replays a recorded run.
+- `autoresearch replay --id <run-id>` replays a recorded run and records replay rows.
 - `autoresearch prune` prunes runs by age or status, with `--dry-run` and `--no-keep-promoted`.
 - `autoresearch tag --id <run-id> --add/--remove/--list` manages tags on a run.
 
@@ -278,6 +279,7 @@ New run rows then include `est_cost_usd`, computed as `wall_seconds / 3600 * hou
 - `npm run test:report` checks markdown report generation, required sections, run-id references, and SVG plot assets.
 - `npm run test:audit` checks supported claims pass, fabricated claims fail, and generated reports audit cleanly.
 - `npm run test:verify` checks `verify --id` reproduces deterministic runs and reports drift when the recorded metric does not match.
+- `npm run test:replay` checks `replay` records `replay_of` rows, supports `--n`, and exits non-zero on metric drift.
 - `npm run test:preflight` checks preflight gates (command, safety, metric, disk, memory, GPU, baseline) in both text and JSON outputs.
 - `npm run test:multi-gpu-detect` checks torchrun / accelerate / deepspeed / pytorch-lightning launchers are detected in `inspect`.
 - `npm run test:resume` checks the resume command finds the latest failed run, exposes the resume env vars to the child, records the `resume_of` pointer, captures `last_checkpoint`, prints checkpoint restart commands under `--dry-run`, and fails clearly when no configured checkpoint exists.

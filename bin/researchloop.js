@@ -4220,12 +4220,12 @@ async function runWithSeeds({ cwd, cmdText, metricName, regexSource, timeoutSec,
   }
 }
 
-function cmdReplay() {
+async function cmdReplay() {
   const cwd = targetDir();
-  const runId = String(option("--id", positionalText())).trim();
+  const runId = String(option("--id", positionalText(["--id", "--metric", "--regex", "--timeout", "--tolerance", "--n", "--replay-id", "--dir"]))).trim();
   if (!runId) {
     console.error("No run id provided.");
-    console.error("Usage: autoresearch replay <run-id>");
+    console.error("Usage: autoresearch replay <run-id> [--n 1] [--tolerance 0.01]");
     process.exitCode = 1;
     return;
   }
@@ -4236,27 +4236,95 @@ function cmdReplay() {
     process.exitCode = 1;
     return;
   }
+  if (!source.command) {
+    console.error(`Run ${runId} has no recorded command — cannot replay.`);
+    process.exitCode = 1;
+    return;
+  }
 
   const currentEnv = captureEnv(cwd);
+  const metricKeys = source.metrics ? Object.keys(source.metrics).filter((k) => !k.endsWith("_std")) : [];
+  const metricName = String(option("--metric", metricKeys[0] || "val_loss")).trim();
+  const expectedValue = source.metrics ? Number(source.metrics[metricName]) : Number.NaN;
+  const tolerance = Math.max(0, parseFloat(String(option("--tolerance", "0.01"))));
+  const replayCountRaw = parseInt(String(option("--n", "1")), 10);
+  const replayCount = Number.isFinite(replayCountRaw) && replayCountRaw > 0 ? Math.min(replayCountRaw, 20) : 1;
+  const timeoutSec = Number(option("--timeout", 600));
+  const allowUnsafe = hasFlag("--allow-unsafe");
+  const regexSource = option("--regex", null);
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const replayIdBase = String(option("--replay-id", `replay-${runId}-${stamp}`));
+
   console.log(`replay: ${runId}`);
-  console.log(`command: ${source.command || "not recorded"}`);
+  console.log(`command: ${source.command}`);
+  console.log(`metric: ${metricName}`);
+  console.log(`tolerance: ${tolerance}`);
+  console.log(`n: ${replayCount}`);
 
   if (!source.env) {
     console.error("WARNING: replay source run has no env capture.");
-    return;
+  } else {
+    const mismatches = envMismatches(source.env, currentEnv);
+    for (const mismatch of mismatches) {
+      console.error(
+        `WARNING: replay env mismatch ${mismatch.field}: stored=${formatEnvValue(mismatch.expected)} current=${formatEnvValue(mismatch.current)}`
+      );
+    }
   }
 
-  const mismatches = envMismatches(source.env, currentEnv);
-  if (!mismatches.length) {
-    console.log("env: match");
-    return;
+  console.log("---");
+  console.log("| replay_id | status | metric | expected | actual | delta | within_tolerance |");
+  console.log("| --- | --- | --- | --- | --- | --- | --- |");
+
+  let failed = false;
+  for (let i = 0; i < replayCount; i += 1) {
+    const replayId = replayCount === 1 ? replayIdBase : `${replayIdBase}-${i + 1}`;
+    const res = await executeRun({
+      cwd,
+      cmdText: source.command,
+      metricName,
+      regexSource: typeof regexSource === "string" ? regexSource : null,
+      timeoutSec,
+      allowUnsafe,
+      isBaseline: false,
+      idOverride: replayId,
+      extraConfig: { replay_of: runId, replay_index: i + 1, expected_metric: { [metricName]: expectedValue } },
+      suppressExitCode: true,
+      quiet: true,
+      tags: ["replay"],
+      parentId: runId,
+    });
+    if (!res.ok) {
+      console.log(`| ${replayId} | ${res.status} | ${metricName} | ${Number.isFinite(expectedValue) ? expectedValue : "null"} | null | null | no |`);
+      failed = true;
+      continue;
+    }
+    updateRunRow(cwd, replayId, (row) => {
+      row.replay_of = runId;
+      row.replay_index = i + 1;
+      return row;
+    });
+    const actual = res.metricValue;
+    const delta = Number.isFinite(actual) && Number.isFinite(expectedValue) ? actual - expectedValue : null;
+    const within = delta !== null && Math.abs(delta) <= tolerance;
+    const statusBad = res.status === "failed" || res.status === "timeout" || res.status === "spawn_error" || res.status === "killed_by_safety" || res.status === "killed_by_rule";
+    if (!within || statusBad) failed = true;
+    console.log(`| ${replayId} | ${res.status} | ${metricName} | ${Number.isFinite(expectedValue) ? expectedValue : "null"} | ${Number.isFinite(actual) ? actual : "null"} | ${delta === null ? "null" : delta.toFixed(6)} | ${within ? "yes" : "no"} |`);
   }
 
-  for (const mismatch of mismatches) {
-    console.error(
-      `WARNING: replay env mismatch ${mismatch.field}: stored=${formatEnvValue(mismatch.expected)} current=${formatEnvValue(mismatch.current)}`
-    );
+  if (failed) {
+    console.log("replay: drifted");
+    process.exitCode = 1;
+  } else {
+    console.log("replay: reproduced");
   }
+  if (source.env) {
+    const mismatches = envMismatches(source.env, currentEnv);
+    console.log(`env: ${mismatches.length ? "mismatch(" + mismatches.length + ")" : "match"}`);
+  } else {
+    console.log("env: unknown");
+  }
+  console.log(`recorded: ${replayIdBase}${replayCount > 1 ? `..${replayCount}` : ""}`);
 }
 
 // Rewrite a row in runs.jsonl in place. We never delete from the ledger;
@@ -7171,7 +7239,7 @@ Usage:
   autoresearch rank [--input PATH] [--write] [--dir PATH] [--goal TEXT] [--write]
   autoresearch prompt [--goal TEXT] [--focus hyperparameters|architecture|attention|training-ladder] [--agent NAME]
   autoresearch doctor [--dir PATH] [--python PATH] [--repair-plan]
-  autoresearch replay [--dir PATH] [--id RUN_ID]
+  autoresearch replay [RUN_ID] [--id RUN_ID] [--n N] [--metric NAME] [--tolerance N] [--timeout SECONDS] [--allow-unsafe] [--dir PATH]
   autoresearch record [--dir PATH] [--id ID] [--status STATUS] [--metric key=value] [--note TEXT]    (manual escape hatch; prefer 'run')
   autoresearch run [--dir PATH] [--id ID] [--command CMD] [--metric NAME] [--regex PATTERN] [--timeout SECONDS] [--seeds N] [--allow-unsafe]
   autoresearch baseline [--dir PATH] [--id ID] [--command CMD] [--metric NAME] [--regex PATTERN] [--timeout SECONDS] [--allow-unsafe]
@@ -7235,7 +7303,7 @@ async function main() {
   } else if (command === "doctor") {
     cmdDoctor();
   } else if (command === "replay") {
-    cmdReplay();
+    await cmdReplay();
   } else if (command === "record") {
     cmdRecord();
   } else if (command === "run") {

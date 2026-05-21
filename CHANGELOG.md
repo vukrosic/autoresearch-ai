@@ -5,6 +5,7 @@
 New:
 
 - **Checkpoint-aware `autoresearch resume` (G09).** `eval.yaml` can now declare `checkpoint_glob` and `resume_flag_template`. `run` records the newest matching checkpoint as `last_checkpoint`; `resume [RUN_ID] --dry-run` prints the exact restart command with the resume flag appended without executing it; configured checkpoint resumes fail clearly when no checkpoint exists.
+- **`autoresearch replay <run-id>` (G10).** Re-executes a recorded command, writes fresh ledger rows carrying `replay_of` and `parent_id`, supports `--n`, prints a metric diff table, and exits non-zero when the replayed primary metric drifts beyond `--tolerance`.
 - **`autoresearch review --id <run-id>` (G19 minimal).** Runs five programmatic checks against a recorded run: `status_ok` (status ∈ complete | promoted | kept), `metric_finite` (primary metric present and finite), `env_captured` (G14 fields populated), `git_clean` (not explicitly dirty; null git context allowed), `curve_present` (at least one streamed sample), and `artifacts_present` (env.json + config.json + MANIFEST.json exist). `--format text|json|markdown` and `--out FILE.md` for persistence. Exits non-zero on any failure. `promote` now invokes this review automatically and blocks unless `--force` or `--skip-review`. A passing review is written to `winners/<id>/review.md`.
 - **`autoresearch promote --id <run-id>` (G05 completion).** Copies the run's `env.json`, `code.diff`, `config.json`, `metrics.jsonl`, `system.jsonl`, `MANIFEST.json`, `log.txt`, plus a snapshot of `goal.md` and `command.txt`, into `.researchloop/winners/<id>/`. Writes `PROMOTION.md` and `row.json`. Flips the ledger row's `status` to `promoted` and appends a `gate_reasons` entry with the prior status. Refuses to promote `failed | timeout | killed_by_safety | killed_by_rule | discarded` rows unless `--force`. `--note TEXT` attaches a free-form note.
 - **OOM / hardware retry (G12).** New `.researchloop/eval.yaml` section `retry:`. When a run ends with `failed | timeout | spawn_error`, the captured output is scanned for matching rules; the first match runs `transform` on the command (today: `halve:<flag>` and `set:<flag>=<value>`) and re-launches as a new ledger row with `retry_of: <original-id>` and `parent_id: <previous-attempt-id>`. The original failed row gets a `retry_reason` field. `max_retries: 0` disables retries for the rule.
@@ -29,6 +30,7 @@ Improved:
 Tests:
 
 - New: `test:early-stop`, `test:gates`, `test:curves`, `test:promote`, `test:retry`, `test:review`, all wired into `npm test`.
+- New: `test:replay`, wired into `npm test`.
 - Expanded: `test:resume` now covers checkpoint capture, dry-run command output, and the no-checkpoint failure path.
 - New: `test:cost`, wired into `npm test`.
 - New: `test:query`, wired into `npm test`; also fixes empty table results to print a header row instead of placeholder text.
