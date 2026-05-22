@@ -359,47 +359,74 @@ The unglamorous-but-essential drawer: inspect, fork, share, schedule, tag.
 
 ### Tests
 
-- `npm test` runs every fast check below in sequence. CI runs this on Node 18 / 20 / 22 against ubuntu and macos for every push and PR.
-- `npm run test:release` adds the packed-tarball install check on top of `npm test`. Run this before publishing.
-- `npm run test:setup` runs the blank-repo and minimal-fixture setup checks.
-- `npm run test:baseline-status` checks missing, partial, complete, and JSON baseline summaries.
-- `npm run test:baseline-lock` checks locking, drift detection, unlock, and baseline status output.
-- `npm run test:doctor-repair` checks the repair-plan output for missing repo health signals and the normal doctor path.
-- `npm run test:compare` checks comparison output for a few recorded runs.
-- `npm run test:run` checks `run` and `baseline` against deterministic shell commands, including a noisy-log case.
-- `npm run test:scan-papers` checks the arXiv scan path against a recorded XML fixture (no network).
-- `npm run test:goal` checks goal saving and prompt handoff.
-- `npm run test:idea` checks the chat-first idea prompt for a blank repo, an llm-research-kit-shaped repo, and a paper-augmented repo.
-- `npm run test:team` checks the multi-agent development board and worker files.
-- `npm run test:tasks` checks the claimable task queue, dependency blocking, and handoff flow.
-- `npm run test:summary` checks the project snapshot, next-action logic, JSON output, alias, and `--out`.
-- `npm run test:dashboard` checks the local dashboard server and now covers the lineage route and API.
-- `npm run test:prompts` checks prompt templates for placeholder drift.
-- `npm run test:focus-prompts` checks the hyperparameter, architecture, and attention playbooks.
-- `npm run test:site` checks the public landing page copy (reads the file directly; no server needed).
-- `npm run test:adapters` checks repo-shape adapter detection against negative cases.
-- `npm run test:packed` packs the tarball, installs into an isolated npm prefix, and runs the harness end-to-end.
-- `npm run test:sweep` checks sweep queue generation for grid, random+seed, and list fixtures.
-- `npm run test:sweep-run` checks the parallel sweep runner, no-op reruns, and the max-failure stop gate.
-- `npm run test:seeds` checks `--seeds N`, `{seed}` substitution, and the mean/std aggregator row.
-- `npm run test:anomalies` checks spike, plateau, and divergence detection in text and JSON output.
-- `npm run test:loop` checks the ratchet loop tracks running-best across iterations and persists `loop_state.json`.
-- `npm run test:gpu-ledger` checks the GPU fields are present (and null) on non-GPU hosts and that `compare` skips GPU lines.
-- `npm run test:cost` checks `started_at`, `ended_at`, `wall_seconds`, `est_cost_usd` arithmetic, and report cost totals.
-- `npm run test:query` checks `autoresearch query` filtering, sorting, limits, nested fields, JSONL output, empty results, and syntax errors.
-- `npm run test:report` checks markdown report generation, required sections, run-id references, and SVG plot assets.
-- `npm run test:audit` checks supported claims pass, fabricated claims fail, and generated reports audit cleanly.
-- `npm run test:verify` checks `verify --id` reproduces deterministic runs and reports drift when the recorded metric does not match.
-- `npm run test:replay` checks `replay` records `replay_of` rows, supports `--n`, and exits non-zero on metric drift.
-- `npm run test:preflight` checks preflight gates (command, safety, metric, disk, memory, GPU, baseline) in both text and JSON outputs.
-- `npm run test:multi-gpu-detect` checks torchrun / accelerate / deepspeed / pytorch-lightning launchers are detected in `inspect`.
-- `npm run test:resume` checks the resume command finds the latest failed run, exposes the resume env vars to the child, records the `resume_of` pointer, captures `last_checkpoint`, prints checkpoint restart commands under `--dry-run`, and fails clearly when no configured checkpoint exists.
-- `npm run test:early-stop` checks that `nan_or_inf` and `>Nx_baseline_after_step_K` early-stop rules kill the child process group within seconds, record `killed_by_rule` + `kill_reason`, and stream `metrics.jsonl` before the kill.
-- `npm run test:gates` checks promotion gates flip `status` to `promoted | kept | discarded` and write `gate_reasons` for each rule.
-- `npm run test:curves` checks `autoresearch curves --id <id>` reads the streamed series, prints a sparkline and summary, and emits JSON/JSONL.
-- `npm run test:promote` checks `autoresearch promote --id <id>` copies the run artifacts into `winners/`, flips the row to `promoted`, refuses bad statuses without `--force`, and errors on missing/unknown ids.
-- `npm run test:retry` checks the eval.yaml `retry:` rules: an OOM error on attempt 1 triggers `halve:batch_size`, attempt 2 succeeds with `retry_of` pointing at the original id; `max_retries: 0` disables retries; no rules means no retry.
-- `npm run test:review` checks `autoresearch review` passes a good run, fails a failed run, supports text/json/markdown output, writes `--out` to file, and that `promote` runs the review automatically and writes `winners/<id>/review.md` (or skips it under `--skip-review`).
+- `npm test` runs every fast check below in sequence. `npm run test:site` verifies this checked list against `package.json` so docs fail when the suite drifts.
+- `npm run test:release` adds `npm run test:packed` on top of `npm test`. Run this before publishing to verify the packed tarball installs in an isolated prefix.
+
+<!-- AUTO-TEST-SUITE:START -->
+- `smoke`
+- `smoke:e2e`
+- `test:commands`
+- `test:safety`
+- `test:env`
+- `test:setup`
+- `test:baseline-status`
+- `test:baseline-lock`
+- `test:doctor-repair`
+- `test:compare`
+- `test:run`
+- `test:eval`
+- `test:scan-papers`
+- `test:paper-reread`
+- `test:topic`
+- `test:hypothesis`
+- `test:propose`
+- `test:rank`
+- `test:next-experiment`
+- `test:goal`
+- `test:idea`
+- `test:team`
+- `test:tasks`
+- `test:summary`
+- `test:dashboard`
+- `test:prompts`
+- `test:focus-prompts`
+- `test:site`
+- `test:adapters`
+- `test:artifact-contract`
+- `test:sweep`
+- `test:sweep-run`
+- `test:seeds`
+- `test:significance`
+- `test:determinism`
+- `test:power`
+- `test:anomalies`
+- `test:loop`
+- `test:gpu-ledger`
+- `test:cost`
+- `test:query`
+- `test:report`
+- `test:audit`
+- `test:verify`
+- `test:replay`
+- `test:preflight`
+- `test:multi-gpu-detect`
+- `test:resume`
+- `test:early-stop`
+- `test:gates`
+- `test:curves`
+- `test:promote`
+- `test:retry`
+- `test:review`
+- `test:prune`
+- `test:tag`
+- `test:suggest`
+- `test:failures`
+- `test:digest`
+- `test:model-card`
+- `test:data-fingerprint`
+- `test:diff-runs`
+- `test:param-importance`
+<!-- AUTO-TEST-SUITE:END -->
 
 ## Contributing
 

@@ -341,7 +341,73 @@ Run the local checks from this repo:
 npm test
 ```
 
-That aggregates the full fast suite: `smoke`, `smoke:e2e`, `test:setup`, `test:compare`, `test:run`, `test:scan-papers`, `test:goal`, `test:idea`, `test:team`, `test:dashboard`, `test:prompts`, `test:focus-prompts`, `test:site`, and `test:adapters`.
+That aggregates the full fast suite below. `npm run test:site` checks this list against `package.json`, so stale docs fail in CI.
+
+<!-- AUTO-TEST-SUITE:START -->
+- `smoke`
+- `smoke:e2e`
+- `test:commands`
+- `test:safety`
+- `test:env`
+- `test:setup`
+- `test:baseline-status`
+- `test:baseline-lock`
+- `test:doctor-repair`
+- `test:compare`
+- `test:run`
+- `test:eval`
+- `test:scan-papers`
+- `test:paper-reread`
+- `test:topic`
+- `test:hypothesis`
+- `test:propose`
+- `test:rank`
+- `test:next-experiment`
+- `test:goal`
+- `test:idea`
+- `test:team`
+- `test:tasks`
+- `test:summary`
+- `test:dashboard`
+- `test:prompts`
+- `test:focus-prompts`
+- `test:site`
+- `test:adapters`
+- `test:artifact-contract`
+- `test:sweep`
+- `test:sweep-run`
+- `test:seeds`
+- `test:significance`
+- `test:determinism`
+- `test:power`
+- `test:anomalies`
+- `test:loop`
+- `test:gpu-ledger`
+- `test:cost`
+- `test:query`
+- `test:report`
+- `test:audit`
+- `test:verify`
+- `test:replay`
+- `test:preflight`
+- `test:multi-gpu-detect`
+- `test:resume`
+- `test:early-stop`
+- `test:gates`
+- `test:curves`
+- `test:promote`
+- `test:retry`
+- `test:review`
+- `test:prune`
+- `test:tag`
+- `test:suggest`
+- `test:failures`
+- `test:digest`
+- `test:model-card`
+- `test:data-fingerprint`
+- `test:diff-runs`
+- `test:param-importance`
+<!-- AUTO-TEST-SUITE:END -->
 
 Before publishing, also run the packed-tarball install check:
 
