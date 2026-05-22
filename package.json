@@ -1,6 +1,6 @@
 {
   "name": "autoresearch-ai",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Install an autonomous AI research harness for Codex, Claude Code, Hermes, and other coding agents.",
   "type": "module",
   "bin": {

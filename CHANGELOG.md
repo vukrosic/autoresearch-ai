@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 — 2026-05-22
 
 Integrated (features that now fire automatically inside the loop):
 

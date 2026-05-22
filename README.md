@@ -52,9 +52,17 @@ autoresearch goal "lower validation loss" --metric val_loss --direction lower \
   --baseline "python train.py" --evaluation "python eval.py"
 autoresearch inspect
 autoresearch scan-papers --limit 10
+autoresearch paper-read 2503.12345v1 --write
+autoresearch hypothesis --from-papers --write
+autoresearch propose --n 5 --write --with-priors
+autoresearch rank --write
+autoresearch next-experiment --write
+autoresearch priors --proposal proposal-warmup-1
 autoresearch idea --write
 autoresearch prompt --agent codex
 autoresearch team --workers 8
+autoresearch tasks status
+autoresearch summary
 autoresearch baseline
 autoresearch run --id lr-3e-4 --command "python train.py --lr 3e-4"
 autoresearch compare --metric val_loss --direction lower
@@ -82,6 +90,7 @@ Then paste the generated prompt into the coding agent. On first contact, the age
     memory.md
     ideas/
     papers/
+    hypotheses/
     variants/
     sweeps/
 ```
@@ -164,16 +173,25 @@ The startup plan is in `docs/startup/`.
 - `autoresearch goal` saves a durable research objective in `.researchloop/goal.md`.
 - `autoresearch inspect` writes `.researchloop/repo-profile.json`.
 - `autoresearch scan-papers` fetches relevant arXiv abstracts into `.researchloop/scratchpad/papers/`.
+- `autoresearch priors --proposal <id>` attaches arXiv priors to one existing proposal, deduped by arXiv id, and writes any missing paper notes under `.researchloop/scratchpad/papers/`.
+- `autoresearch next-experiment [PROPOSAL_ID]` turns the top ranked proposal, or one explicit proposal, into a concrete markdown runbook under `.researchloop/scratchpad/experiments/` with preflight, smoke, run, compare, story, and promote commands. Add `--script FILE.sh` when you want a reviewable shell wrapper.
+- `autoresearch paper-read <paper-id>` turns a paper note into structured claim / mechanism / limits / port / baseline-relevance sections.
+- `autoresearch paper-reread <paper-id> --against <run-id>` compares a paper note against a finished run and writes the takeaway into `.researchloop/scratchpad/paper-rereads/`.
+- `autoresearch hypothesis --from-papers|--from-runs|--paper-id ID|--run-id ID|--novel` writes mechanism-first hypotheses into `.researchloop/scratchpad/hypotheses/`.
 - `autoresearch idea` opens a chat-first research prompt that reads the repo history, asks for the time budget if needed, and can write the prompt into an idea note.
 - `autoresearch prompt` prints an agent-ready autonomous research prompt, with optional focus playbooks.
 - `autoresearch team` generates a local multi-agent development board for the AutoResearch-AI repo or another project.
+- `autoresearch tasks` manages a claimable multi-agent queue in `.researchloop/tasks.jsonl` so parallel agents do not step on each other.
 - `autoresearch baseline` runs the baseline command, parses the metric, and locks it into `goal.md` and `plan.md`.
 - `autoresearch run` executes a training or eval command, streams the log, parses the metric, and records the run. Add `--seeds N` to run the same command across N seeds (substituted as `{seed}` and exported as `$RESEARCHLOOP_SEED`) and record a mean/std aggregator row.
-- `autoresearch sweep --spec FILE.json` runs a declarative variant queue (`variants` list or `grid` cross-product) through `run`, with optional `--seeds N` per variant, `--dry-run`, and a `summary.json` per sweep.
+- `autoresearch eval --run-id <run-id>` runs the configured eval command for one recorded run, parses declared metrics from stdout or a file, and updates that ledger row. If `eval.yaml` declares `metrics` and `eval_command`, `run` and `baseline` call it automatically after the training command finishes.
+- `autoresearch sweep generate|status|run <name>` manages queue-based sweeps from `.researchloop/sweeps/<name>.yaml` (`grid`, `list`, or `random` strategies). Use `generate` to write `.queue.jsonl`, `status` to inspect queued/running/done/failed rows, and `run` to execute the queue with bounded workers. The legacy `--spec FILE.json` one-shot path still works for simple ad hoc sweeps.
 - `autoresearch loop --command CMD [--iters N]` closes the ratchet — runs N iterations, keeps the best by metric in `loop_state.json`, with optional `--patch-cmd`, `--revert-on-regression`, and `--commit-on-win`.
 - `autoresearch anomalies [--id RUN_ID]` scans recorded metric history for divergence (NaN/inf), spikes, and plateaus.
-- `autoresearch verify --id <run-id>` re-runs a recorded run from the ledger and reports `deterministic` / `drifted` based on the metric delta. Tolerance via `--tolerance N`.
-- `autoresearch replay [RUN_ID] [--n N]` re-executes a recorded run, appends fresh `replay_of` rows to the ledger, and prints a metric diff table. Exits non-zero when the primary metric drifts beyond `--tolerance`.
+- `autoresearch verify --id <run-id>` re-runs a recorded run from the ledger and reports `deterministic` / `drifted` based on the metric delta. Tolerance via `--tolerance N`; refuses to launch when the source metric is missing or invalid.
+- `autoresearch replay [RUN_ID] [--n N]` re-executes a recorded run, appends fresh `replay_of` rows to the ledger, and prints a metric diff table. Exits non-zero when the primary metric drifts beyond `--tolerance`; refuses to launch when the source metric is missing or replay arguments are invalid.
+- `autoresearch significance <run-a> <run-b>` runs a permutation test plus bootstrap CI on the metric delta between two runs. `--direction lower|higher`, `--require-significant`, and `--format json` are supported; alias: `sig`.
+- `autoresearch determinism --command CMD [--n N]` re-runs the same command multiple times and reports whether the metric stays within tolerance. Useful when you want to catch flaky training or nondeterministic evals early; alias: `det`.
 - `autoresearch preflight` checks command/safety/metric/disk/RAM/GPU/baseline before you `run`. `--require-gpu`, `--min-disk-gb`, `--min-mem-gb` for hard gates; `--format json` for scripting.
 - `autoresearch resume [RUN_ID] [--dry-run]` re-launches a failed or timed-out run. Exposes `$RESEARCHLOOP_RESUME=1`, `$RESEARCHLOOP_RESUME_FROM=<source-id>`, `$RESEARCHLOOP_RESUME_DIR=<prior-run-dir>`, and, when configured, `$RESEARCHLOOP_RESUME_CHECKPOINT(_REL)` so your training script can load its last checkpoint. With `checkpoint_glob` + `resume_flag_template` in `eval.yaml`, it appends the resume flag to the original command and prints the exact command before running. Auto-picks the latest resumable run when no id is provided.
 - `autoresearch inspect` now writes a `multi_gpu` block into `repo-profile.json` that detects torchrun, accelerate, deepspeed, and pytorch-lightning launchers and emits suggested command shapes.
@@ -184,14 +202,22 @@ The startup plan is in `docs/startup/`.
 - `autoresearch curves --id <run-id>` prints the streamed metric series as a unicode sparkline plus min/max/final stats. `--format json|jsonl` for scripting. Curves are now written live to `metrics.jsonl` during the run; the dashboard exposes them at `/api/curves?run=<id>`.
 - `autoresearch promote --id <run-id> [--note TEXT]` copies a winning run's artifacts (env, config, metrics, code diff, log) into `.researchloop/winners/<id>/`, snapshots `goal.md`, writes `PROMOTION.md` + `review.md`, and flips the row's `status` to `promoted`. Refuses to promote a `failed | timeout | killed_by_*` row unless `--force`. Auto-runs the same checks as `autoresearch review` and blocks on failure unless `--force` or `--skip-review`.
 - `autoresearch review --id <run-id>` runs programmatic checks against a recorded run (status healthy, primary metric finite, env captured, working tree not explicitly dirty, curve present, artifact bundle intact). `--format text|json|markdown`, `--out FILE.md` to persist. Exits non-zero on failure. Used as the gate inside `promote`.
-- `autoresearch dashboard` starts a local localhost dashboard for experiment tracking. `/lineage` and `/api/lineage` show the parent-child run chain created by `replay`, `resume`, and `verify`.
+- `autoresearch dashboard` starts a local localhost dashboard for experiment tracking. The dashboard now shows a run scatter, curve overlay, `/lineage` and `/api/lineage` for the parent-child run chain created by `replay`, `resume`, and `verify`, and `/diff?a=<id>&b=<id>` for side-by-side run comparisons.
 - `autoresearch doctor` checks basic local tooling.
+- `autoresearch doctor --repair-plan` prints an ordered checklist of likely fixes without changing anything.
 
 ### Evaluation rules (`.researchloop/eval.yaml`)
 
-These sections are active today; all are optional.
+The minimal eval surface is active today: `metrics` and `eval_command` are the core contract, and `run` / `baseline` call `eval` automatically after training when they are present. The remaining sections are optional and owned by later goals.
 
 ```yaml
+# Parse metrics after training or from a separate eval script.
+metrics:
+  - {name: val_loss, direction: lower, regex_or_jsonpath: 'val_loss=([0-9.]+)', source: stdout}
+  - {name: val_acc, direction: higher, regex_or_jsonpath: '$.val_acc', source: file, file: eval.json}
+
+eval_command: "python eval.py"
+
 # Kill a diverged run before it burns the full timeout.
 early_stop:
   - {metric: train_loss, rule: nan_or_inf, action: kill}
@@ -227,10 +253,11 @@ New run rows then include `est_cost_usd`, computed as `wall_seconds / 3600 * hou
 
 ### Proposal and analysis
 
-- `autoresearch propose` proposes N grounded experiments in `propose`, `novel`, or `autonomous` mode, with optional focus (`hyperparameters`, `architecture`, `attention`, `data`).
-- `autoresearch rank` ranks a list of proposed experiments against the goal.
+- `autoresearch propose` proposes N grounded experiments in `propose`, `novel`, or `autonomous` mode, with optional focus (`hyperparameters`, `architecture`, `attention`, `data`); it reads the goal/baseline, repo profile, runs, paper notes, and hypothesis notes, and writes `.researchloop/scratchpad/proposals.jsonl`. Add `--with-priors` to attach arXiv evidence and write missing paper notes while proposals are generated.
+- `autoresearch rank` scores those proposals with explainable `impact`, `cost`, `risk`, `novelty_vs_runs`, and `evidence` values, then writes `.researchloop/scratchpad/ranked-proposals.jsonl` plus a `ranked-proposals.md` summary when `--write` is set.
 - `autoresearch suggest` suggests next experiments based on the existing run ledger.
-- `autoresearch topic "<text>"` runs the baseline-aware intake for a research topic.
+- `autoresearch topic "<text>"` runs the baseline-aware intake for a research topic and surfaces the nearest paper notes or run ledger rows with exact follow-up commands.
+- `autoresearch summary` / `autoresearch status` prints the one-screen project state, best completed experiment, and next concrete command to run; add `--out summary.md` to save it.
 - `autoresearch query "<expression>"` queries the run ledger and prints `jsonl` or `table`.
 - `autoresearch failures` surfaces the top failure patterns across runs.
 - `autoresearch diff-runs --id-a <id> --id-b <id>` diffs two runs across config and metrics, in text / json / markdown.
@@ -249,27 +276,111 @@ New run rows then include `est_cost_usd`, computed as `wall_seconds / 3600 * hou
 - `autoresearch data-fingerprint` hashes input data for reproducibility.
 - `autoresearch model-card --id <run-id>` emits a model-card markdown for a run.
 - `autoresearch digest --since <duration>` summarizes recent activity in text / json / markdown.
-- `autoresearch report --format markdown --out report.md --include-plots` writes a lab-note-ready experiment report with Goal, Baseline, Best run, Sweep summary, Loss curves, Discarded results, Open questions, and an Appendix of run ids.
+- `autoresearch report --format markdown --out report.md --include-plots` writes a lab-note-ready experiment report with Goal, Baseline, Best run, Sweep summary, Loss curves, Discarded results, Open questions, and an Appendix of run ids. Includes auto-generated MFU and Overfit-Watch tables when the underlying fields are populated.
 - `autoresearch audit report.md` verifies that numeric loss/accuracy/perplexity/F1-style claims resolve to ledger metrics or metric deltas.
+
+### Resource planning & hardware
+
+Pre-flight every run so OOMs and "this is going to take four days" surface before the GPU spins.
+
+- `autoresearch gpu-fit --params 7B [--gpu H100]` (alias `vram-fit`, `vram`) — VRAM breakdown per GPU SKU, with `--zero`, `--tp`, `--dp`, `--grad-checkpoint`, and Korthikanti activation accounting. Auto-runs inside `preflight` when arch hints are present.
+- `autoresearch kv-cache --params 7B --batch 32 --context 8192 [--gpu H100]` (alias `kv`) — inference VRAM estimator with explicit GQA via `--n-kv-heads`; reports max batch, max context, and weights/KV split.
+- `autoresearch mfu [--id <run>]` — Model FLOPs Utilization per ledger row with verdicts (< 20% likely dataloader-bound; ≥ 45% well-tuned).
+- `autoresearch compute-budget --params 7B [--gpus N]` — Chinchilla-style tokens/FLOPs/gpu-days calculator across H100 BF16 × 50% MFU.
+- `autoresearch shard-plan --params 7B --gpus 64 --layers L` (alias `shard`, `parallelism`) — recommends `(TP, PP, DP)` against feasibility, NVLink domain, and PP-bubble cost.
+- `autoresearch sweep-projection --name <sweep>` (alias `sweep-project`) — projects sweep wall time and cost from the local ledger; warns at > $100 or > 1 day.
+- `autoresearch headroom` — gap-to-perfect / gap-to-SoTA reality check, σ-units when seed variance is known.
+- `autoresearch gpu-report` (alias `gpu`) — aggregates per-run `system.jsonl` load and memory pressure samples.
+- `autoresearch hardware` (alias `hw`) — distributions of GPU model / CUDA / Python / Torch across the ledger; warns when more than one GPU model or CUDA version appears in a single sweep.
+- `autoresearch disk-check [--path P --min-free-gb N]` (alias `disk`) — exits non-zero when free space is below the threshold.
+- `autoresearch eta <run-id>` — best-effort time-to-completion off the streamed metrics.
+- `autoresearch ablate <run-id>` — turns a winning config into `halve` / `double` / `remove` / `flip` ablation proposals; `--write` persists them into the same backlog `rank` reads.
+- `autoresearch container-snapshot --id <run-id>` (alias `container`) — Dockerfile + `requirements.lock` repro kit under the run dir.
+
+### Statistical rigor
+
+Honest claims about wins, instead of single-seed point estimates.
+
+- `autoresearch significance <run-a> <run-b>` (alias `sig`) — permutation test + bootstrap 95% CI on the metric delta. Multi-seed aggregate rows feed every seed; scalars contribute one point. `--require-significant` exits non-zero so it can gate promotion. Auto-fires inside `compare` whenever at least two finite-metric runs differ.
+- `autoresearch determinism --command CMD --n N` (alias `det`) — re-runs the same command and reports whether the metric stays within tolerance.
+- `autoresearch power --detect-delta D` — required sample size for a given effect size.
+- `autoresearch sample-efficiency <run-id>` (alias `se`) — step at which a run hit 50/75/90/95/99% of its total improvement; `--vs <baseline>` reports speedup ratio.
+- `autoresearch rl-stats <run-id>` (alias `rl`) — Agarwal-2021 robust aggregator (mean, IQM, median + stratified bootstrap CIs) for episode returns.
+- `autoresearch scaling-fit` (alias `scaling`) — fits a Kaplan/Chinchilla power law on the ledger; `--with-offset` for the Hoffmann form; `--target N` projects forward.
+- `autoresearch grad-noise` (alias `gns`, `gradient-noise`) — McCandlish-2018 critical-batch estimator, both two-batch exact and sample-variance proxy.
+- `autoresearch overfit-watch <run-id>` (alias `overfit`) — val-min step, divergence point, and wasted-compute fraction. Auto-fires inside `run`/`baseline`; surfaces a one-line summary post-run.
+- `autoresearch memorization` (alias `memo`, `verbatim-check`) — verbatim training-data leakage check on model outputs (Carlini family); flags > 5% aggregate.
+- `autoresearch canary --eval EVAL.jsonl --train TRAIN.jsonl` — data-leak detector across eval/train; exits 2 on any overlap.
+
+### API / LLM evals
+
+Plan and price eval runs before paying for them.
+
+- `autoresearch api-budget` (alias `api-cost`, `tokens-cost`) — projects $ cost across a baked-in pricing registry (Anthropic Opus/Sonnet/Haiku, GPT-5/4o/o3, Gemini Pro/Flash, DeepSeek V3, Together). Cross-checks `.researchloop/budget.json`.
+- `autoresearch judge --candidates pairs.jsonl --mode pairwise|scalar|reference --judge MODEL` — LLM-as-judge harness. Generates judge prompts you can ship to any provider; `--parse outputs.jsonl` reads the answers back into ratings.
+- `autoresearch elo --file wins.jsonl` (alias `arena`) — pairwise model ratings (online Elo + Bradley-Terry MLE with bootstrap 95% CIs); accepts both per-match and count rows.
+- `autoresearch eval-diff --a runA/predictions.jsonl --b runB/predictions.jsonl` (alias `predictions-diff`) — flip analysis between two predictions files; surfaces the "same metric, different behavior" case.
+- `autoresearch lr-finder` (alias `lrfinder`, `find-lr`) — analyzes a Smith-style LR range test and reports the elbow + suggested `max_lr`.
+
+### Run lifecycle add-ons
+
+The unglamorous-but-essential drawer: inspect, fork, share, schedule, tag.
+
+- `autoresearch search "TEXT"` (alias `grep`) — full-text grep across papers, hypotheses, proposals, learnings, archive, winners, goal/plan, optionally the ledger.
+- `autoresearch tail <run-id> [--follow] [--metrics]` — wraps `tail -f` on the run log or streams parsed metrics.
+- `autoresearch story <run-id>` — narrates a run's ancestry, config diff vs parent, descendants, lesson, and kill reason.
+- `autoresearch fork <run-id> --bump key=value` — emits a ready-to-modify `run` snippet from a known-good config.
+- `autoresearch warmstart <run-id>` — generates a launch snippet that uses the run's final checkpoint as starting weights for a new experiment.
+- `autoresearch smoke --command CMD` — actually-run smoke test (distinct from static `preflight`) with a tight 60s budget; lands in the ledger.
+- `autoresearch share <run-id>` — packages a run as a portable `.tar.gz` with full reproduction instructions.
+- `autoresearch pr-bundle <run-id>` (alias `pr`) — renders a PR-ready markdown body; pipes to `gh pr create --body-file -`.
+- `autoresearch seed --set N | --bump | --env` — single source of truth for "what seed are we running today," with a Python/NumPy/PyTorch seeding-ritual snippet.
+- `autoresearch bibtex` (alias `bib`) — extracts BibTeX from paper notes; `--file report.md` filters to cited entries.
+- `autoresearch agent-memory` (alias `memory`) — distills the project into a CLAUDE.md-sized fragment so a fresh agent walks in informed.
+- `autoresearch hooks` (alias `hook`) — manages `pre_run` / `post_run` / `on_promote` / `on_failure` / `on_archive` shell hooks under `.researchloop/hooks/`.
+- `autoresearch retrospective --since 7d` (alias `retro`) — weekly synthesis: counts, top runs, lessons, dead ends, mechanisms, spend.
+- `autoresearch lit-diff <paper-a> <paper-b>` (alias `litdiff`) — section-by-section diff of two paper notes with Jaccard similarity per section.
+- `autoresearch slurm --command CMD` (alias `sbatch`) — generates a `.sbatch` wrapping `autoresearch run`; post-run hook patches `slurm_job_id` back into the ledger.
+- `autoresearch similar --id <run-id>` — finds the most-similar runs by config and metric proximity.
+- `autoresearch validate-config` (alias `validate`) — schema lint for `.researchloop/*.yaml` (`eval`, `safety`, `cost`, `review`, `notify`).
+- `autoresearch mechanisms` — collects every distinct mechanism string across the ledger and hypothesis notes; `--check "TEXT"` is the dedup gate for `propose --novel`.
+- `autoresearch leaderboard` (alias `top`) — status-update-shaped top-N table with deltas, status, wall time, and USD.
+- `autoresearch paper-reread <paper-id> --against <run-id>` — compares a paper note against a finished run and writes the takeaway.
+- `autoresearch archive <run-id> --reason "…"` — marks a dead-end with a reason so future agents don't re-walk it.
+- `autoresearch learn <run-id> "lesson"` — captures a transferable lesson off a run.
+- `autoresearch reset --id <run-id>` — removes a row from `runs.jsonl` and side-archives the run dir for the session.
+- `autoresearch question add|list|answer|close` (alias `q`) — open-research-questions parking lot at `.researchloop/questions.jsonl`.
+- `autoresearch stale-locks [--clean]` (alias `locks`) — finds and removes zombie sweep/task lock files from dead workers.
+- `autoresearch budget --set USD | --check` — cost guardrail. `--check` exits 2 over-budget so a pre-run hook can short-circuit experiments that would blow the spend cap.
+- `autoresearch data-sample --path FILE` (alias `sample-data`) — autodetects JSONL/CSV/TSV/text, reservoir-samples N rows, reports length percentiles and class balance.
+- `autoresearch bench list|info|add` (alias `benchmark`) — registry of MMLU / HumanEval / GSM8K / ARC / TruthfulQA / HellaSwag / MBPP / BBH presets; `add` patches the metric stanza into `eval.yaml`.
+- `autoresearch forecast` — projects metric trajectory forward from the ledger.
+- `autoresearch pareto` — Pareto-front view across two competing metrics (e.g. quality vs cost).
 
 ### Tests
 
 - `npm test` runs every fast check below in sequence. CI runs this on Node 18 / 20 / 22 against ubuntu and macos for every push and PR.
 - `npm run test:release` adds the packed-tarball install check on top of `npm test`. Run this before publishing.
 - `npm run test:setup` runs the blank-repo and minimal-fixture setup checks.
+- `npm run test:baseline-status` checks missing, partial, complete, and JSON baseline summaries.
+- `npm run test:baseline-lock` checks locking, drift detection, unlock, and baseline status output.
+- `npm run test:doctor-repair` checks the repair-plan output for missing repo health signals and the normal doctor path.
 - `npm run test:compare` checks comparison output for a few recorded runs.
 - `npm run test:run` checks `run` and `baseline` against deterministic shell commands, including a noisy-log case.
 - `npm run test:scan-papers` checks the arXiv scan path against a recorded XML fixture (no network).
 - `npm run test:goal` checks goal saving and prompt handoff.
 - `npm run test:idea` checks the chat-first idea prompt for a blank repo, an llm-research-kit-shaped repo, and a paper-augmented repo.
 - `npm run test:team` checks the multi-agent development board and worker files.
+- `npm run test:tasks` checks the claimable task queue, dependency blocking, and handoff flow.
+- `npm run test:summary` checks the project snapshot, next-action logic, JSON output, alias, and `--out`.
 - `npm run test:dashboard` checks the local dashboard server and now covers the lineage route and API.
 - `npm run test:prompts` checks prompt templates for placeholder drift.
 - `npm run test:focus-prompts` checks the hyperparameter, architecture, and attention playbooks.
 - `npm run test:site` checks the public landing page copy (reads the file directly; no server needed).
 - `npm run test:adapters` checks repo-shape adapter detection against negative cases.
 - `npm run test:packed` packs the tarball, installs into an isolated npm prefix, and runs the harness end-to-end.
-- `npm run test:sweep` checks the sweep command for both `variants` and `grid` specs, including dry-run.
+- `npm run test:sweep` checks sweep queue generation for grid, random+seed, and list fixtures.
+- `npm run test:sweep-run` checks the parallel sweep runner, no-op reruns, and the max-failure stop gate.
 - `npm run test:seeds` checks `--seeds N`, `{seed}` substitution, and the mean/std aggregator row.
 - `npm run test:anomalies` checks spike, plateau, and divergence detection in text and JSON output.
 - `npm run test:loop` checks the ratchet loop tracks running-best across iterations and persists `loop_state.json`.
