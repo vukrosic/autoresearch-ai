@@ -8,7 +8,10 @@ lab="$(mktemp -d)"
 trap 'rm -rf "$pack_dir" "$prefix" "$lab"' EXIT
 
 cd "$repo_root"
-tarball_name="$(npm pack --pack-destination "$pack_dir" --json | node -e 'const fs=require("node:fs");const data=JSON.parse(fs.readFileSync(0,"utf8"));process.stdout.write(data[0].filename);')"
+pack_json="$pack_dir/npm-pack.json"
+npm pack --pack-destination "$pack_dir" --json > "$pack_json"
+tarball_name="$(node -e 'const fs=require("node:fs");const data=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(String(data[0].filename || ""));' "$pack_json")"
+unpacked_size="$(node -e 'const fs=require("node:fs");const data=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(String(data[0].unpackedSize || 0));' "$pack_json")"
 tarball="$pack_dir/$tarball_name"
 
 if [ ! -f "$tarball" ]; then
@@ -16,29 +19,107 @@ if [ ! -f "$tarball" ]; then
   exit 1
 fi
 
-file_count="$(tar tzf "$tarball" | wc -l | tr -d ' ')"
+packed_list="$pack_dir/packed-files.txt"
+tar tzf "$tarball" | sort > "$packed_list"
+
+file_count="$(wc -l < "$packed_list" | tr -d ' ')"
 if [ "$file_count" -lt 30 ]; then
   echo "tarball file count $file_count < 30" >&2
-  tar tzf "$tarball" >&2
+  cat "$packed_list" >&2
+  exit 1
+fi
+if [ "$unpacked_size" -le 0 ]; then
+  echo "npm pack did not report a positive unpackedSize" >&2
+  cat "$pack_json" >&2
   exit 1
 fi
 
-if tar tzf "$tarball" | grep -q "researchloop-dev/"; then
-  echo "researchloop-dev/ should not be in tarball" >&2
-  tar tzf "$tarball" | grep researchloop-dev/ >&2
+# Review thresholds, not tight limits: these catch accidental bulk additions.
+max_file_count=260
+max_unpacked_size=2500000
+if [ "$file_count" -gt "$max_file_count" ]; then
+  echo "tarball file count $file_count exceeds review threshold $max_file_count" >&2
+  cat "$packed_list" >&2
   exit 1
 fi
-if tar tzf "$tarball" | grep -qE "^package/scripts/"; then
-  echo "scripts/ should not be in tarball" >&2
-  tar tzf "$tarball" | grep -E "^package/scripts/" >&2
+if [ "$unpacked_size" -gt "$max_unpacked_size" ]; then
+  echo "tarball unpackedSize $unpacked_size exceeds review threshold $max_unpacked_size" >&2
+  cat "$pack_json" >&2
   exit 1
 fi
-if tar tzf "$tarball" | grep -qE "^package/docs/competitors/"; then
-  echo "docs/competitors/ should not be in tarball" >&2
-  exit 1
-fi
-if tar tzf "$tarball" | grep -qE "^package/docs/startup/"; then
-  echo "docs/startup/ should not be in tarball" >&2
+
+echo "packed tarball: files=$file_count unpacked_size=$unpacked_size"
+
+for forbidden in \
+  "^package/researchloop-dev/" \
+  "^package/scripts/" \
+  "^package/docs/competitors/" \
+  "^package/docs/startup/"
+do
+  if grep -qE "$forbidden" "$packed_list"; then
+    echo "forbidden tarball path matched: $forbidden" >&2
+    grep -E "$forbidden" "$packed_list" >&2
+    exit 1
+  fi
+done
+
+required_manifest="$pack_dir/required-files.txt"
+cat > "$required_manifest" <<'FILES'
+package/README.md
+package/CHANGELOG.md
+package/docs/getting-started.md
+package/assets/autoresearch-banner.webp
+package/bin/researchloop.js
+package/templates/AGENTS.md
+package/templates/adapters/generic.md
+package/templates/base/AGENTS.md
+package/templates/base/baseline.md
+package/templates/base/eval.yaml
+package/templates/base/goal.md
+package/templates/base/plan.md
+package/templates/base/safety.yaml
+package/templates/base/scratchpad/runs.jsonl
+package/templates/dashboard/index.html
+package/templates/prompts/first-contact.md
+package/templates/prompts/researchloop.md
+package/templates/prompts/topic-intake.md
+package/templates/team/README.md
+package/skills/AGENTS.md
+package/skills/README.md
+package/skills/researchloop-autoresearch/baseline-first/SKILL.md
+package/skills/researchloop-autoresearch/codex/SKILL.md
+package/skills/researchloop-autoresearch/onboarding-and-demo/SKILL.md
+package/skills/researchloop-autoresearch/release-proof/SKILL.md
+package/skills/researchloop-autoresearch/references/core-loop.md
+package/skills/researchloop-training-ladder/SKILL.md
+FILES
+
+node - "$repo_root" >> "$required_manifest" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+
+const root = process.argv[2];
+const entry = path.join(root, "bin", "researchloop.js");
+const source = fs.readFileSync(entry, "utf8");
+const required = new Set();
+for (const match of source.matchAll(/from\s+["'](\.\/researchloop-[^"']+\.js)["']/g)) {
+  required.add(`package/bin/${match[1].slice(2)}`);
+}
+for (const file of [...required].sort()) {
+  console.log(file);
+}
+NODE
+
+missing_required=0
+while IFS= read -r required_file; do
+  [ -z "$required_file" ] && continue
+  if ! grep -Fxq "$required_file" "$packed_list"; then
+    echo "missing required tarball file: $required_file" >&2
+    missing_required=$((missing_required + 1))
+  fi
+done < "$required_manifest"
+if [ "$missing_required" -gt 0 ]; then
+  echo "required tarball manifest failed with $missing_required missing file(s)" >&2
   exit 1
 fi
 
@@ -114,4 +195,4 @@ grep -q "genuinely different hypotheses" /tmp/researchloop-packed-prompt.log
 "$bin" report --dir "$lab" >/tmp/researchloop-packed-report.log
 grep -q "runs: 1" /tmp/researchloop-packed-report.log
 
-echo "autoresearch test:packed passed (version=$local_version, files=$file_count)"
+echo "autoresearch test:packed passed (version=$local_version, files=$file_count, unpacked_size=$unpacked_size)"
