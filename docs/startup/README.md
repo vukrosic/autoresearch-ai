@@ -42,13 +42,15 @@ Startup work means building a repeatable engine around the open source tool:
 
 ```text
   users/              PhD students, labs, companies, interviews, feedback
+  users/feature-wave-validation.md Evidence board for issue #126
+  users/outreach-messages.md Paste-ready asks for repo walkthroughs
   goals.md            Clear product goals for the autonomous research loop
   development-goals.md Concrete tool goals and parallel implementation lanes
   open-source.md      Open source principles and commercialization boundary
   agent-ops.md        Multi-agent operating model for building AutoResearch-AI
-positioning.md      What we say the product is and is not
-pricing.md          Future paid layers, not the first wedge
-risks.md            Failure modes and countermeasures
-release-plan.md     How we ship, publish, and post releases
-x-launch-draft.md   Draft launch copy for X
+  positioning.md      What we say the product is and is not
+  pricing.md          Future paid layers, not the first wedge
+  risks.md            Failure modes and countermeasures
+  release-plan.md     How we ship, publish, and post releases
+  x-launch-draft.md   Draft launch copy for X
 ```
