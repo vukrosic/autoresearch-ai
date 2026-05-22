@@ -46,6 +46,7 @@
 
 ## Next Product Work
 
+- Validate the next feature wave through issue #126 before promoting more ideas into `GOALS.md`.
 - `autoresearch topic` or equivalent topic-intake helper for baseline-aware idea generation.
 - `autoresearch team` polish: better lane splitting, branch/worktree helpers, and a machine-readable board.
 - `autoresearch replay <run-id>` re-executes a stored run and flags reproducibility deltas.
@@ -55,6 +56,7 @@
 
 ## Startup Work
 
+- Record 5 anonymized repo walkthroughs in `docs/startup/users/feedback-log.md` and extract the repeated pains in `docs/startup/users/feature-wave-validation.md`.
 - Recruit 5 PhD students or independent AI researchers for repo walkthroughs.
 - Recruit 2 small-company users with prompt/model/eval optimization pain.
 - Ship small releases every few days, with one visible user-facing improvement per release.

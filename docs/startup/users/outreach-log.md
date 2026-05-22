@@ -9,7 +9,7 @@ YYYY-MM-DD - Name / group
 - Ask:
 - Status:
 - Follow-up:
+- Conversation ID if completed:
 ```
 
 ## Log
-
