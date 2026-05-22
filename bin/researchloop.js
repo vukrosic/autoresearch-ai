@@ -146,6 +146,144 @@ function targetDir() {
   return path.resolve(String(option("--dir", process.cwd())));
 }
 
+const COMMAND_REGISTRY = [
+  { group: "Setup", canonical: "init", aliases: [], summary: "scaffold .researchloop/ + agent instructions" },
+  { group: "Setup", canonical: "goal", aliases: [], summary: "save research objective + metric + baseline command" },
+  { group: "Setup", canonical: "inspect", aliases: [], summary: "write repo-profile.json (frameworks, launchers, model block)" },
+  { group: "Setup", canonical: "doctor", aliases: [], summary: "check local tooling; --repair-plan prints fixes" },
+  { group: "Setup", canonical: "prompt", aliases: [], summary: "print agent-ready autonomous research prompt" },
+
+  { group: "Backlog & ideation", canonical: "topic", aliases: [], summary: "baseline-aware intake for a research topic" },
+  { group: "Backlog & ideation", canonical: "scan-papers", aliases: [], summary: "fetch arXiv abstracts into scratchpad/papers/" },
+  { group: "Backlog & ideation", canonical: "paper-read", aliases: [], summary: "structured claim/mechanism/limits/port/baseline note" },
+  { group: "Backlog & ideation", canonical: "paper-reread", aliases: [], summary: "compare paper note against a finished run" },
+  { group: "Backlog & ideation", canonical: "hypothesis", aliases: [], summary: "mechanism-first hypotheses from papers or runs" },
+  { group: "Backlog & ideation", canonical: "propose", aliases: [], summary: "write grounded experiment proposals to JSONL" },
+  { group: "Backlog & ideation", canonical: "rank", aliases: [], summary: "score proposals (impact/cost/risk/novelty/evidence)" },
+  { group: "Backlog & ideation", canonical: "priors", aliases: [], summary: "attach arXiv prior-art to one proposal" },
+  { group: "Backlog & ideation", canonical: "next-experiment", aliases: ["next"], summary: "turn the top proposal into an executable runbook" },
+  { group: "Backlog & ideation", canonical: "idea", aliases: [], summary: "chat-first research prompt for the agent" },
+  { group: "Backlog & ideation", canonical: "mechanisms", aliases: [], summary: "collect mechanism strings; --check dedups for propose --novel" },
+  { group: "Backlog & ideation", canonical: "ablate", aliases: [], summary: "turn a winning config into halve/double/remove/flip proposals" },
+  { group: "Backlog & ideation", canonical: "fork", aliases: [], summary: "emit a run snippet from a known-good config" },
+  { group: "Backlog & ideation", canonical: "warmstart", aliases: [], summary: "launch snippet using a prior run's checkpoint as init weights" },
+  { group: "Backlog & ideation", canonical: "suggest", aliases: [], summary: "next-experiment suggestion off the ledger" },
+  { group: "Backlog & ideation", canonical: "similar", aliases: [], summary: "find runs most similar by config + metric" },
+  { group: "Backlog & ideation", canonical: "search", aliases: ["grep"], summary: "full-text grep across papers, hypotheses, proposals, ledger" },
+
+  { group: "Run", canonical: "run", aliases: [], summary: "execute a training/eval command + record" },
+  { group: "Run", canonical: "baseline", aliases: [], summary: "run baseline; --lock / --unlock freeze it" },
+  { group: "Run", canonical: "baseline-status", aliases: [], summary: "report baseline presence + lock state" },
+  { group: "Run", canonical: "eval", aliases: [], summary: "run eval.yaml structured eval for a recorded run" },
+  { group: "Run", canonical: "record", aliases: [], summary: "manual ledger row (escape hatch; prefer run)" },
+  { group: "Run", canonical: "sweep", aliases: [], summary: "generate|status|run queue-based sweeps" },
+  { group: "Run", canonical: "loop", aliases: [], summary: "ratchet loop; keeps the best across iterations" },
+  { group: "Run", canonical: "smoke", aliases: [], summary: "actually-run smoke test (60s budget) on a real command" },
+  { group: "Run", canonical: "replay", aliases: [], summary: "re-execute a recorded run + report drift" },
+  { group: "Run", canonical: "verify", aliases: [], summary: "re-run + report deterministic / drifted" },
+  { group: "Run", canonical: "resume", aliases: [], summary: "re-launch a failed/timeout run from checkpoint" },
+  { group: "Run", canonical: "determinism", aliases: ["det"], summary: "re-run same command N times; tolerance check" },
+  { group: "Run", canonical: "anomalies", aliases: ["anomaly"], summary: "detect divergence, spikes, plateaus in metric history" },
+  { group: "Run", canonical: "preflight", aliases: [], summary: "pre-run gates: command/safety/metric/disk/RAM/GPU/baseline" },
+  { group: "Run", canonical: "eta", aliases: [], summary: "best-effort time-to-completion off streamed metrics" },
+  { group: "Run", canonical: "tail", aliases: [], summary: "tail the run log (or streamed metrics with --metrics)" },
+
+  { group: "Resource planning", canonical: "gpu-fit", aliases: ["vram-fit", "vram"], summary: "VRAM estimator per GPU SKU; ZeRO / TP / DP / activations" },
+  { group: "Resource planning", canonical: "kv-cache", aliases: ["kv"], summary: "inference VRAM; GQA-aware; max batch/context" },
+  { group: "Resource planning", canonical: "mfu", aliases: [], summary: "Model FLOPs Utilization per ledger row" },
+  { group: "Resource planning", canonical: "compute-budget", aliases: ["compute"], summary: "Chinchilla tokens/FLOPs/gpu-days calculator" },
+  { group: "Resource planning", canonical: "shard-plan", aliases: ["parallelism", "shard"], summary: "recommend (TP, PP, DP) split for a target model + cluster" },
+  { group: "Resource planning", canonical: "sweep-projection", aliases: ["sweep-project", "project-sweep"], summary: "project sweep wall time + cost before launching" },
+  { group: "Resource planning", canonical: "headroom", aliases: [], summary: "gap-to-perfect / gap-to-SoTA reality check" },
+  { group: "Resource planning", canonical: "gpu-report", aliases: ["gpu"], summary: "aggregate per-run system.jsonl load + memory" },
+  { group: "Resource planning", canonical: "hardware", aliases: ["hw"], summary: "GPU/CUDA/Python/Torch distributions across the ledger" },
+  { group: "Resource planning", canonical: "disk-check", aliases: ["disk"], summary: "exit non-zero when free space is below threshold" },
+  { group: "Resource planning", canonical: "container-snapshot", aliases: ["container"], summary: "Dockerfile + requirements.lock repro kit for a run" },
+
+  { group: "Statistical rigor", canonical: "significance", aliases: ["sig"], summary: "permutation test + bootstrap CI on metric delta" },
+  { group: "Statistical rigor", canonical: "power", aliases: [], summary: "required sample size for a given effect size" },
+  { group: "Statistical rigor", canonical: "sample-efficiency", aliases: ["se"], summary: "step at which a run hit 50/75/90/95/99% improvement" },
+  { group: "Statistical rigor", canonical: "rl-stats", aliases: ["rl"], summary: "Agarwal-2021 robust episode-return aggregator with IQM" },
+  { group: "Statistical rigor", canonical: "scaling-fit", aliases: ["scaling"], summary: "Kaplan / Chinchilla power-law fit on the ledger" },
+  { group: "Statistical rigor", canonical: "grad-noise", aliases: ["gns", "gradient-noise"], summary: "McCandlish 2018 critical-batch estimator" },
+  { group: "Statistical rigor", canonical: "overfit-watch", aliases: ["overfit"], summary: "val-min step, divergence, wasted-compute fraction" },
+  { group: "Statistical rigor", canonical: "memorization", aliases: ["memo", "verbatim-check"], summary: "verbatim training-data leakage in model outputs" },
+  { group: "Statistical rigor", canonical: "canary", aliases: [], summary: "exact / substring eval-train leak detector" },
+
+  { group: "API / LLM evals", canonical: "api-budget", aliases: ["api-cost", "tokens-cost"], summary: "project $ cost across baked-in pricing registry" },
+  { group: "API / LLM evals", canonical: "judge", aliases: [], summary: "LLM-as-judge harness (pairwise / scalar / reference)" },
+  { group: "API / LLM evals", canonical: "elo", aliases: ["arena"], summary: "pairwise model ratings: online Elo + Bradley-Terry MLE" },
+  { group: "API / LLM evals", canonical: "eval-diff", aliases: ["predictions-diff"], summary: "flip analysis between two predictions files" },
+  { group: "API / LLM evals", canonical: "lr-finder", aliases: ["lrfinder", "find-lr"], summary: "analyze a Smith-style LR range test; report elbow" },
+  { group: "API / LLM evals", canonical: "bench", aliases: ["benchmark"], summary: "MMLU/HumanEval/GSM8K/... preset registry; add patches eval.yaml" },
+
+  { group: "Compare & promote", canonical: "compare", aliases: [], summary: "rank runs by metric; auto-runs significance" },
+  { group: "Compare & promote", canonical: "curves", aliases: ["curve"], summary: "sparkline + stats for streamed metric series" },
+  { group: "Compare & promote", canonical: "diff-runs", aliases: [], summary: "two-run diff in text / json / markdown" },
+  { group: "Compare & promote", canonical: "review", aliases: [], summary: "programmatic pre-promote checks on a recorded run" },
+  { group: "Compare & promote", canonical: "promote", aliases: [], summary: "copy a winning run to winners/; gates on review" },
+  { group: "Compare & promote", canonical: "audit", aliases: [], summary: "verify numeric claims in a markdown resolve to ledger" },
+
+  { group: "Reporting", canonical: "report", aliases: [], summary: "lab-note markdown report; +MFU / Overfit / cost tables" },
+  { group: "Reporting", canonical: "summary", aliases: ["status"], summary: "one-screen project state + next-action command" },
+  { group: "Reporting", canonical: "leaderboard", aliases: ["top"], summary: "top-N runs with deltas, status, wall time, USD" },
+  { group: "Reporting", canonical: "story", aliases: [], summary: "narrate a run's ancestry, diff, descendants, lesson" },
+  { group: "Reporting", canonical: "retrospective", aliases: ["retro"], summary: "weekly synthesis: counts, top runs, lessons, spend" },
+  { group: "Reporting", canonical: "digest", aliases: [], summary: "text/json/markdown digest --since window" },
+  { group: "Reporting", canonical: "param-importance", aliases: [], summary: "rank which params moved the metric most" },
+  { group: "Reporting", canonical: "failures", aliases: [], summary: "top failure patterns across runs" },
+  { group: "Reporting", canonical: "query", aliases: [], summary: "ad-hoc filter/sort/limit over runs.jsonl" },
+  { group: "Reporting", canonical: "model-card", aliases: [], summary: "per-run model card markdown" },
+  { group: "Reporting", canonical: "pr-bundle", aliases: ["pr"], summary: "render PR-ready markdown body for a run" },
+  { group: "Reporting", canonical: "agent-memory", aliases: ["memory"], summary: "distill project into a CLAUDE.md-sized fragment" },
+  { group: "Reporting", canonical: "bibtex", aliases: ["bib"], summary: "extract BibTeX from paper notes; filter to cited entries" },
+  { group: "Reporting", canonical: "lit-diff", aliases: ["litdiff"], summary: "section-by-section diff of two paper notes" },
+  { group: "Reporting", canonical: "share", aliases: [], summary: "package a run as a portable .tar.gz" },
+  { group: "Reporting", canonical: "forecast", aliases: [], summary: "project metric trajectory forward from the ledger" },
+  { group: "Reporting", canonical: "pareto", aliases: [], summary: "Pareto front across two competing metrics" },
+  { group: "Reporting", canonical: "dashboard", aliases: [], summary: "localhost dashboard: scatter, curves, /diff, /lineage" },
+
+  { group: "Hygiene & ops", canonical: "prune", aliases: [], summary: "prune runs by age / status; --dry-run safe" },
+  { group: "Hygiene & ops", canonical: "tag", aliases: [], summary: "add/remove/list tags on a run" },
+  { group: "Hygiene & ops", canonical: "archive", aliases: [], summary: "mark a dead-end with a reason" },
+  { group: "Hygiene & ops", canonical: "learn", aliases: [], summary: "capture a transferable lesson off a run" },
+  { group: "Hygiene & ops", canonical: "reset", aliases: [], summary: "remove a row + side-archive the run dir" },
+  { group: "Hygiene & ops", canonical: "question", aliases: ["q"], summary: "open-questions parking lot at questions.jsonl" },
+  { group: "Hygiene & ops", canonical: "stale-locks", aliases: ["locks"], summary: "find/remove zombie sweep/task lock files" },
+  { group: "Hygiene & ops", canonical: "validate-config", aliases: ["validate"], summary: "schema lint for .researchloop/*.yaml" },
+  { group: "Hygiene & ops", canonical: "budget", aliases: [], summary: "cost guardrail; --check exits 2 over-budget" },
+  { group: "Hygiene & ops", canonical: "seed", aliases: [], summary: "single source of truth for today's seed; --env emits ritual" },
+  { group: "Hygiene & ops", canonical: "data-fingerprint", aliases: [], summary: "hash input data for reproducibility" },
+  { group: "Hygiene & ops", canonical: "data-sample", aliases: ["sample-data"], summary: "JSONL/CSV/TSV sample + length percentiles + class balance" },
+  { group: "Hygiene & ops", canonical: "hooks", aliases: ["hook"], summary: "manage pre/post-run / promote / failure shell hooks" },
+  { group: "Hygiene & ops", canonical: "slurm", aliases: ["sbatch"], summary: "generate .sbatch wrapping autoresearch run" },
+
+  { group: "Coordination", canonical: "team", aliases: [], summary: "generate multi-agent development board" },
+  { group: "Coordination", canonical: "tasks", aliases: [], summary: "claimable multi-agent queue at tasks.jsonl" },
+];
+
+function cmdListCommands() {
+  const fmt = option("--format", "text");
+  if (fmt === "json") {
+    console.log(JSON.stringify(COMMAND_REGISTRY, null, 2));
+    return;
+  }
+  const groups = new Map();
+  for (const entry of COMMAND_REGISTRY) {
+    if (!groups.has(entry.group)) groups.set(entry.group, []);
+    groups.get(entry.group).push(entry);
+  }
+  for (const [group, entries] of groups) {
+    console.log(`\n${group}`);
+    console.log("-".repeat(group.length));
+    for (const entry of entries) {
+      const aliasPart = entry.aliases.length ? ` (${entry.aliases.join(", ")})` : "";
+      console.log(`  ${entry.canonical}${aliasPart}  —  ${entry.summary}`);
+    }
+  }
+  console.log("");
+}
+
 function defaultSafetyPolicy() {
   return {
     allowPrefixes: [
@@ -8340,6 +8478,10 @@ AutoResearch-AI installs docs, prompts, scratchpads, and experiment ledgers for 
 async function main() {
   if (hasFlag("--version") || command === "version") {
     console.log(packageVersion());
+    return;
+  }
+  if (hasFlag("--list-commands") || command === "list-commands" || command === "commands") {
+    cmdListCommands();
     return;
   }
   if (hasFlag("--help") || command === "help") {
