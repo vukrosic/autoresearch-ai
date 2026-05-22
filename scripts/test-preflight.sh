@@ -29,6 +29,18 @@ $cli preflight --dir "$tmpdir" --format json >/tmp/autoresearch-preflight-json.l
 grep -qE '"name":\s*"command"' /tmp/autoresearch-preflight-json.log
 grep -qE '"ok":\s*true' /tmp/autoresearch-preflight-json.log
 
+# Safety deny path should match run/eval policy behavior.
+set +e
+$cli preflight --dir "$tmpdir" --command "git --version" >/tmp/autoresearch-preflight-deny.log
+deny_exit=$?
+set -e
+if [ "$deny_exit" -eq 0 ]; then
+  echo "expected preflight to fail for disallowed command"
+  exit 1
+fi
+grep -q "safety: allow_prefixes" /tmp/autoresearch-preflight-deny.log
+grep -q "preflight: FAIL" /tmp/autoresearch-preflight-deny.log
+
 # --require-gpu on a non-GPU host should fail.
 set +e
 $cli preflight --dir "$tmpdir" --require-gpu >/tmp/autoresearch-preflight-gpu.log
