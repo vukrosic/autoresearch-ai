@@ -7,10 +7,11 @@ The goal is not to sell too early. The goal is to learn how real researchers run
 Use this folder for the issue #126 validation loop:
 
 1. Log outreach in [`outreach-log.md`](outreach-log.md).
-2. Run the repo walkthrough with [`interview-script.md`](interview-script.md).
-3. Add anonymized evidence to [`feedback-log.md`](feedback-log.md).
-4. Summarize repeated pains in [`feature-wave-validation.md`](feature-wave-validation.md).
-5. Update [`../../feature-ideas.md`](../../feature-ideas.md) only from real conversation evidence.
+2. Send a focused ask from [`outreach-messages.md`](outreach-messages.md).
+3. Run the repo walkthrough with [`interview-script.md`](interview-script.md).
+4. Add anonymized evidence to [`feedback-log.md`](feedback-log.md).
+5. Summarize repeated pains in [`feature-wave-validation.md`](feature-wave-validation.md).
+6. Update [`../../feature-ideas.md`](../../feature-ideas.md) only from real conversation evidence.
 
 Do not close a validation issue from synthetic users, guessed workflows, or imagined pain. If there are fewer than five real conversations logged, treat the next feature wave as unvalidated.
 

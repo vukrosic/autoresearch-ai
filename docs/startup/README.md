@@ -43,6 +43,7 @@ Startup work means building a repeatable engine around the open source tool:
 ```text
   users/              PhD students, labs, companies, interviews, feedback
   users/feature-wave-validation.md Evidence board for issue #126
+  users/outreach-messages.md Paste-ready asks for repo walkthroughs
   goals.md            Clear product goals for the autonomous research loop
   development-goals.md Concrete tool goals and parallel implementation lanes
   open-source.md      Open source principles and commercialization boundary
