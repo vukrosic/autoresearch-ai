@@ -15,7 +15,7 @@ Before suggesting any next step, read the repo memory:
 - recent idea notes in `.researchloop/scratchpad/ideas/` if present
 
 Use that history first. If the repo already has experiments, anchor suggestions to what was tried, what improved, what regressed, and what stayed untested.
-If there is no history yet, ask the user for the real target repo or research dir before guessing. Propose actual research questions from the repo surface, not generic learning-rate or hyperparameter sweeps. Mention sweeps only when the history or repo shape makes them a plausible follow-up.
+If there is no history yet, ask the user for the real target repo or research dir before guessing. Propose actual research questions from the repo surface, not generic learning-rate or hyperparameter sweeps. Mention sweeps only when the history or repo shape makes them a plausible follow-up. If a sweep queue already exists under `.researchloop/sweeps/`, use `autoresearch sweep generate|status|run` instead of inventing a one-off loop.
 If `.researchloop/plan.md` does not already contain a time budget, ask exactly one question first: "How long do you usually want a typical experiment to run?" Save the answer in the plan under `Time Budget`, then use it to shape later suggestions.
 
 When the user names a research topic, follow the topic-intake rules above:
@@ -46,3 +46,6 @@ Before you begin, make the target explicit:
 - If they have neither, offer a disposable demo repo or the local `llm-research-kit` repo as the no-friction fallback.
 
 After the user approves the plan, design and run small experiments. Track commands, metrics, code changes, and decisions. Do not claim results without evidence.
+If a shared task queue exists at `.researchloop/tasks.jsonl`, check `autoresearch tasks status` and claim a lane before editing shared files.
+
+After a run lands, compare the relevant paper note against it with `autoresearch paper-reread <paper-id> --against <run-id>` before you decide whether the paper actually transferred.

@@ -98,6 +98,8 @@ When you say something like "research query/key architectures", the agent should
 
 First it checks whether a usable baseline already exists. If `.researchloop/baseline.md` is missing or incomplete, the first proposed step should be to create or update that markdown note from existing artifacts. It should not recommend architecture, optimizer, sweep, or training changes until the baseline is clear.
 
+When a sweep really is the right follow-up, create `.researchloop/sweeps/<name>.yaml`, run `autoresearch sweep generate <name>` to write the queue, inspect `autoresearch sweep status <name>`, and then launch `autoresearch sweep run <name> --workers N` after approval.
+
 After the baseline is clear, choose one of these modes:
 
 ```text
@@ -107,6 +109,7 @@ autonomous  the agent runs the loop after explicit approval and within the time 
 ```
 
 Paper search is optional. Use it when the topic is broad, when the repo has no relevant paper notes, or when a proposed idea needs literature grounding.
+When paper notes or prior runs already exist, the topic flow should point at the nearest ones and hand back the exact `paper-read` or `hypothesis` command to continue from there.
 
 ## 4. Set the research goal
 
@@ -172,6 +175,22 @@ That prompt tells the agent to first explain the detected system context and rep
 - compare results
 - keep the loop moving
 
+If you already have paper notes, turn them into structured research notes before you pick the next experiment:
+
+```bash
+autoresearch paper-read 2503.12345v1 --write
+autoresearch paper-reread 2503.12345v1 --against warmup-001
+autoresearch hypothesis --from-papers --write
+autoresearch hypothesis --from-runs --write
+autoresearch propose --n 5 --write --with-priors
+autoresearch rank --write
+autoresearch next-experiment --write
+autoresearch priors --proposal proposal-warmup-1
+```
+
+Use `--paper-id` or `--run-id` when you want to turn one exact note or ledger row into a hypothesis. Use `autoresearch propose --write --with-priors` when you want to turn the current goal, baseline, papers, and runs into a small backlog in `.researchloop/scratchpad/proposals.jsonl` with arXiv evidence attached while it is generated. Use `autoresearch rank --write` after that when you want the backlog sorted by impact, cost, risk, novelty, and evidence. Use `autoresearch next-experiment --write` when you want the highest-ranked proposal turned into a concrete runbook with preflight, smoke, run, compare, story, and promote commands. Use `autoresearch priors --proposal <id>` when you want to attach or refresh arXiv priors for one specific existing proposal.
+After a run lands, use `autoresearch paper-reread <paper-id> --against <run-id>` to compare the note against the observed result before you decide whether to refine the idea, learn from a dead end, or move on.
+
 ## 7b. Use the skill pack
 
 The npm package also ships a downloadable `skills/` folder.
@@ -222,11 +241,31 @@ For metrics where higher is better:
 autoresearch compare --metric accuracy --direction higher
 ```
 
+If `.researchloop/eval.yaml` declares `metrics` and `eval_command`, `autoresearch run` and `autoresearch baseline` call `autoresearch eval` automatically after the training command finishes. You can rerun one recorded eval manually with:
+
+```bash
+autoresearch eval --run-id first-run
+```
+
 Then summarize the current state:
 
 ```bash
+autoresearch summary
 autoresearch report
 ```
+
+`autoresearch summary` is the quick "what now?" view: it shows the goal, baseline, best completed experiment, active runs, blockers, recent rows, proposal counts, and the next concrete command to run. Use `autoresearch status` as the shorter alias, or `--out summary.md` when you want to save the snapshot.
+
+To compare repeated runs or audit stability:
+
+```bash
+autoresearch replay <run-id>
+autoresearch verify --id <run-id>
+autoresearch significance run-a run-b
+autoresearch determinism --command "python train.py" --n 3
+```
+
+`replay` and `verify` fail before launching a child process when the source run has no finite metric for the requested comparison.
 
 For a shareable lab-note artifact:
 
@@ -258,7 +297,8 @@ Then open the localhost URL it prints. The dashboard reads the repo's `.research
 - the run ledger
 - the best run so far
 - the latest run
-- a small trend chart for the main metric
+- a run scatter and selectable curve overlay for the main metric
+- lineage and diff views for replay, resume, verify, and direct comparison
 
 It does not need accounts or auth because it stays on your machine.
 
@@ -268,6 +308,14 @@ If you want to develop AutoResearch-AI itself, or split any repo into parallel l
 
 ```bash
 autoresearch team --workers 8
+```
+
+If the repo already has a shared task queue, you can inspect and claim it too:
+
+```bash
+autoresearch tasks status
+autoresearch tasks claim --agent codex --lane worker
+autoresearch tasks done <task-id>
 ```
 
 That writes `.researchloop/team/` with:

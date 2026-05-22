@@ -153,6 +153,8 @@ Two workers may not edit the same template file unless one is the integration ow
 
 ### G26 — `autoresearch baseline-status`
 
+**Status.** Shipped. `autoresearch baseline-status` reports missing, partial, and complete baselines, and `scripts/test-baseline-status.sh` covers text and JSON output.
+
 **Motivation.** Autonomous research fails when the agent starts optimizing before it knows what it's improving against. Today nothing tells the agent the baseline is missing or incomplete.
 
 **Deliverables.**
@@ -175,6 +177,8 @@ Two workers may not edit the same template file unless one is the integration ow
 
 ### G27 — `autoresearch baseline --lock`
 
+**Status.** Shipped. `autoresearch baseline --lock` writes the baseline lock, `--unlock` removes it, and `scripts/test-baseline-lock.sh` covers lock, drift, and unlock.
+
 **Motivation.** A baseline that quietly drifts mid-experiment invalidates every later claim. Lock it.
 
 **Deliverables.**
@@ -196,11 +200,13 @@ Two workers may not edit the same template file unless one is the integration ow
 
 ### G28 — `autoresearch topic`
 
+**Status.** Shipped. `autoresearch topic` now surfaces the nearest paper notes and run rows from the local scratchpad, ranks them against the topic text, and prints the exact `paper-read` / `hypothesis` follow-up commands for the most relevant evidence. `scripts/test-topic.sh` covers baseline states, best-run selection, and evidence-aware follow-ups.
+
 **Motivation.** Users give topics like "query/key architectures" — the agent should not jump from a topic straight to random experiments. It should turn the topic into a baseline-aware plan.
 
 **Deliverables.**
 - `autoresearch topic "TEXT" [--mode propose|novel|autonomous] [--dir PATH] [--write]`.
-- Writes `.researchloop/scratchpad/topics/<slug>.md` containing: baseline-state check, matching paper notes (if any), matching prior runs (if any), three offered next-modes, one suggested smallest experiment, an explicit "needs approval" line.
+- Writes `.researchloop/scratchpad/topics/<slug>.md` containing: baseline-state check, matching paper notes or run rows (if any), three offered next-modes, one suggested smallest experiment, and an explicit "needs approval" line.
 - Refuses `--mode autonomous` if no baseline is locked (G27).
 
 **Acceptance.**
@@ -208,15 +214,17 @@ Two workers may not edit the same template file unless one is the integration ow
 - Output lists the three modes (propose / novel / autonomous).
 - Output does not recommend training without an approval line.
 
-**Test plan.** `scripts/test-topic.sh` covers a blank repo, a baseline-ready repo, and a repo with paper notes.
+**Test plan.** `scripts/test-topic.sh` covers a blank repo, a baseline-ready repo, and a repo with paper notes and matching runs.
 
-**Files owned.** `bin/researchloop.js`, `templates/prompts/topic-intake.md`, `scripts/test-topic.sh`.
+**Files owned.** `bin/researchloop.js`, `bin/researchloop-topic.js`, `templates/prompts/topic-intake.md`, `scripts/test-topic.sh`.
 
 **Depends on.** G26 (baseline state). Soft synergy with G29/G30. **Effort.** S–M. **Agent role.** Worker — CLI feature.
 
 ---
 
 ### G29 — `autoresearch paper-read <paper-id>`
+
+**Status.** Shipped. `autoresearch paper-read` now turns scanned paper notes or exact arXiv ids into structured `claim`, `mechanism`, `limits`, `how to port this`, and `baseline relevance` sections, with cache-backed offline re-reads. `scripts/test-scan-papers.sh` covers the note rewrite and offline cache path.
 
 **Motivation.** `scan-papers` saves abstracts. That makes the agent busier, not smarter. We need structured notes that connect papers to the local baseline.
 
@@ -240,6 +248,8 @@ Two workers may not edit the same template file unless one is the integration ow
 
 ### G30 — `autoresearch hypothesis --from-papers`
 
+**Status.** Shipped. `autoresearch hypothesis` now writes mechanism-first notes from paper notes or runs, supports `--from-papers`, `--from-runs`, and `--novel`, and rejects sweep-like mechanisms under `--novel`. `scripts/test-hypothesis.sh` covers paper-backed, run-backed, novel, and rejection paths.
+
 **Motivation.** Paper notes are useful only if they turn into testable hypotheses for the local repo. This goal absorbs the old "novel hypothesis" theme: every hypothesis must be mechanism-first, with a kill criterion, not a parameter sweep dressed up.
 
 **Deliverables.**
@@ -262,6 +272,8 @@ Two workers may not edit the same template file unless one is the integration ow
 
 ### G01 — `autoresearch propose`: concrete experiment plans
 
+**Status.** Shipped. `autoresearch propose` now reads the goal or baseline, repo profile, paper notes, hypothesis notes, and recorded runs to write content-hashed proposal rows in `.researchloop/scratchpad/proposals.jsonl`. It preserves real file references when the fixture or repo profile exposes them. `--with-priors` attaches arXiv evidence while generating the backlog, writes missing paper notes, and updates existing rows without changing proposal ids. `scripts/test-propose.sh` covers schema, id stability, `--mode novel`, and `--with-priors`.
+
 **Motivation.** Today `autoresearch idea` prints a chat prompt for an agent. There is no command that *itself* writes a structured, ranked list of concrete experiments to disk. Autonomous agents need a machine-readable starting backlog.
 
 **Deliverables.**
@@ -275,15 +287,17 @@ Two workers may not edit the same template file unless one is the integration ow
 - Re-running does **not** duplicate `id`s; ids are content-hashed.
 - `proposals.jsonl` is valid newline-delimited JSON (each line parses independently).
 
-**Test plan.** `scripts/test-propose.sh` — runs in a temp dir from `examples/fixtures/minimal/`, asserts row count, schema, id-stability across two runs, and `--mode novel` enforcement.
+**Test plan.** `scripts/test-propose.sh` — runs in a temp dir from `examples/fixtures/minimal-pytorch/`, asserts row count, schema, id-stability across two runs, real file references, `--mode novel` enforcement, and `--with-priors` attachment from an arXiv fixture.
 
-**Files owned.** `bin/researchloop.js`, `templates/prompts/propose.md`, `scripts/test-propose.sh`, `examples/fixtures/minimal/`.
+**Files owned.** `bin/researchloop.js`, `bin/researchloop-proposals.js`, `templates/prompts/propose.md`, `scripts/test-propose.sh`, `examples/fixtures/minimal-pytorch/`.
 
 **Depends on.** G26 (baseline check). Soft synergy with G29/G30 for `--mode novel`. **Effort.** M. **Agent role.** Worker — CLI feature.
 
 ---
 
 ### G02 — Idea/proposal ranking with explainable score
+
+**Status.** Shipped. `autoresearch rank` now reads proposal rows, scores them with explainable `impact`, `cost`, `risk`, `novelty_vs_runs`, and `evidence` values, and writes both `ranked-proposals.jsonl` and `ranked-proposals.md` from the fixture or local backlog. `autoresearch next-experiment` consumes that ranked backlog and turns the top proposal into a concrete runbook plus optional shell wrapper. `scripts/test-rank.sh` covers sorting, deterministic output, evidence scoring, and low novelty for a duplicate of the current best run; `scripts/test-next-experiment.sh` covers the runbook handoff.
 
 **Motivation.** A backlog without a priority order means agents pick the wrong experiment first. Ranking should be reproducible and explainable, not an opaque LLM judgment.
 
@@ -298,9 +312,9 @@ Two workers may not edit the same template file unless one is the integration ow
 - A proposal that duplicates the goal's already-best run in `runs.jsonl` receives `novelty_vs_runs <= 0.2`.
 - `score_breakdown.why` is non-empty for every proposal.
 
-**Test plan.** `scripts/test-rank.sh` runs against a frozen `proposals.jsonl` fixture committed under `examples/fixtures/proposals/`. Asserts ordering and field presence.
+**Test plan.** `scripts/test-rank.sh` runs against a frozen `proposals.jsonl` fixture committed under `examples/fixtures/proposals/`. Asserts ordering, field presence, evidence scoring, deterministic output, and low novelty for a best-run duplicate.
 
-**Files owned.** `bin/researchloop.js`, `scripts/test-rank.sh`, `examples/fixtures/proposals/`.
+**Files owned.** `bin/researchloop.js`, `bin/researchloop-rank.js`, `bin/researchloop-next-experiment.js`, `scripts/test-rank.sh`, `scripts/test-next-experiment.sh`, `examples/fixtures/proposals/`.
 
 **Depends on.** G01. **Effort.** S–M. **Agent role.** Worker — CLI feature.
 
@@ -321,7 +335,9 @@ Two workers may not edit the same template file unless one is the integration ow
 
 **Test plan.** Extend `test-scan-papers.sh` to drive a `priors` lookup against the existing XML fixture; assert dedup on re-run.
 
-**Files owned.** `bin/researchloop.js`, additions to `scripts/test-scan-papers.sh`.
+**Files owned.** `bin/researchloop.js`, `bin/researchloop-priors.js`, additions to `scripts/test-scan-papers.sh`.
+
+**Status.** Shipped. `autoresearch priors` now appends a deduped `priors` array to the target proposal row, writes paper notes under `scratchpad/papers/` when missing, and exposes the same helper to `propose --with-priors` so new backlogs can be evidence-bearing from the start. `scripts/test-scan-papers.sh` covers the warmup match, rerun dedup, and offline cache-miss behavior.
 
 **Depends on.** G01, G29 (shared paper-note schema). **Effort.** S. **Agent role.** Worker — CLI feature.
 
@@ -330,6 +346,8 @@ Two workers may not edit the same template file unless one is the integration ow
 ## Tier 2 — Evaluation layer
 
 ### G04 — Pluggable evaluation runner (minimal `eval.yaml` schema)
+
+**Status.** Shipped. `autoresearch eval` now runs the structured eval command, `run` and `baseline` auto-call it when `eval.yaml` is present, and `scripts/test-eval.sh` covers stdout/file metrics, null missing-metric values, parse warnings, and compare on eval-produced rows.
 
 **Motivation.** Today `goal.md` pins a single primary metric parsed via regex from training stdout. Real research tracks several metrics and runs eval scripts separately. We need a structured eval contract — but only the metrics portion lands in G04; curves, gates, early-stop, retry, and checkpoint sections are each owned by their downstream goals.
 
@@ -486,6 +504,8 @@ Two workers may not edit the same template file unless one is the integration ow
 
 ### G31 — `autoresearch doctor --repair-plan`
 
+**Status.** Shipped. `autoresearch doctor --repair-plan` prints an ordered checklist without changing anything, and `scripts/test-doctor-repair.sh` covers missing-repo, missing-metric, and clean cases.
+
 **Motivation.** `doctor` today reports problems. It should also propose ordered fixes — without auto-installing anything.
 
 **Deliverables.**
@@ -506,6 +526,8 @@ Two workers may not edit the same template file unless one is the integration ow
 ---
 
 ### G32 — Per-run artifact directory contract
+
+**Status.** Shipped. `run` and `baseline` now emit the full artifact bundle under `.researchloop/scratchpad/runs/<id>/`, and `scripts/test-artifact-contract.sh` covers the manifest, env, diff, and system sampling.
 
 **Motivation.** Every `run` and `baseline` already creates a per-run directory at `.researchloop/scratchpad/runs/<id>/`, but writes only `log.txt` into it. "Reproducible" needs more than env capture in a JSONL row — it needs a self-describing on-disk artifact bundle that downstream tools (replay, promote, dashboard, external trainers) can consume without re-parsing `runs.jsonl`.
 
@@ -541,6 +563,8 @@ The child process receives `RESEARCHLOOP_RUN_DIR` as an environment variable so 
 
 ### G07 — Sweep generator (grid / random / list)
 
+**Status.** Shipped. `autoresearch sweep generate|status` builds a JSONL queue from `.researchloop/sweeps/<name>.yaml`, and `scripts/test-sweep.sh` covers grid, random+seed, and list strategies.
+
 **Motivation.** Agents hand-write `--lr 1e-3`, `--lr 3e-3` runs one at a time. A sweep spec turns one declarative file into a queue of concrete runs.
 
 **Deliverables.**
@@ -571,6 +595,8 @@ The child process receives `RESEARCHLOOP_RUN_DIR` as an environment variable so 
 
 ### G08 — Parallel run scheduler
 
+**Status.** Shipped. `autoresearch sweep run` consumes the queue with bounded workers, and `scripts/test-sweep-run.sh` covers success, no-op reruns, and the max-failure stop gate.
+
 **Motivation.** A queue with no runner is useless. We need a worker that consumes the queue and executes runs with bounded concurrency.
 
 **Deliverables.**
@@ -593,6 +619,8 @@ The child process receives `RESEARCHLOOP_RUN_DIR` as an environment variable so 
 
 ### G18 — Worker daemon: agents pull from a shared task queue
 
+**Status.** Shipped. `autoresearch tasks` now manages a claimable queue in `.researchloop/tasks.jsonl`, writes per-task lock files under `.researchloop/tasks.lock/`, and `scripts/test-tasks.sh` covers the concurrent claim / no-task case, dependency blocking, and done/unblock flow.
+
 **Motivation.** Multi-agent today is a static markdown board. We need a real queue that multiple agent processes can claim from without stepping on each other. The mutex primitive built here is reused by G08.
 
 **Deliverables.**
@@ -608,13 +636,15 @@ The child process receives `RESEARCHLOOP_RUN_DIR` as an environment variable so 
 
 **Test plan.** `scripts/test-tasks.sh` spawns two background `claim` calls and asserts the win/no-task pattern; covers deps and done.
 
-**Files owned.** `bin/researchloop.js` (mutex module + tasks subcommand), `scripts/test-tasks.sh`.
+**Files owned.** `bin/researchloop.js`, `bin/researchloop-tasks.js`, `scripts/test-tasks.sh`.
 
 **Depends on.** None. Replaces the static `team` board over time but does not delete it. **Effort.** M. **Agent role.** Worker — CLI feature. **Integration owner for the mutex primitive.**
 
 ---
 
 ### G19 — Auto-reviewer gate before promotion
+
+**Status.** Shipped. `autoresearch review` checks the recorded run bundle, `promote` blocks on failed checks unless `--skip-review`, and `scripts/test-review.sh` covers pass/fail paths.
 
 **Motivation.** The reviewer lane today is a markdown brief. We want an automated review step a winning run must pass before `promote` succeeds.
 
@@ -738,6 +768,8 @@ The child process receives `RESEARCHLOOP_RUN_DIR` as an environment variable so 
 
 ### G15 — Live charts on the dashboard
 
+**Status.** Shipped. The dashboard now renders a run scatter and a selectable curve overlay in `templates/dashboard/index.html`, backed by `/api/curves` and the existing polling state.
+
 **Motivation.** The current dashboard is a static HTML page that polls JSON. It does not plot. Agents and humans need at minimum a metric-over-runs scatter and a per-run loss curve.
 
 **Deliverables.**
@@ -761,6 +793,8 @@ The child process receives `RESEARCHLOOP_RUN_DIR` as an environment variable so 
 ---
 
 ### G16 — Run-diff view
+
+**Status.** Shipped. `/api/diff` returns a nested diff payload for two ledger rows, `/diff` renders the comparison controls and side-by-side sections, and `scripts/test-dashboard.sh` covers the endpoint and 404 behavior.
 
 **Motivation.** "Why did run B beat run A?" needs a side-by-side of config + metrics + env + curve.
 

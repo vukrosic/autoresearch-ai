@@ -229,6 +229,10 @@
         display: flex; justify-content: space-between; gap: 12px;
         color: var(--muted); font-size: 12.5px;
       }
+      .chart-stack {
+        display: grid;
+        gap: 10px;
+      }
       .chart {
         width: 100%; height: 240px;
         border: 1px solid var(--line);
@@ -254,6 +258,33 @@
       .legend-sub { color: var(--muted); font-size: 11.5px; margin-top: 1px; }
       .legend-value { color: var(--soft); font-size: 12.5px; text-align: right; white-space: nowrap; }
       .dot { width: 10px; height: 10px; border-radius: 999px; flex: 0 0 auto; }
+      .curve-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        margin: 2px 0 4px;
+      }
+      .curve-toolbar .pill {
+        font-size: 11.5px;
+      }
+      .curve-chip {
+        cursor: pointer;
+      }
+      .curve-chip.is-selected {
+        border-color: rgba(98, 214, 166, 0.42);
+        background: rgba(98, 214, 166, 0.10);
+        color: var(--accent);
+      }
+      .curve-chip.is-selected .legend-name {
+        color: var(--accent);
+      }
+      .scatter-point {
+        cursor: pointer;
+      }
+      .scatter-point:hover {
+        opacity: 0.9;
+      }
 
       /* resource bars */
       .resource-list { display: grid; gap: 12px; }
@@ -359,6 +390,70 @@
       .delta-up   { color: var(--accent); }
       .delta-down { color: var(--danger); }
       .delta-flat { color: var(--muted); }
+
+      .diff-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .diff-controls .control {
+        min-width: 180px;
+      }
+      .diff-controls .control input {
+        min-width: 88px;
+      }
+      .diff-summary {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 12px;
+      }
+      .diff-section {
+        display: grid;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .diff-section h3 {
+        margin: 0;
+        font-size: 12px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .diff-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12.5px;
+      }
+      .diff-table th,
+      .diff-table td {
+        text-align: left;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      .diff-table th {
+        color: var(--muted);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-size: 11px;
+      }
+      .diff-table tr:last-child td { border-bottom: 0; }
+      .diff-table td.is-changed {
+        background: rgba(255, 139, 139, 0.08);
+      }
+      .diff-table td.is-code {
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      .diff-note {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
 
       /* placeholder galleries */
       .gallery-grid {
@@ -651,21 +746,34 @@
         <!-- LEFT column -->
         <div class="col-stack">
           <!-- loss / metric chart -->
-          <article class="panel" aria-label="Loss comparison">
+          <article class="panel" aria-label="Metric dashboard">
             <div class="panel-head">
-              <h2>Metric curves · Loss comparison</h2>
+              <h2>Metric dashboard</h2>
               <div class="head-right">
                 <span class="pill" id="metricPill">Metric: loading</span>
                 <span class="pill" id="directionPill">—</span>
               </div>
             </div>
             <div class="panel-body">
-              <div class="chart-label">
-                <span id="trendLabel">No numeric metric yet.</span>
-                <span id="trendRange"></span>
+              <div class="chart-stack">
+                <div class="chart-label">
+                  <span id="scatterLabel">Run scatter · chronology vs primary metric.</span>
+                  <span id="scatterRange"></span>
+                </div>
+                <div id="scatterMount" class="chart-wrap"></div>
               </div>
-              <div id="chartMount" class="chart-wrap"></div>
-              <div id="legendMount" class="legend"></div>
+              <div class="chart-stack" style="margin-top:14px">
+                <div class="chart-label">
+                  <span id="trendLabel">Curve overlay · select up to 5 runs.</span>
+                  <span id="trendRange"></span>
+                </div>
+                <div class="curve-toolbar">
+                  <span class="pill" id="curveCountPill">0 / 5 selected</span>
+                  <span class="pill" id="curveStatusPill">loading</span>
+                </div>
+                <div id="legendMount" class="legend"></div>
+                <div id="chartMount" class="chart-wrap"></div>
+              </div>
             </div>
           </article>
 
@@ -1156,26 +1264,24 @@
       <!-- 3. run diff + sweep visualization -->
       <section class="main-grid">
         <div class="col-stack">
-          <article class="panel placeholder" data-mode="general lab">
+          <article class="panel" data-mode="general lab">
             <div class="panel-head">
               <h2>Run diff · A vs B</h2>
               <div class="head-right">
-                <span class="pill is-blue">run-B vs run-A</span>
-                <span class="placeholder-badge">placeholder</span>
+                <span class="pill is-blue" id="diffPairPill">pick two runs</span>
+                <span class="placeholder-badge">live</span>
               </div>
             </div>
             <div class="panel-body">
-              <table class="runs-table">
-                <thead><tr><th>Setting</th><th>A</th><th>B</th><th>Δ</th></tr></thead>
-                <tbody>
-                  <tr><td>lr</td><td class="mono">3e-4</td><td class="mono">1e-4</td><td class="delta-down">−2/3×</td></tr>
-                  <tr><td>n_kv_heads</td><td>4</td><td>2</td><td class="delta-down">−2</td></tr>
-                  <tr><td>activation</td><td>sq-relu</td><td>swiglu</td><td>≠</td></tr>
-                  <tr><td>warmup</td><td>2%</td><td>5%</td><td class="delta-up">+3%</td></tr>
-                  <tr><td>final val_loss</td><td>2.74</td><td>2.61</td><td class="delta-up">−0.13</td></tr>
-                  <tr><td>tokens/s</td><td>48 200</td><td>46 100</td><td class="delta-down">−4%</td></tr>
-                </tbody>
-              </table>
+              <div class="diff-controls">
+                <label class="control">A <input id="diffRunA" class="mono" type="text" spellcheck="false" autocomplete="off" placeholder="run-a" /></label>
+                <label class="control">B <input id="diffRunB" class="mono" type="text" spellcheck="false" autocomplete="off" placeholder="run-b" /></label>
+                <button class="control is-active" id="diffLoad" type="button">Load diff</button>
+              </div>
+              <div class="meta-row" id="diffMeta"></div>
+              <div id="diffMount">
+                <div class="empty">Choose two runs or open <code>/diff?a=...&amp;b=...</code> to compare config, metrics, and env side by side.</div>
+              </div>
             </div>
           </article>
         </div>
@@ -1418,8 +1524,11 @@
       const STATE_URL = "/api/state";
       const POLL_MS = 3000;
       let latestState = null;
-      const hiddenTraces = new Set();
+      const selectedCurveIds = new Set();
       const tableFilter = { text: "", status: "", sort: "time" };
+      let curveRequestSeq = 0;
+      let curveSelectionInitialized = false;
+      let diffRequestSeq = 0;
 
       // ───── helpers ─────
       const $ = (id) => document.getElementById(id);
@@ -1485,11 +1594,71 @@
         return "is-other";
       }
 
+      function statusColor(status) {
+        const s = String(status || "").toLowerCase();
+        if (s === "complete" || s === "completed" || s === "promoted" || s === "kept") return "#62d6a6";
+        if (s === "failed" || s === "error" || s === "spawn_error" || s === "killed_by_safety" || s === "killed_by_rule" || s === "discarded") return "#ff8b8b";
+        if (s === "running" || s === "in_progress" || s === "queued") return "#71a7ff";
+        return "#f6c177";
+      }
+
+      function setCurveSelection(ids) {
+        selectedCurveIds.clear();
+        for (const id of ids.slice(0, 5)) {
+          if (id) selectedCurveIds.add(id);
+        }
+        curveSelectionInitialized = true;
+      }
+
+      function initialCurveSelection(state) {
+        const traces = (state.traces || []).filter((trace) => trace && trace.id);
+        if (!traces.length) return [];
+        const latest = traces.slice(-3).map((trace) => trace.id);
+        if (latest.length) return latest;
+        return traces.slice(0, 2).map((trace) => trace.id);
+      }
+
+      function ensureCurveSelection(state) {
+        const available = new Set((state.traces || []).map((trace) => trace.id));
+        for (const id of Array.from(selectedCurveIds)) {
+          if (!available.has(id)) {
+            selectedCurveIds.delete(id);
+          }
+        }
+        if (!curveSelectionInitialized && selectedCurveIds.size === 0) {
+          setCurveSelection(initialCurveSelection(state));
+        } else {
+          curveSelectionInitialized = true;
+        }
+        return Array.from(selectedCurveIds).filter((id) => available.has(id));
+      }
+
+      function toggleCurveSelection(state, runId) {
+        if (!runId) return false;
+        if (selectedCurveIds.has(runId)) {
+          selectedCurveIds.delete(runId);
+          curveSelectionInitialized = true;
+          return true;
+        }
+        if (selectedCurveIds.size >= 5) {
+          return false;
+        }
+        selectedCurveIds.add(runId);
+        curveSelectionInitialized = true;
+        const available = new Set((state.traces || []).map((trace) => trace.id));
+        for (const id of Array.from(selectedCurveIds)) {
+          if (!available.has(id)) {
+            selectedCurveIds.delete(id);
+          }
+        }
+        return true;
+      }
+
       // ───── chart ─────
       function multiTraceChart(traces, preferHigher) {
-        const visible = (traces || []).filter((t) => !hiddenTraces.has(t.id));
+        const visible = (traces || []).filter((t) => t && t.id);
         if (!visible.length) {
-          return '<div class="empty">No experiments selected. Toggle traces in the legend.</div>';
+          return '<div class="empty">No runs selected for the curve overlay. Click rows below to add them.</div>';
         }
         const W = 960, H = 280, padL = 36, padR = 16, padT = 18, padB = 28;
         const allVals = visible.flatMap((t) => (t.values || []).map((p) => Number(p.value)).filter(Number.isFinite));
@@ -1539,12 +1708,94 @@
         `;
       }
 
+      function renderScatterChart(state) {
+        const metricKey = state.primaryMetric || "metric";
+        const series = (state.summary?.series || []).filter((entry) => Number.isFinite(Number(entry.value)));
+        const byId = new Map((state.runs || []).filter((run) => run && !run.parse_error).map((run) => [run.id, run]));
+        if (!series.length) {
+          $("scatterRange").textContent = "0 points";
+          return '<div class="empty">No numeric metric yet. Run something once and the dots will appear here.</div>';
+        }
+        const points = series.map((entry, index) => {
+          const run = byId.get(entry.id) || null;
+          return {
+            id: entry.id,
+            value: Number(entry.value),
+            timestamp: entry.timestamp,
+            status: run?.status || "",
+            index,
+          };
+        });
+        const W = 960, H = 230, padL = 44, padR = 16, padT = 18, padB = 30;
+        const values = points.map((p) => p.value);
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        const range = max - min || 1;
+        const xAt = (i) => padL + ((W - padL - padR) * (points.length === 1 ? 0.5 : i / (points.length - 1)));
+        const yAt = (v) => H - padB - ((Number(v) - min) / range) * (H - padT - padB);
+        const grid = [];
+        for (let g = 0; g <= 4; g += 1) {
+          const y = padT + ((H - padT - padB) * g) / 4;
+          const value = max - (range * g) / 4;
+          grid.push(`
+            <line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="rgba(255,255,255,0.05)" />
+            <text x="${padL - 6}" y="${y + 3}" text-anchor="end" fill="rgba(255,255,255,0.45)" font-size="10">${value.toFixed(2)}</text>
+          `);
+        }
+        const latestId = points[points.length - 1]?.id || null;
+        const bestPoint = points.reduce((best, point) => {
+          if (!best) return point;
+          if (state.preferHigher) return point.value > best.value ? point : best;
+          return point.value < best.value ? point : best;
+        }, null);
+        const dots = points.map((point, index) => {
+          const x = xAt(index);
+          const y = yAt(point.value);
+          const color = statusColor(point.status);
+          const isBest = bestPoint && bestPoint.id === point.id;
+          const isLatest = latestId === point.id;
+          const r = isBest ? 6 : 5;
+          const stroke = isLatest ? "#edf3f8" : "rgba(0,0,0,0.15)";
+          return `
+            <g>
+              <circle
+                class="scatter-point"
+                data-run-id="${escapeHtml(point.id)}"
+                cx="${x}"
+                cy="${y}"
+                r="${r}"
+                fill="${color}"
+                stroke="${stroke}"
+                stroke-width="${isLatest ? 2 : 1}"
+              >
+                <title>${escapeHtml(`${point.id} · ${metricLabel(metricKey, point.value)} · ${point.status || "—"}`)}</title>
+              </circle>
+            </g>
+          `;
+        }).join("");
+
+        $("scatterRange").textContent = `${points.length} point${points.length === 1 ? "" : "s"}`;
+        return `
+          <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Run scatter plot">
+            ${grid.join("")}
+            ${dots}
+            <text x="${padL}" y="${padT - 4}" fill="rgba(255,255,255,0.55)" font-size="11">older → newer</text>
+            <text x="${W - padR}" y="${H - 6}" text-anchor="end" fill="rgba(255,255,255,0.45)" font-size="10">${escapeHtml(metricKey)}</text>
+          </svg>
+        `;
+      }
+
       function renderLegend(state) {
         const metricKey = state.primaryMetric || "";
         const traces = state.traces || [];
         if (!traces.length) {
+          $("curveCountPill").textContent = "0 / 5 selected";
+          $("curveStatusPill").textContent = "no curves";
           return '<div class="empty">No experiments recorded yet. Use <code>autoresearch run "&lt;cmd&gt;"</code> to add curves.</div>';
         }
+        const selected = ensureCurveSelection(state);
+        $("curveCountPill").textContent = `${selected.length} / 5 selected`;
+        $("curveStatusPill").textContent = selected.length ? "click to remove or add more" : "click a run to start";
         const bestId = state.comparison?.bestFinal?.trace?.id;
         const bestDeltaId = state.comparison?.bestImprovement?.trace?.id;
         return traces.map((t) => {
@@ -1552,17 +1803,17 @@
           const final = t.final;
           const delta = Number.isFinite(Number(firstValue)) && Number.isFinite(Number(final))
             ? (state.preferHigher ? final - firstValue : firstValue - final) : NaN;
-          const isHidden = hiddenTraces.has(t.id);
+          const isSelected = selectedCurveIds.has(t.id);
           const tags = [];
           if (t.id === bestId) tags.push("best");
           if (t.id === bestDeltaId) tags.push("biggest Δ");
           return `
-            <div class="legend-item ${isHidden ? "is-hidden" : ""}" data-id="${escapeHtml(t.id)}">
+            <div class="legend-item curve-chip ${isSelected ? "is-selected" : ""}" data-id="${escapeHtml(t.id)}">
               <div class="legend-left">
                 <span class="dot" style="background:${t.color}; box-shadow: 0 0 0 2px color-mix(in srgb, ${t.color} 22%, transparent);"></span>
                 <div style="min-width:0">
                   <div class="legend-name">${escapeHtml(t.id || "—")}${tags.length ? ` · <span style="color:var(--muted); font-weight:500">${tags.join(" · ")}</span>` : ""}</div>
-                  <div class="legend-sub">${escapeHtml(t.status || "—")} · ${(t.values || []).length} points</div>
+                  <div class="legend-sub">${escapeHtml(t.status || "—")} · ${(t.values || []).length} points · ${isSelected ? "selected" : "click to select"}</div>
                 </div>
               </div>
               <div class="legend-value">
@@ -1681,6 +1932,208 @@
           return;
         }
         $("lineageMount").innerHTML = roots.map((root) => renderLineageNode(root, state)).join("");
+      }
+
+      async function refreshCurveOverlay(state) {
+        const selected = ensureCurveSelection(state);
+        $("trendRange").textContent = selected.length ? `${selected.length} selected` : "0 selected";
+        if (!selected.length) {
+          $("chartMount").innerHTML = '<div class="empty">No runs selected for the curve overlay. Click runs in the picker above to compare up to five traces.</div>';
+          $("curveStatusPill").textContent = "no runs selected";
+          return;
+        }
+
+        const requestId = ++curveRequestSeq;
+        $("curveStatusPill").textContent = `loading ${selected.length} curve${selected.length === 1 ? "" : "s"}`;
+        const runsById = new Map((state.runs || []).filter((run) => run && !run.parse_error).map((run) => [run.id, run]));
+        const responses = await Promise.all(selected.map(async (runId) => {
+          try {
+            const res = await fetch(`/api/curves?run=${encodeURIComponent(runId)}`, { cache: "no-store" });
+            if (!res.ok) {
+              throw new Error(`HTTP ${res.status}`);
+            }
+            const payload = await res.json();
+            return payload;
+          } catch (err) {
+            return { run_id: runId, error: err.message, series: [] };
+          }
+        }));
+        if (requestId !== curveRequestSeq) return;
+
+        const palette = ["#62d6a6", "#71a7ff", "#f6c177", "#ff8b8b", "#c38bff"];
+        const traces = responses.map((payload, index) => {
+          const runId = payload?.run_id || selected[index];
+          const run = runsById.get(runId) || {};
+          const series = Array.isArray(payload?.series) ? payload.series : [];
+          const values = series
+            .map((point) => ({ step: Number(point.step), value: Number(point.value) }))
+            .filter((point) => Number.isFinite(point.step) && Number.isFinite(point.value));
+          return {
+            id: runId,
+            status: run.status || "",
+            final: values.length ? values[values.length - 1].value : Number.NaN,
+            values,
+            log: run.log || "",
+            notes: run.notes || "",
+            color: palette[index % palette.length],
+            isBest: false,
+            isLatest: false,
+            index,
+          };
+        }).filter((trace) => trace.values.length > 0);
+
+        if (!traces.length) {
+          $("chartMount").innerHTML = '<div class="empty">Selected runs have no curve samples yet. Re-run a training command that emits metric lines.</div>';
+          $("curveStatusPill").textContent = "selected runs have no samples";
+          return;
+        }
+
+        $("chartMount").innerHTML = multiTraceChart(traces, state.preferHigher);
+        $("curveStatusPill").textContent = `loaded ${traces.length} curve${traces.length === 1 ? "" : "s"}`;
+      }
+
+      function escapeDiffValue(value) {
+        if (value === null || value === undefined) return '<span class="mono">—</span>';
+        if (typeof value === "number") {
+          return `<span class="mono">${escapeHtml(Number.isFinite(value) ? value.toFixed(6).replace(/\.?0+$/, "") : String(value))}</span>`;
+        }
+        if (typeof value === "boolean") {
+          return `<span class="mono">${value ? "true" : "false"}</span>`;
+        }
+        if (typeof value === "string") {
+          return `<span class="mono">${escapeHtml(value)}</span>`;
+        }
+        try {
+          const raw = JSON.stringify(value);
+          return `<span class="mono">${escapeHtml(raw.length > 180 ? `${raw.slice(0, 177)}…` : raw)}</span>`;
+        } catch {
+          return `<span class="mono">${escapeHtml(String(value))}</span>`;
+        }
+      }
+
+      function renderDiffRows(rows, section) {
+        if (!rows || !rows.length) {
+          return '<div class="empty">No differences in this section.</div>';
+        }
+        const isMetrics = section === "metrics";
+        return `
+          <table class="diff-table">
+            <thead>
+              <tr>
+                <th>${isMetrics ? "Metric" : "Field"}</th>
+                <th>Run A</th>
+                <th>Run B</th>
+                ${isMetrics ? "<th>Delta</th>" : ""}
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map((row) => {
+                const aNum = Number(row.a);
+                const bNum = Number(row.b);
+                const delta = isMetrics && Number.isFinite(aNum) && Number.isFinite(bNum) ? bNum - aNum : null;
+                const deltaClassName = delta === null ? "delta-flat" : (delta > 0 ? "delta-up" : delta < 0 ? "delta-down" : "delta-flat");
+                const deltaText = delta === null ? "—" : `${delta > 0 ? "+" : ""}${delta.toFixed(6).replace(/\.?0+$/, "")}`;
+                return `
+                  <tr>
+                    <td class="mono">${escapeHtml(row.path)}</td>
+                    <td class="is-changed">${escapeDiffValue(row.a)}</td>
+                    <td class="is-changed">${escapeDiffValue(row.b)}</td>
+                    ${isMetrics ? `<td class="${deltaClassName} mono">${escapeHtml(deltaText)}</td>` : ""}
+                  </tr>
+                `;
+              }).join("")}
+            </tbody>
+          </table>
+        `;
+      }
+
+      function renderDiffPanelState(state, diff, pair) {
+        const meta = [];
+        if (diff?.identical) {
+          meta.push('<span class="pill is-accent">identical</span>');
+        } else {
+          meta.push(`<span class="pill is-warning">${diff?.differences?.length || 0} diff${(diff?.differences?.length || 0) === 1 ? "" : "s"}</span>`);
+        }
+        meta.push(`<span class="pill">shared ${diff?.shared?.count ?? 0}</span>`);
+        meta.push(`<span class="pill">only A ${diff?.only_in_a?.count ?? 0}</span>`);
+        meta.push(`<span class="pill">only B ${diff?.only_in_b?.count ?? 0}</span>`);
+        $("diffMeta").innerHTML = meta.join("");
+        $("diffPairPill").textContent = pair?.a && pair?.b ? `${pair.a} vs ${pair.b}` : "pick two runs";
+
+        if (!diff) {
+          $("diffMount").innerHTML = '<div class="empty">Select two runs to compare config, metrics, and environment.</div>';
+          return;
+        }
+
+        if (diff.identical) {
+          $("diffMount").innerHTML = '<div class="empty">The two runs match across the compared fields.</div>';
+          return;
+        }
+
+        const sections = [];
+        sections.push(`<div class="diff-note">Compare the fields that matter when a run changes: <code>params</code>, <code>metrics</code>, and <code>env</code>. Rows are grouped so the part that changed is obvious at a glance.</div>`);
+        sections.push(`<div class="diff-summary">${meta.join("")}</div>`);
+        sections.push(`
+          <div class="diff-section">
+            <h3>Parameters</h3>
+            ${renderDiffRows(diff.sections?.params || [], "params")}
+          </div>
+        `);
+        sections.push(`
+          <div class="diff-section">
+            <h3>Metrics</h3>
+            ${renderDiffRows(diff.sections?.metrics || [], "metrics")}
+          </div>
+        `);
+        sections.push(`
+          <div class="diff-section">
+            <h3>Environment</h3>
+            ${renderDiffRows(diff.sections?.env || [], "env")}
+          </div>
+        `);
+        sections.push(`
+          <div class="diff-section">
+            <h3>Other</h3>
+            ${renderDiffRows(diff.sections?.meta || [], "meta")}
+          </div>
+        `);
+        $("diffMount").innerHTML = sections.join("");
+      }
+
+      function selectedDiffPair(state) {
+        const query = new URLSearchParams(window.location.search);
+        const runs = (state?.runs || []).filter((row) => row && !row.parse_error);
+        const latestPair = runs.length >= 2 ? [runs[runs.length - 2]?.id, runs[runs.length - 1]?.id] : [runs[0]?.id || "", runs[1]?.id || ""];
+        const a = String(query.get("a") || $("diffRunA")?.value || latestPair[0] || "").trim();
+        const b = String(query.get("b") || $("diffRunB")?.value || latestPair[1] || "").trim();
+        return { a, b };
+      }
+
+      async function refreshDiffPanel(state) {
+        const pair = selectedDiffPair(state);
+        if ($("diffRunA") && !$("diffRunA").value) $("diffRunA").value = pair.a || "";
+        if ($("diffRunB") && !$("diffRunB").value) $("diffRunB").value = pair.b || "";
+        if (!pair.a || !pair.b) {
+          renderDiffPanelState(state, null, pair);
+          return;
+        }
+        const seq = ++diffRequestSeq;
+        const params = new URLSearchParams({ a: pair.a, b: pair.b });
+        try {
+          const res = await fetch(`/api/diff?${params.toString()}`, { cache: "no-store" });
+          if (seq !== diffRequestSeq) return;
+          if (!res.ok) {
+            const payload = await res.json().catch(() => ({}));
+            throw new Error(payload.error || `HTTP ${res.status}`);
+          }
+          const diff = await res.json();
+          if (seq !== diffRequestSeq) return;
+          renderDiffPanelState(state, diff, pair);
+        } catch (err) {
+          if (seq !== diffRequestSeq) return;
+          $("diffMeta").innerHTML = '<span class="pill is-danger">diff error</span>';
+          $("diffMount").innerHTML = `<div class="empty">Could not load diff: ${escapeHtml(err.message)}</div>`;
+        }
       }
 
       // ───── system resources ─────
@@ -1944,13 +2397,16 @@
         renderThread(state);
         renderLogTail(state);
         renderLineage(state);
+        refreshDiffPanel(state);
 
-        $("trendLabel").textContent = state.primaryMetric
-          ? `Comparing ${state.primaryMetric} across ${(state.traces || []).length} experiments.`
-          : "No numeric metric found yet — record one with `autoresearch record`.";
-        $("trendRange").textContent = state.traces?.length ? `${state.traces.length} experiments` : "";
-        $("chartMount").innerHTML = multiTraceChart(state.traces, state.preferHigher);
+        $("scatterLabel").textContent = state.primaryMetric
+          ? `Run scatter · ${state.primaryMetric} by chronology.`
+          : "Run scatter · waiting for the first numeric metric.";
+        $("scatterMount").innerHTML = renderScatterChart(state);
+        $("trendLabel").textContent = "Curve overlay · compare up to five runs.";
         $("legendMount").innerHTML = renderLegend(state);
+        $("chartMount").innerHTML = '<div class="empty">Loading selected curve overlay…</div>';
+        refreshCurveOverlay(state);
         $("runHint").textContent = sum.parseErrors
           ? `${sum.parseErrors} parse errors`
           : `${sum.totalRuns || 0} experiments`;
@@ -1964,12 +2420,20 @@
         const legend = e.target.closest(".legend-item");
         if (legend) {
           const id = legend.dataset.id;
-          if (hiddenTraces.has(id)) hiddenTraces.delete(id);
-          else hiddenTraces.add(id);
           if (latestState) {
-            $("chartMount").innerHTML = multiTraceChart(latestState.traces, latestState.preferHigher);
+            const ok = toggleCurveSelection(latestState, id);
+            if (!ok) {
+              $("curveStatusPill").textContent = "limit reached (5 max)";
+              return;
+            }
             $("legendMount").innerHTML = renderLegend(latestState);
+            refreshCurveOverlay(latestState);
           }
+          return;
+        }
+        const scatterPoint = e.target.closest(".scatter-point");
+        if (scatterPoint) {
+          openRunModal(scatterPoint.dataset.runId);
           return;
         }
         const lineage = e.target.closest(".lineage-node[data-run-id]");
@@ -1992,6 +2456,22 @@
       $("sortField").addEventListener("change", (e) => {
         tableFilter.sort = e.target.value;
         if (latestState) renderRunsTable(latestState);
+      });
+      $("diffLoad").addEventListener("click", () => {
+        const a = String($("diffRunA").value || "").trim();
+        const b = String($("diffRunB").value || "").trim();
+        if (!a || !b) return;
+        const next = new URL(window.location.href);
+        next.pathname = "/diff";
+        next.searchParams.set("a", a);
+        next.searchParams.set("b", b);
+        window.location.href = next.toString();
+      });
+      $("diffRunA").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") $("diffLoad").click();
+      });
+      $("diffRunB").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") $("diffLoad").click();
       });
 
       function openRunModal(id) {

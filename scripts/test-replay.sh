@@ -22,6 +22,43 @@ ledger="$tmpdir/.researchloop/scratchpad/runs.jsonl"
 grep -qE '"replay_of":\s*"det"' "$ledger"
 grep -qE '"parent_id":\s*"det"' "$ledger"
 
+# Missing source metrics should fail before launching another run.
+$cli run --dir "$tmpdir" --id no-metric --command 'printf "hello\n"' --metric val_loss >/tmp/autoresearch-replay-no-metric-run.log
+set +e
+$cli replay --dir "$tmpdir" no-metric --metric val_loss >/tmp/autoresearch-replay-no-metric.log 2>&1
+no_metric_exit=$?
+set -e
+if [ "$no_metric_exit" -eq 0 ]; then
+  echo "expected replay without a source metric to exit nonzero"
+  exit 1
+fi
+grep -q "Run no-metric has no finite val_loss metric; cannot replay against a tolerance." /tmp/autoresearch-replay-no-metric.log
+if grep -qE '"replay_of":\s*"no-metric"' "$ledger"; then
+  echo "replay should not launch when the source metric is missing"
+  exit 1
+fi
+
+# Invalid replay arguments should fail before launching another run.
+set +e
+$cli replay --dir "$tmpdir" det --metric val_loss --tolerance nope --replay-id bad-tolerance >/tmp/autoresearch-replay-bad-tolerance.log 2>&1
+bad_tolerance_exit=$?
+$cli replay --dir "$tmpdir" det --metric val_loss --n 21 --replay-id bad-n >/tmp/autoresearch-replay-bad-n.log 2>&1
+bad_n_exit=$?
+$cli replay --dir "$tmpdir" det --metric val_loss --timeout 0 --replay-id bad-timeout >/tmp/autoresearch-replay-bad-timeout.log 2>&1
+bad_timeout_exit=$?
+set -e
+if [ "$bad_tolerance_exit" -eq 0 ] || [ "$bad_n_exit" -eq 0 ] || [ "$bad_timeout_exit" -eq 0 ]; then
+  echo "expected invalid replay arguments to exit nonzero"
+  exit 1
+fi
+grep -q "replay: --tolerance must be a non-negative number" /tmp/autoresearch-replay-bad-tolerance.log
+grep -q "replay: --n must be an integer from 1 to 20" /tmp/autoresearch-replay-bad-n.log
+grep -q "replay: --timeout must be a positive number of seconds" /tmp/autoresearch-replay-bad-timeout.log
+if grep -qE '"id":"bad-(tolerance|n|timeout)"' "$ledger"; then
+  echo "invalid replay arguments should not write replay rows"
+  exit 1
+fi
+
 # --n should write multiple replay rows with replay_index values.
 $cli replay --dir "$tmpdir" det --metric val_loss --n 2 --replay-id det-replay-batch >/tmp/autoresearch-replay-n.log
 grep -q "| det-replay-batch-1 | complete | val_loss | 0.42 | 0.42 | 0.000000 | yes |" /tmp/autoresearch-replay-n.log

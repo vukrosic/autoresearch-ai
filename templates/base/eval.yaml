@@ -3,7 +3,22 @@
 # This file is OPTIONAL. If absent, autoresearch falls back to the metric
 # declared in .researchloop/goal.md and applies no gates or early-stop.
 #
-# Three sections are active today:
+# The minimal eval contract is active today:
+#   - metrics:     parse named metrics from stdout or a file
+#   - eval_command: run a separate eval step after training
+#   - early_stop:  kill the child process when a rule triggers
+#   - gates:       auto-mark each run as promoted / kept / discarded after it ends
+#   - retry:       re-launch the run with a mutated command on matching errors
+#
+# The remaining sections are reserved for future goals and are ignored by
+# the current parser if present.
+#
+# Example:
+# metrics:
+#   - {name: val_loss, direction: lower, regex_or_jsonpath: 'val_loss=([0-9.]+)', source: stdout}
+# eval_command: "python eval.py"
+#
+# The rule sections below are active today:
 #   - early_stop: kill the child process when a rule triggers
 #   - gates:      auto-mark each run as promoted / kept / discarded after it ends
 #   - retry:      re-launch the run with a mutated command on matching errors

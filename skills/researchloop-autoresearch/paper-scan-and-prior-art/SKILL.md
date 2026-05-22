@@ -12,4 +12,4 @@ Use this skill to turn papers into concrete follow-up ideas.
 - capture the exact recipe
 - note what part is likely portable
 - tie the note back to the goal in `.researchloop/goal.md`
-
+- after a run lands, use `autoresearch paper-reread <paper-id> --against <run-id>` to check whether the paper actually transferred into this repo
