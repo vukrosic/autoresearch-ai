@@ -41,6 +41,13 @@ run_one() {
   # 8 second wall-clock guard via perl alarm — portable across linux/mac.
   out=$(perl -e 'alarm 8; exec @ARGV or die "exec failed: $!"' \
         -- node "$repo_root/bin/researchloop.js" "$cmd" --dir "$tmpdir" 2>&1 || true)
+  if echo "$out" | grep -qE "^Unknown command: ${cmd}$"; then
+    echo "FAIL: registry command \`$cmd\` has no dispatch handler:"
+    echo "----"
+    echo "$out" | head -25
+    echo "----"
+    return 1
+  fi
   if echo "$out" | grep -qE "$CRASH_RE"; then
     echo "FAIL: \`$cmd\` crashed with a runtime error:"
     echo "----"
@@ -51,16 +58,92 @@ run_one() {
   return 0
 }
 
-# Enumerate canonical command names from --list-commands --format json.
+registry_file="$tmpdir/.commands.json"
+help_file="$tmpdir/.help.txt"
+$cli --list-commands --format json > "$registry_file"
+$cli --help > "$help_file"
+
+node - "$registry_file" <<'NODE'
+const fs = require("node:fs");
+const registryPath = process.argv[2];
+const rows = JSON.parse(fs.readFileSync(registryPath, "utf8"));
+const canonical = new Set();
+const aliases = new Map();
+for (const entry of rows) {
+  if (!entry || typeof entry.canonical !== "string" || !entry.canonical.trim()) {
+    throw new Error("registry entry missing canonical command");
+  }
+  if (canonical.has(entry.canonical)) {
+    throw new Error(`duplicate canonical command: ${entry.canonical}`);
+  }
+  canonical.add(entry.canonical);
+  if (!Array.isArray(entry.aliases)) {
+    throw new Error(`aliases must be an array for ${entry.canonical}`);
+  }
+  if (typeof entry.group !== "string" || !entry.group.trim()) {
+    throw new Error(`missing group for ${entry.canonical}`);
+  }
+  if (typeof entry.summary !== "string" || !entry.summary.trim()) {
+    throw new Error(`missing summary for ${entry.canonical}`);
+  }
+  for (const alias of entry.aliases) {
+    if (canonical.has(alias)) {
+      throw new Error(`alias collides with canonical command: ${alias}`);
+    }
+    if (aliases.has(alias)) {
+      throw new Error(`alias ${alias} used by both ${aliases.get(alias)} and ${entry.canonical}`);
+    }
+    aliases.set(alias, entry.canonical);
+  }
+}
+NODE
+
+node - "$registry_file" "$help_file" <<'NODE'
+const fs = require("node:fs");
+const [registryPath, helpPath] = process.argv.slice(2);
+const rows = JSON.parse(fs.readFileSync(registryPath, "utf8"));
+const help = fs.readFileSync(helpPath, "utf8");
+const missing = [];
+for (const entry of rows) {
+  const escaped = entry.canonical.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`autoresearch\\s+${escaped}(\\s|$)`);
+  if (!re.test(help)) missing.push(entry.canonical);
+}
+if (missing.length) {
+  throw new Error(`help is missing registry commands: ${missing.join(", ")}`);
+}
+const duplicateFlagLines = [];
+for (const line of help.split(/\r?\n/)) {
+  if (!/^\s+autoresearch\s+/.test(line)) continue;
+  const flags = [...line.matchAll(/--[A-Za-z0-9][A-Za-z0-9-]*/g)].map((m) => m[0]);
+  const seen = new Set();
+  const dupes = [];
+  for (const flag of flags) {
+    if (seen.has(flag) && !dupes.includes(flag)) dupes.push(flag);
+    seen.add(flag);
+  }
+  if (dupes.length) duplicateFlagLines.push(`${line.trim()} (${dupes.join(", ")})`);
+}
+if (duplicateFlagLines.length) {
+  throw new Error(`help has duplicate flags:\n${duplicateFlagLines.join("\n")}`);
+}
+NODE
+
+# Enumerate canonical command names and aliases from --list-commands --format json.
 # macOS ships bash 3.2 (no mapfile), so collect into a newline-separated file.
 list_file="$tmpdir/.commands.txt"
-$cli --list-commands --format json \
-  | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{JSON.parse(s).forEach(x=>console.log(x.canonical))})' \
-  > "$list_file"
+node - "$registry_file" <<'NODE' > "$list_file"
+const fs = require("node:fs");
+const rows = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+for (const entry of rows) {
+  console.log(entry.canonical);
+  for (const alias of entry.aliases) console.log(alias);
+}
+NODE
 
 total=$(wc -l < "$list_file" | tr -d ' ')
 if [ "$total" -lt 50 ]; then
-  echo "expected >= 50 commands in registry, got $total"
+  echo "expected >= 50 commands + aliases in registry, got $total"
   exit 1
 fi
 
