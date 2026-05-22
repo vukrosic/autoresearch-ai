@@ -77,4 +77,14 @@ assert any("missing_metric" in warning for warning in data.get("warnings", [])),
 print("OK: eval json output parsed")
 '
 
+set +e
+$cli eval --dir "$tmpdir" --run-id eval-a --command "git --version" >/tmp/autoresearch-eval-blocked.log 2>&1
+blocked_eval_exit=$?
+set -e
+if [ "$blocked_eval_exit" -eq 0 ]; then
+  echo "expected eval to fail for disallowed command"
+  exit 1
+fi
+grep -q "eval: blocked by safety: allow_prefixes" /tmp/autoresearch-eval-blocked.log
+
 echo "autoresearch test:eval passed"
