@@ -1,23 +1,23 @@
 # Weights & Biases
 
-Sources:
+来源：
 
 - [W&B runs docs](https://docs.wandb.ai/guides/runs/)
 - [W&B experiments docs](https://docs.wandb.ai/guides/track/)
 
-## What They Do
+## 它们做什么
 
-W&B treats a run as a unit of computation and gives teams a place to log metrics, configs, artifacts, sweeps, and reports.
+W&B 把一次 run 作为计算单元，并给团队提供记录 metrics、configs、artifacts、sweeps 和 reports 的地方。
 
-## What To Learn
+## 要学习什么
 
-- A single run object is a clean mental model.
-- Metrics plus artifacts are the right default data shape.
-- Sweeps and reports are important once the baseline loop exists.
-- Team visibility matters after the local loop works.
+- 单个 run object 是清晰的心智模型。
+- Metrics 加 artifacts 是正确的默认数据形态。
+- 当 baseline 循环存在后，sweeps 和 reports 很重要。
+- 本地循环工作后，团队可见性会变重要。
 
-## How AutoResearch-AI Differs
+## AutoResearch-AI 有何不同
 
-- AutoResearch-AI should feel more like a harness than a dashboard.
-- It should produce logs that can later export into W&B or something similar.
-- The first product should work without a hosted backend.
+- AutoResearch-AI 应该更像 harness，而不是 dashboard。
+- 它应产生日志，之后可以导出到 W&B 或类似工具。
+- 第一个产品应该不需要托管 backend 就能工作。

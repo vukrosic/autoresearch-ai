@@ -11,13 +11,13 @@ fi
 
 site="$(cat "$site_file")"
 
-printf '%s' "$site" | grep -q 'AutoResearch-AI - Autonomous AI Research, in one prompt'
+printf '%s' "$site" | grep -q 'AutoResearch-AI - 用一个 prompt 启动自主 AI 研究'
 printf '%s' "$site" | grep -q 'npm install -g autoresearch-ai'
-printf '%s' "$site" | grep -q 'Automated AI research.'
-printf '%s' "$site" | grep -q 'Humans scope. Agents run.'
-printf '%s' "$site" | grep -q 'a pile of agents handle'
+printf '%s' "$site" | grep -q '自动化 AI 研究。'
+printf '%s' "$site" | grep -q '人类定范围，agents 运行。'
+printf '%s' "$site" | grep -q '由一组 agents 自主处理实验'
 printf '%s' "$site" | grep -q 'autoresearch dashboard'
-printf '%s' "$site" | grep -q 'Local only. No auth. No cloud.'
-printf '%s' "$site" | grep -q 'Placeholder'
+printf '%s' "$site" | grep -q '仅本地。无 auth。无 cloud。'
+! printf '%s' "$site" | grep -q 'Placeholder'
 
 echo "autoresearch test:site passed"

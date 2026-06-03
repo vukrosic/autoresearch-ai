@@ -1,23 +1,23 @@
-# Site Test Plan
+# Site 测试计划
 
-Purpose:
+目的：
 
-Make sure the public landing page still says the right things.
+确保公开 landing page 仍然表达正确内容。
 
-## Commands
+## 命令
 
 ```bash
 npm run test:site
 ```
 
-## Checks
+## 检查项
 
-- The title still names AutoResearch-AI.
-- The install command is visible.
-- The page says it is MacBook-tested.
-- The page mentions the open source core.
-- The page points people toward the real first-run commands.
+- title 仍然命名 AutoResearch-AI。
+- install command 可见。
+- 页面说明它已在 MacBook 上测试。
+- 页面提到开源核心。
+- 页面把用户指向真实 first-run 命令。
 
-## Why It Matters
+## 为什么重要
 
-This site is part of the product funnel. If it drifts away from the actual CLI, people will land in the wrong mental model.
+这个站点是产品 funnel 的一部分。如果它偏离真实 CLI，用户会带着错误心智模型进入产品。

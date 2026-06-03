@@ -1,3 +1,3 @@
-# Minimal PyTorch Fixture
+# 最小 PyTorch Fixture
 
-This fixture exists so setup tests can simulate a real repo with a training entrypoint.
+这个 fixture 用于让 setup 测试模拟一个带 training entrypoint 的真实仓库。

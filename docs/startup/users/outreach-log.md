@@ -1,6 +1,6 @@
 # Outreach Log
 
-Format:
+格式：
 
 ```text
 YYYY-MM-DD - Name / group
@@ -11,5 +11,4 @@ YYYY-MM-DD - Name / group
 - Follow-up:
 ```
 
-## Log
-
+## 记录

@@ -1,59 +1,59 @@
 # AutoResearch-AI Agent Ops
 
-This is the operating model for building AutoResearch-AI itself with multiple agents.
+这是使用多个 agent 构建 AutoResearch-AI 本身的操作模型。
 
-The goal is not a flat swarm.
-The goal is a small hierarchy that stays legible:
+目标不是扁平 swarm。
+目标是一个保持清晰的小层级：
 
-- human owns release direction
-- orchestrator owns decomposition
-- workers own features
-- reviewer owns merge safety
-- GitHub owns branch and pull request history
+- human 拥有发布方向
+- orchestrator 拥有拆解
+- workers 拥有功能
+- reviewer 拥有 merge 安全
+- GitHub 拥有 branch 和 pull request 历史
 
-## Why this shape
+## 为什么采用这个形态
 
-A flat swarm gets noisy once tasks touch shared files.
+当任务接触共享文件时，扁平 swarm 很快会变吵。
 
-A small hierarchy keeps parallelism useful:
+小层级让并行仍然有用：
 
-- workers stay narrow
-- branches stay reviewable
-- merge risk stays visible
-- the human still controls the release
+- workers 保持窄范围
+- branches 保持可 review
+- merge 风险保持可见
+- human 仍然控制 release
 
-## Default roles
+## 默认角色
 
 ### Human
 
-- decides the release target
-- chooses what ships
-- approves merges
-- changes direction only when there is evidence
+- 决定 release target
+- 选择发布什么
+- 批准 merge
+- 只有在有证据时才改变方向
 
 ### Orchestrator
 
-- splits the release goal into lanes
-- assigns one lane per worker
-- keeps the board current
-- prevents file overlap when possible
+- 把 release goal 拆成 lanes
+- 每个 worker 分配一条 lane
+- 保持 board 最新
+- 尽可能避免文件重叠
 
 ### Worker
 
-- owns one branch or worktree
-- changes only the assigned files
-- records commands, results, and failures
-- hands back a diff that is easy to review
+- 拥有一个 branch 或 worktree
+- 只改分配的文件
+- 记录 commands、results 和 failures
+- 交回容易 review 的 diff
 
 ### Reviewer
 
-- checks scope, tests, and overlap
-- rejects vague or unverified claims
-- decides whether a branch is merge-ready
+- 检查 scope、tests 和 overlap
+- 拒绝模糊或未验证的声明
+- 决定 branch 是否 merge-ready
 
-## Suggested lanes for AutoResearch-AI
+## AutoResearch-AI 建议 lanes
 
-Use these lanes when developing the package itself:
+开发包本身时使用这些 lanes：
 
 1. CLI and runtime
 2. Dashboard and state API
@@ -68,22 +68,22 @@ Use these lanes when developing the package itself:
 11. Examples and fixtures
 12. Research logs and evidence
 
-## How to run it
+## 如何运行
 
-1. Set the goal.
-2. Generate a team board.
-3. Create one branch or worktree per worker.
-4. Let the orchestrator assign the lanes.
-5. Review each diff before merge.
-6. Merge only the branches with evidence.
+1. 设置 goal。
+2. 生成 team board。
+3. 为每个 worker 创建一个 branch 或 worktree。
+4. 让 orchestrator 分配 lanes。
+5. merge 前 review 每个 diff。
+6. 只 merge 有证据支持的 branches。
 
-The generated team pack also includes a `setup.sh` helper with one `git worktree add -b ...` command per lane.
+生成的 team pack 还包含 `setup.sh` helper，其中每条 lane 都有一个 `git worktree add -b ...` 命令。
 
 ## Branching rule
 
-Use one branch per worker and keep the branch name tied to the lane.
+每个 worker 使用一个 branch，并让 branch name 绑定 lane。
 
-Example:
+示例：
 
 ```bash
 codex/autoresearch-cli-runtime
@@ -93,17 +93,17 @@ codex/autoresearch-tests-ci
 
 ## Merge rule
 
-Do not merge two agents into the same file at the same time unless the reviewer explicitly takes over the integration step.
+不要同时把两个 agent merge 到同一个文件中，除非 reviewer 明确接管 integration step。
 
-## Practical rule for us
+## 我们的实用规则
 
-If we want 10 agents in parallel, we do not need 10 equal voices.
+如果想要 10 个 agent 并行，不需要 10 个同等声音。
 
-We need:
+我们需要：
 
 - 1 human
 - 1 orchestrator
-- 8 to 10 workers
+- 8 到 10 workers
 - 1 reviewer
 
-That is enough to move fast without losing the plot.
+这足以快速推进，同时不丢失主线。

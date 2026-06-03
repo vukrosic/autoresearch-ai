@@ -1,34 +1,34 @@
-# Examples
+# 示例
 
-Real, copy-paste examples of using AutoResearch-AI against real repos. Each example shows one complete loop:
+这里放的是面向真实仓库使用 AutoResearch-AI 的可复制示例。每个示例展示一个完整循环：
 
-1. install
-2. initialize the harness
-3. inspect the target repo
-4. generate the agent prompt
-5. run or record one experiment
-6. report results
+1. 安装
+2. 初始化 harness
+3. 检查目标仓库
+4. 生成 agent prompt
+5. 运行或记录一个实验
+6. 报告结果
 
-## Available examples
+## 可用示例
 
-| Example | Repo shape | What it demonstrates |
+| Example | Repo shape | 展示内容 |
 |---|---|---|
-| [llm-research-kit.md](llm-research-kit.md) | PyTorch + Hugging Face | End-to-end loop on a tiny LLM training repo: detect adapter, run baseline, log experiment, compare. |
+| [llm-research-kit.md](llm-research-kit.md) | PyTorch + Hugging Face | 在 tiny LLM training repo 上的端到端循环：检测 adapter、运行 baseline、记录实验、对比。 |
 
 ## Fixtures
 
-The [fixtures/](fixtures/) directory contains minimal synthetic repos used by `scripts/test-setup.sh` and other tests. They are not user-facing examples — they exist so the CLI can be tested against blank, partial, and fully-shaped repos without depending on machine-specific state.
+[fixtures/](fixtures/) 目录包含 `scripts/test-setup.sh` 和其他测试使用的最小合成仓库。它们不是面向用户的示例，而是用于让 CLI 在不依赖机器特定状态的情况下，针对空仓库、部分成型仓库和完整形态仓库做测试。
 
-## Contributing a new example
+## 贡献新示例
 
-Examples are one of the most useful things you can contribute. They become a reviewer's reference, an AI agent's training context, and a user's quickstart all at once.
+示例是最有价值的贡献之一。它们同时会成为 reviewer 的参考、AI agent 的训练上下文，以及用户的 quickstart。
 
-A good example:
+好的示例：
 
-- targets a real, publicly-available repo (link it)
-- shows the full loop from install to first logged comparison
-- is reproducible — someone with a fresh clone should get the same shape of output
-- doesn't depend on a specific GPU or paid API
-- includes the actual `cat .researchloop/scratchpad/runs.jsonl` output so readers see what gets logged
+- 面向真实、公开可用的仓库（请链接）
+- 展示从安装到第一次记录对比的完整循环
+- 可复现：fresh clone 的用户应该得到同样形态的输出
+- 不依赖特定 GPU 或付费 API
+- 包含实际 `cat .researchloop/scratchpad/runs.jsonl` 输出，让读者看到记录内容
 
-Add your example as a new `.md` file in this directory and add a row to the table above. Open a PR following [CONTRIBUTING.md](../CONTRIBUTING.md).
+把你的示例作为新的 `.md` 文件加入本目录，并在上表增加一行。按照 [CONTRIBUTING.md](../CONTRIBUTING.md) 打开 PR。

@@ -5,9 +5,9 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
-cli="node $repo_root/bin/researchloop.js"
+cli=(node "$repo_root/bin/researchloop.js")
 
-$cli init --agent codex --dir "$tmpdir" >/tmp/autoresearch-sweep-init.log
+"${cli[@]}" init --agent codex --dir "$tmpdir" >/tmp/autoresearch-sweep-init.log
 
 # Variant-list spec: three explicit param combos, command template prints val_loss=<lr>.
 cat > "$tmpdir/sweep-variants.json" <<'JSON'
@@ -23,7 +23,7 @@ cat > "$tmpdir/sweep-variants.json" <<'JSON'
 JSON
 
 # Dry-run should print all variants and not record runs.
-$cli sweep --dir "$tmpdir" --spec "$tmpdir/sweep-variants.json" --metric val_loss --direction lower --dry-run >/tmp/autoresearch-sweep-dry.log
+"${cli[@]}" sweep --dir "$tmpdir" --spec "$tmpdir/sweep-variants.json" --metric val_loss --direction lower --dry-run >/tmp/autoresearch-sweep-dry.log
 grep -q "variants: 3" /tmp/autoresearch-sweep-dry.log
 grep -q "dry-run: no runs executed" /tmp/autoresearch-sweep-dry.log
 if [ -f "$tmpdir/.researchloop/scratchpad/runs.jsonl" ]; then
@@ -34,7 +34,7 @@ if [ -f "$tmpdir/.researchloop/scratchpad/runs.jsonl" ]; then
 fi
 
 # Real sweep run.
-$cli sweep --dir "$tmpdir" --spec "$tmpdir/sweep-variants.json" --metric val_loss --direction lower >/tmp/autoresearch-sweep-run.log
+"${cli[@]}" sweep --dir "$tmpdir" --spec "$tmpdir/sweep-variants.json" --metric val_loss --direction lower >/tmp/autoresearch-sweep-run.log
 grep -q "sweep: lr-list" /tmp/autoresearch-sweep-run.log
 grep -q "completed: 3/3" /tmp/autoresearch-sweep-run.log
 grep -q "scored: 3" /tmp/autoresearch-sweep-run.log
@@ -57,7 +57,7 @@ cat > "$tmpdir/sweep-grid.json" <<'JSON'
 }
 JSON
 
-$cli sweep --dir "$tmpdir" --spec "$tmpdir/sweep-grid.json" --metric accuracy --direction higher >/tmp/autoresearch-sweep-grid.log
+"${cli[@]}" sweep --dir "$tmpdir" --spec "$tmpdir/sweep-grid.json" --metric accuracy --direction higher >/tmp/autoresearch-sweep-grid.log
 grep -q "variants: 4" /tmp/autoresearch-sweep-grid.log
 grep -q "completed: 4/4" /tmp/autoresearch-sweep-grid.log
 
@@ -67,7 +67,7 @@ test -d "$tmpdir/.researchloop/scratchpad/sweeps"
 # Bad spec is rejected.
 echo "{ this is not json" > "$tmpdir/sweep-bad.json"
 set +e
-$cli sweep --dir "$tmpdir" --spec "$tmpdir/sweep-bad.json" >/tmp/autoresearch-sweep-bad.log 2>&1
+"${cli[@]}" sweep --dir "$tmpdir" --spec "$tmpdir/sweep-bad.json" >/tmp/autoresearch-sweep-bad.log 2>&1
 bad_exit=$?
 set -e
 if [ "$bad_exit" -eq 0 ]; then

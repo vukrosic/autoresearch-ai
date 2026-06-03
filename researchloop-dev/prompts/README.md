@@ -1,5 +1,5 @@
 # Prompts
 
-This folder stores the prompts used to simulate fresh users and to test onboarding behavior.
+这个文件夹保存用于模拟 fresh users 和测试 onboarding 行为的 prompts。
 
-Files here should be short, explicit, and reusable.
+这里的文件应该简短、明确、可复用。

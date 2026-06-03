@@ -1,19 +1,19 @@
-# LLM Auto Research Log
+# LLM 自动研究日志
 
 ## 2026-05-15
 
-AutoResearch-AI was moved into `/Users/vukrosic/my-life/autoresearch-ai` as the open source npm package and startup home.
+AutoResearch-AI 已移动到 `/Users/vukrosic/my-life/autoresearch-ai`，作为开源 npm 包和 startup home。
 
-The package was linked locally with `npm link`, then used against `llm-research-kit`.
+这个包通过 `npm link` 本地链接，然后用于 `llm-research-kit`。
 
-Confirmed:
+已确认：
 
-- CLI help works.
-- Repo inspection works.
-- Environment doctor works.
-- Structured run recording works through `autoresearch record`.
-- `llm-research-kit` can run a tiny synthetic training loop on this Mac through MPS.
+- CLI help 可用。
+- Repo inspection 可用。
+- Environment doctor 可用。
+- 结构化 run recording 可通过 `autoresearch record` 工作。
+- `llm-research-kit` 可以通过 MPS 在这台 Mac 上运行一个很小的 synthetic training loop。
 
-Learning:
+学习：
 
-The product is already useful as an installable harness. The next feature should create idea files and experiment briefs, because recording is now covered by `autoresearch record`.
+这个产品作为可安装 harness 已经有用。下一个功能应该创建 idea files 和 experiment briefs，因为 recording 已由 `autoresearch record` 覆盖。

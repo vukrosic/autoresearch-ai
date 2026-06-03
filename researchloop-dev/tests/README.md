@@ -1,8 +1,8 @@
 # Tests
 
-This folder describes the onboarding, install, and first-experiment checks that should run against AutoResearch-AI.
+这个文件夹描述应针对 AutoResearch-AI 运行的 onboarding、install 和 first-experiment 检查。
 
-Suggested scenarios:
+建议场景：
 
 - blank folder
 - real repo with history
@@ -13,4 +13,4 @@ Suggested scenarios:
 - dashboard with multiple loss curves
 - history-first idea generation
 
-Research execution protocols live separately in [`../experiments/`](../experiments/).
+研究执行 protocols 单独放在 [`../experiments/`](../experiments/)。

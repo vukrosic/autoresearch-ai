@@ -1,8 +1,8 @@
-# Setup Test Plan
+# Setup 测试计划
 
-## Scenario 1 - Blank Repo
+## 场景 1 - 空仓库
 
-Create a temporary empty repo and run:
+创建临时空仓库并运行：
 
 ```bash
 autoresearch init --agent codex
@@ -13,35 +13,35 @@ autoresearch record --id setup-001 --status complete --metric val_loss=1.23 --no
 autoresearch report
 ```
 
-Expected:
+预期：
 
-- harness files exist
-- adapter defaults to `generic`
-- prompt is emitted
-- doctor prints the local environment
-- record appends to `runs.jsonl`
-- report shows one run
+- harness 文件存在
+- adapter 默认为 `generic`
+- prompt 被输出
+- doctor 打印本地环境
+- record 追加到 `runs.jsonl`
+- report 显示一个 run
 
-## Scenario 2 - Minimal ML Fixture
+## 场景 2 - 最小 ML Fixture
 
-Create a repo with `train.py`, `pyproject.toml`, and a log folder, then run `autoresearch inspect`.
+创建包含 `train.py`、`pyproject.toml` 和 log 文件夹的仓库，然后运行 `autoresearch inspect`。
 
-Expected:
+预期：
 
-- `pytorch` adapter is detected
-- train file is listed
-- config files are detected
+- 检测到 `pytorch` adapter
+- 列出 train 文件
+- 检测到 config 文件
 
-## Scenario 3 - Real Local LLM Repo
+## 场景 3 - 真实本地 LLM 仓库
 
-Run the same flow against `/Users/vukrosic/my-life/research-repos/llm-research-kit`.
+对 `/Users/vukrosic/my-life/research-repos/llm-research-kit` 运行相同流程。
 
-Expected:
+预期：
 
-- `generic`, `pytorch`, `huggingface`, and `llm-research-kit` adapters are detected
-- `doctor` confirms MPS on this Mac
-- a tiny synthetic training loop can run when we want a real product proof
+- 检测到 `generic`、`pytorch`、`huggingface` 和 `llm-research-kit` adapter
+- `doctor` 在这台 Mac 上确认 MPS
+- 当需要真实产品 proof 时，可以运行一个很小的 synthetic training loop
 
-## Why This Matters
+## 为什么重要
 
-The first failure mode of startup software is not model quality. It is setup friction. The setup tests should stay fast and simple enough to run often.
+startup 软件的第一个失败模式不是模型质量，而是 setup 摩擦。setup 测试应该保持足够快、足够简单，方便经常运行。

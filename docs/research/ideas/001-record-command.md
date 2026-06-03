@@ -1,12 +1,12 @@
-# Idea 001 - Add `autoresearch record`
+# Idea 001 - 添加 `autoresearch record`
 
-Status: shipped in the local repo.
+状态：已在本地仓库发布。
 
-## Hypothesis
+## 假设
 
-Users will trust the tool more if it can append a structured run result without requiring manual JSONL editing.
+如果工具能追加结构化 run result，而不要求手动编辑 JSONL，用户会更信任它。
 
-## Command
+## 命令
 
 ```bash
 autoresearch record \
@@ -17,10 +17,10 @@ autoresearch record \
   --note "Tiny Mac smoke loop"
 ```
 
-## Why It Matters
+## 为什么重要
 
-The harness currently creates a run ledger, but recording is still manual. A first-class command makes the loop feel more like a product and less like a folder template.
+harness 当前会创建 run ledger，但 recording 仍是手动的。一等命令会让循环更像产品，而不是 folder template。
 
 ## Kill Criteria
 
-Do not build a large experiment runner yet. If `record` turns into a full orchestration framework, stop and reduce it.
+暂时不要构建大型 experiment runner。如果 `record` 变成完整 orchestration framework，停止并缩小范围。

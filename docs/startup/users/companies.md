@@ -1,16 +1,16 @@
-# Company Segment
+# 公司用户分层
 
-Likely pain:
+可能痛点：
 
-- prompt optimization without a clean ledger
-- agent eval changes that are hard to compare
-- fine-tune experiments scattered across notebooks and scripts
-- repeated model/eval work that depends on one engineer's memory
+- prompt 优化没有干净 ledger
+- agent eval 变化难以对比
+- fine-tune 实验散落在 notebooks 和 scripts 中
+- 重复 model/eval 工作依赖某个工程师的记忆
 
-Useful product angle:
+有用产品角度：
 
-AutoResearch-AI makes agent-driven optimization auditable and repeatable.
+AutoResearch-AI 让 agent-driven optimization 可审计、可重复。
 
-First demo:
+第一个 demo：
 
-Use a private-safe toy workflow that shows baseline, candidate experiment, run log, comparison, and next-step recommendation.
+使用一个 private-safe toy workflow，展示 baseline、candidate experiment、run log、comparison 和 next-step recommendation。

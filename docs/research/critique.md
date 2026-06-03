@@ -1,30 +1,30 @@
-# Critique
+# 批评
 
-This is the honest read on AutoResearch-AI today.
+这是对今天 AutoResearch-AI 的诚实判断。
 
-## What Is Strong
+## 强项
 
-- The thesis is real: autonomous AI research is an actual workflow, not just a buzzword.
-- The MacBook path is proven enough to keep building.
-- The CLI shape is simple and portable.
-- The open source boundary makes the product easier to trust.
+- 论点是真实的：自主 AI 研究是实际工作流，不只是 buzzword。
+- MacBook 路径已被足够证明，可以继续构建。
+- CLI 形态简单且可移植。
+- 开源边界让产品更容易被信任。
 
-## What Is Still Weak
+## 仍然薄弱的地方
 
-- The website is better, but still mostly explains the product instead of proving a workflow users can run immediately.
-- The CLI currently covers setup, inspect, prompt, doctor, record, and report, but not yet a full experiment planner or compare workflow.
-- The setup story is good for local smoke testing, but not yet tested against a real first-time external repo user.
-- Competitor intelligence is useful, but it will drift unless we keep updating it.
-- The user discovery loop exists on paper, but it still needs live conversations and notes.
+- 网站更好了，但仍然更多是在解释产品，而不是证明一个用户可以立即运行的工作流。
+- CLI 当前覆盖 setup、inspect、prompt、doctor、record 和 report，但还没有完整 experiment planner 或 compare workflow。
+- setup 故事对本地 smoke test 很好，但还没有针对真实首次外部 repo 用户测试。
+- 竞品情报有用，但如果不持续更新会漂移。
+- 用户发现循环只停留在纸面上，还需要真实对话和笔记。
 
-## What To Improve Next
+## 下一步改进
 
-- Add `autoresearch idea` or `autoresearch compare` so the loop feels more like a product and less like a file bundle.
-- Add a CI job for `npm run test:setup`, `npm run test:prompts`, and `npm run test:site`.
-- Put one real external repo onboarding note into the research log.
-- Turn one user conversation into a reusable onboarding example.
-- Keep the homepage focused on the first successful run, not a broad story.
+- 添加 `autoresearch idea` 或 `autoresearch compare`，让循环更像产品，而不是文件包。
+- 为 `npm run test:setup`、`npm run test:prompts` 和 `npm run test:site` 添加 CI job。
+- 把一个真实外部 repo onboarding 笔记写入 research log。
+- 把一次用户对话转成可复用 onboarding example。
+- 让 homepage 聚焦第一次成功运行，而不是宽泛叙事。
 
-## Bottom Line
+## 结论
 
-AutoResearch-AI is promising because it has a real use case, a real Mac-compatible proof, and a simple open source shape. It still needs more productization around the experiment loop and more proof from actual users before it feels like a durable startup.
+AutoResearch-AI 有潜力，因为它有真实用例、真实 Mac 兼容 proof，以及简单开源形态。在它像一个持久 startup 之前，仍需要围绕实验循环做更多产品化，并从真实用户那里获得更多证明。

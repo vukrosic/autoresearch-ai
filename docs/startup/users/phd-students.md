@@ -1,17 +1,17 @@
-# PhD Student Segment
+# 博士生用户分层
 
-Likely pain:
+可能痛点：
 
-- messy ablation tracking
-- weak baselines
-- forgotten failed experiments
-- hard-to-reproduce runs
-- pressure to move quickly without enough structure
+- 混乱的 ablation tracking
+- 弱 baseline
+- 被遗忘的失败实验
+- 难以复现的 run
+- 在缺少结构时仍被要求快速推进
 
-Useful product angle:
+有用产品角度：
 
-AutoResearch-AI gives your coding agent a research notebook and experiment protocol inside the repo.
+AutoResearch-AI 在仓库内部给你的 coding agent 一个研究笔记本和实验协议。
 
-First demo:
+第一个 demo：
 
-Install AutoResearch-AI in a small training repo, generate the Codex prompt, create one idea file, run a tiny ablation, and produce a report.
+在小型训练仓库中安装 AutoResearch-AI，生成 Codex prompt，创建一个 idea 文件，运行一个很小的 ablation，并生成报告。

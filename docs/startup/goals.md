@@ -1,130 +1,130 @@
-# Product Goals
+# 产品目标
 
-This file defines what AutoResearch-AI should do when it is working as a fully autonomous AI research loop.
+这个文件定义 AutoResearch-AI 作为完整自主 AI 研究循环运行时应该做什么。
 
 ## Mission
 
-Help an AI agent turn a real machine learning repo into a disciplined research loop that can:
+帮助 AI agent 把真实机器学习仓库变成有纪律的研究循环，可以：
 
-- understand the current machine and repo
-- establish and protect a baseline
-- generate grounded research ideas
-- choose the cheapest useful experiment
-- record evidence
-- compare results
-- recover from boring failures
-- promote winning ideas into durable follow-up work
+- 理解当前机器和仓库
+- 建立并保护 baseline
+- 生成有依据的研究想法
+- 选择最便宜且有用的实验
+- 记录证据
+- 对比结果
+- 从普通失败中恢复
+- 把成功想法提升为持久后续工作
 
-## Core Goals
+## 核心目标
 
 ### 1. Baseline First
 
-The agent must not optimize blindly.
+agent 不能盲目优化。
 
-It should:
+它应该：
 
-- inspect `.researchloop/baseline.md`
-- create or update it when it is missing or incomplete
-- record the artifact path, metric, command or config, frozen variables, and limitations
-- treat the baseline as the starting point for all later decisions
+- 检查 `.researchloop/baseline.md`
+- 当缺失或不完整时创建或更新它
+- 记录 artifact path、metric、command 或 config、冻结变量和限制
+- 把 baseline 作为所有后续决策的起点
 
 ### 2. Baseline-Aware Topic Intake
 
-When the user names a topic, the agent should not jump straight to random experiments.
+当用户命名一个主题时，agent 不应直接跳到随机实验。
 
-It should:
+它应该：
 
-- check whether the baseline already exists
-- summarize what is known and what is missing
-- offer one of three modes:
-  - `propose`: grounded options for the user to choose from
-  - `novel`: genuinely different hypotheses with reasons, failure modes, and kill criteria
-  - `autonomous`: the agent runs the loop after approval
+- 检查 baseline 是否已存在
+- 汇总已知内容和缺失内容
+- 提供三种模式之一：
+  - `propose`：给用户选择的有依据选项
+  - `novel`：带理由、失败模式和 kill criteria 的真正不同假设
+  - `autonomous`：agent 在批准后运行循环
 
 ### 3. Paper-Grounded Research
 
-Paper search should strengthen the loop, not dominate it.
+论文搜索应该加强循环，而不是主导循环。
 
-It should:
+它应该：
 
-- search papers when the topic is broad or needs literature grounding
-- turn papers into structured notes
-- connect papers to concrete hypotheses
-- prefer evidence-backed ideas over generic knob sweeps
+- 当主题宽泛或需要文献依据时搜索论文
+- 把论文转成结构化笔记
+- 把论文连接到具体假设
+- 优先选择有证据支持的想法，而不是通用 knob sweep
 
 ### 4. Cheap-to-Run Experiments
 
-The first experiment should be the cheapest meaningful test.
+第一个实验应该是最便宜的有意义测试。
 
-The agent should:
+agent 应该：
 
-- freeze everything except one causal change
-- use short runs first
-- only widen the search after a candidate survives pruning or reproduction
-- include a realistic time band for every proposed test
+- 除一个因果变化外冻结所有东西
+- 先使用短运行
+- 只有候选项通过剪枝或复现后才扩大搜索
+- 为每个提议测试包含现实的时间范围
 
 ### 5. Failure Recovery
 
-Autonomy should be robust to ordinary problems.
+自主性应该能抵抗普通问题。
 
-The agent should recover from:
+agent 应该能从这些问题中恢复：
 
-- missing files
-- wrong paths
-- wrong interpreter or environment
-- empty logs
-- metric parsing failures
-- stale or incomplete scratchpad state
+- 缺失文件
+- 错误路径
+- 错误解释器或环境
+- 空日志
+- metric parsing failure
+- 过期或不完整的 scratchpad 状态
 
-When a failure happens, the agent should write the failure down and move to the next viable step instead of stopping the whole loop.
+失败发生时，agent 应记录失败，并移动到下一个可行步骤，而不是停止整个循环。
 
 ### 6. Evidence and Promotion
 
-Winning ideas should not disappear into chat.
+成功想法不应消失在聊天里。
 
-The loop should:
+循环应该：
 
-- record every run
-- compare runs against baseline
-- write idea notes before non-trivial experiments
-- promote winning configs, diffs, or follow-up ideas into durable files
+- 记录每次 run
+- 将 run 与 baseline 对比
+- 在非平凡实验前写 idea notes
+- 把成功配置、diff 或后续想法提升到持久文件
 
-## What Autonomous Means
+## Autonomous 是什么意思
 
-Autonomous does not mean reckless.
+Autonomous 不代表鲁莽。
 
-In this project it means:
+在这个项目中，它意味着：
 
-1. Read the repo state first.
-2. Respect the baseline gate.
-3. Use papers when useful.
-4. Propose or choose a small next step.
-5. Run it.
-6. Record the evidence.
-7. Decide whether to reproduce, prune, refine, or pivot.
+1. 先读取 repo 状态。
+2. 尊重 baseline gate。
+3. 有用时使用论文。
+4. 提议或选择一个小的下一步。
+5. 运行它。
+6. 记录证据。
+7. 决定复现、剪枝、细化或转向。
 
-The user can still choose `propose` or `novel` when they want to steer the search.
+当用户想控制搜索时，仍然可以选择 `propose` 或 `novel`。
 
-## Non-Goals
+## 非目标
 
-AutoResearch-AI is not trying to be:
+AutoResearch-AI 不试图成为：
 
-- a generic document chat app
-- a full SciSpace clone
-- a dashboard-first product
-- a magical optimizer that skips evidence
+- 通用文档聊天应用
+- 完整 SciSpace clone
+- dashboard-first 产品
+- 跳过证据的神奇 optimizer
 
-The core product is the research loop.
+核心产品是研究循环。
 
-## Success Criteria
+## 成功标准
 
-The product is behaving well when a user can:
+当用户可以做到以下事情时，产品表现良好：
 
-- install it
-- point it at a repo
-- see the baseline documented
-- understand the current machine and repo
-- get a few grounded ideas
-- approve one small experiment
-- see the result recorded and compared
-- keep the loop going without losing context
+- 安装它
+- 指向一个仓库
+- 看到 baseline 已记录
+- 理解当前机器和仓库
+- 得到几个有依据的想法
+- 批准一个小实验
+- 看到结果被记录和对比
+- 在不丢上下文的情况下继续循环

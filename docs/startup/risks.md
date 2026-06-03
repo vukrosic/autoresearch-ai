@@ -1,31 +1,31 @@
-# Risks
+# 风险
 
-## Too Broad
+## 过于宽泛
 
-Risk: "Automated AI research" becomes too vague.
+风险：“Automated AI research” 变得太模糊。
 
-Countermeasure: keep the first product as an installable harness for coding agents, not a full scientist.
+应对：把第一个产品保持为面向代码 agent 的可安装 harness，而不是完整科学家。
 
-## No Real Users
+## 没有真实用户
 
-Risk: building around imagined PhD needs.
+风险：围绕想象中的博士需求构建。
 
-Countermeasure: weekly conversations, repo walkthroughs, and visible feedback logs.
+应对：每周对话、repo walkthrough，以及可见的 feedback logs。
 
-## Agent Overclaims
+## Agent 过度声称
 
-Risk: agents claim improvements without running enough evidence.
+风险：agent 在没有足够证据运行的情况下声称改进。
 
-Countermeasure: rules in the harness: no claim without run, baseline first, reproduction before victory.
+应对：在 harness 中放入规则：没有 run 不做声明，baseline first，胜利前先复现。
 
-## Fragile Repo Support
+## 脆弱的 Repo 支持
 
-Risk: every ML repo is different.
+风险：每个 ML repo 都不同。
 
-Countermeasure: start with generic, PyTorch, Hugging Face, and `llm-research-kit`. Add adapters only after real demand.
+应对：从 generic、PyTorch、Hugging Face 和 `llm-research-kit` 开始。只在真实需求后添加 adapter。
 
-## Motivation Drift
+## 动机漂移
 
-Risk: switching ideas before the loop becomes real.
+风险：在循环变成真实产品前频繁切换想法。
 
-Countermeasure: use the focus guard skill and return to one small proof: install, inspect, prompt, run, log.
+应对：使用 focus guard skill，并回到一个小 proof：install、inspect、prompt、run、log。

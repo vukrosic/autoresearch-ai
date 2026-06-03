@@ -1,49 +1,49 @@
-# AutoResearch-AI Getting Started
+# AutoResearch-AI 入门指南
 
-AutoResearch-AI is an open source npm package that helps an AI agent run a disciplined research loop inside a machine learning repo, published on npm as `autoresearch-ai`.
+AutoResearch-AI 是一个开源 npm 包，帮助 AI agent 在机器学习仓库里运行有纪律的研究循环，在 npm 上以 `autoresearch-ai` 发布。
 
-The shortest way to think about it:
+最短的理解方式：
 
-- you install the CLI
-- you point it at a target repo or research dir
-- it creates a durable `.researchloop/` workspace
-- your AI agent uses that workspace to plan, run, compare, and record experiments
+- 安装 CLI
+- 把它指向目标仓库或研究目录
+- 它创建持久的 `.researchloop/` 工作区
+- 你的 AI agent 使用这个工作区来规划、运行、对比和记录实验
 
-If no target repo is obvious, use this rule:
+如果目标仓库不明显，使用这条规则：
 
-1. If the current folder is a real repo, use it.
-2. If the current folder is empty or not a repo, ask: "Use this folder, point me at a GitHub repo, or spin up a demo research repo?"
-3. If the user has a GitHub URL, offer to clone it and run there.
-4. If the user has a local path, use that path.
-5. If the user has neither, offer either a disposable demo repo or the local `llm-research-kit` repo as the no-friction fallback.
+1. 如果当前文件夹是真实仓库，就使用它。
+2. 如果当前文件夹为空或不是仓库，询问：“使用这个文件夹、让我指向一个 GitHub 仓库，还是启动一个 demo research repo？”
+3. 如果用户有 GitHub URL，建议 clone 后在那里运行。
+4. 如果用户有本地路径，就使用该路径。
+5. 如果用户两者都没有，提供一次性 demo repo 或本地 `llm-research-kit` repo 作为低摩擦 fallback。
 
-When the repo already has history, read `.researchloop/scratchpad/runs.jsonl` and `.researchloop/scratchpad/THREAD.md` first, then propose the next experiment from that evidence instead of defaulting to a sweep.
-If `.researchloop/plan.md` does not already have a time budget, ask one question first: "How long do you usually want a typical experiment to run?" Save the answer in `Time Budget` and use it to shape later suggestions.
+当仓库已有历史时，先读取 `.researchloop/scratchpad/runs.jsonl` 和 `.researchloop/scratchpad/THREAD.md`，再基于这些证据提出下一个实验，而不是默认直接做 sweep。
+如果 `.researchloop/plan.md` 里还没有时间预算，先问一个问题：“你通常希望一次典型实验运行多久？”把答案保存到 `Time Budget`，并用它影响后续建议。
 
-## 1. Give This Prompt To Your Agent
+## 1. 给你的 Agent 使用的提示词
 
-Copy this into Codex, Claude Code, Hermes, Cursor, or another coding agent:
+把下面内容复制到 Codex、Claude Code、Hermes、Cursor 或其他代码 agent 中：
 
 ```text
-Install the `autoresearch-ai` npm package if needed. Act as an automated AI researcher and follow the AutoResearch-AI first-contact and topic-intake prompts.
-Read the AutoResearch-AI docs and the `.researchloop/` files, then help me start AI research: inspect the local system for GPUs/accelerators, inspect the workspace for likely AI research repos, explain what I have in plain language, and check whether a baseline exists and where it is documented.
-When I give a research topic, use the existing baseline if it exists; if it does not, propose documenting `.researchloop/baseline.md` first. Then offer propose, novel, or autonomous mode.
-Do not summarize package internals, tarball contents, prompt files, or skill files unless I explicitly ask.
-Do not run init, training, baselines, sweeps, or experiments until I approve the plan.
-Use the package commands to manage goals, ideas, prompts, runs, comparisons, and reports.
+如果需要，安装 `autoresearch-ai` npm 包。你现在是一个自动化 AI 研究员，并遵循 AutoResearch-AI 的 first-contact 和 topic-intake 提示词。
+阅读 AutoResearch-AI 文档和 `.researchloop/` 文件，然后帮我启动 AI 研究：检查本地系统的 GPU/加速器，检查工作区中可能的 AI 研究仓库，用简单语言解释我拥有什么，并检查 baseline 是否存在以及记录在哪里。
+当我给出研究主题时，如果已有 baseline 就使用它；如果没有，先建议记录 `.researchloop/baseline.md`。然后提供 propose、novel 或 autonomous 模式。
+除非我明确要求，不要总结包内部实现、tarball 内容、prompt 文件或 skill 文件。
+在我批准计划之前，不要运行 init、training、baselines、sweeps 或 experiments。
+使用包命令管理 goals、ideas、prompts、runs、comparisons 和 reports。
 ```
 
-## 2. Install
+## 2. 安装
 
-From your own machine:
+在你自己的机器上：
 
 ```bash
 npm install -g autoresearch-ai
 ```
 
-The package name is `autoresearch-ai`; the primary CLI command is `autoresearch`, with `researchloop` kept as a legacy alias.
+包名是 `autoresearch-ai`；主要 CLI 命令是 `autoresearch`，`researchloop` 保留为旧别名。
 
-For local development from this repo:
+从本仓库做本地开发：
 
 ```bash
 cd /Users/vukrosic/my-life/autoresearch-ai
@@ -51,21 +51,21 @@ npm link
 autoresearch --help
 ```
 
-If you want to hand this to an AI agent, the simplest instruction is:
+如果你想把这件事交给 AI agent，最简单的指令是：
 
 ```text
-Install AutoResearch-AI, follow `templates/prompts/first-contact.md`, inspect the system and project read-only, explain what I have in plain language, check the baseline state first, then propose a plan. Wait for my approval before any init, training, baseline, sweep, or experiment command.
+安装 AutoResearch-AI，遵循 `templates/prompts/first-contact.md`，只读检查系统和项目，用简单语言解释我拥有什么，先检查 baseline 状态，然后提出计划。在任何 init、training、baseline、sweep 或 experiment 命令前等待我批准。
 ```
 
-## 3. Initialize a repo
+## 3. 初始化仓库
 
-Run this inside a blank folder, an existing ML repo, or a target research dir:
+在空文件夹、已有 ML 仓库或目标研究目录中运行：
 
 ```bash
 autoresearch init --agent codex
 ```
 
-That creates:
+这会创建：
 
 ```text
 .researchloop/
@@ -84,7 +84,7 @@ That creates:
     sweeps/
 ```
 
-If you want the agent-specific file for another tool, use:
+如果需要另一个工具的 agent 专用文件，使用：
 
 ```bash
 autoresearch init --agent claude-code
@@ -92,69 +92,69 @@ autoresearch init --agent hermes
 autoresearch init --agent cursor
 ```
 
-## 3b. Give a research topic
+## 3b. 给出研究主题
 
-When you say something like "research query/key architectures", the agent should treat it as topic intake.
+当你说类似 “research query/key architectures” 的内容时，agent 应把它当作 topic intake。
 
-First it checks whether a usable baseline already exists. If `.researchloop/baseline.md` is missing or incomplete, the first proposed step should be to create or update that markdown note from existing artifacts. It should not recommend architecture, optimizer, sweep, or training changes until the baseline is clear.
+它首先检查是否已有可用 baseline。如果 `.researchloop/baseline.md` 缺失或不完整，第一步建议应该是从现有 artifact 创建或更新这个 markdown 说明。在 baseline 明确前，不应该推荐 architecture、optimizer、sweep 或 training 改动。
 
-After the baseline is clear, choose one of these modes:
+baseline 明确后，从这些模式中选择一个：
 
 ```text
-propose     the agent suggests 2-4 grounded options and waits for your choice
-novel       the agent reasons about genuinely different hypotheses and their failure modes
-autonomous  the agent runs the loop after explicit approval and within the time budget
+propose     agent 建议 2-4 个有依据的选项，并等待你选择
+novel       agent 推理真正不同的假设及其失败模式
+autonomous  agent 在明确批准和时间预算内运行循环
 ```
 
-Paper search is optional. Use it when the topic is broad, when the repo has no relevant paper notes, or when a proposed idea needs literature grounding.
+论文搜索是可选的。当主题较宽泛、仓库没有相关论文笔记，或某个提案需要文献依据时使用它。
 
-## 4. Set the research goal
+## 4. 设置研究目标
 
-Tell AutoResearch-AI what the agent should optimize:
+告诉 AutoResearch-AI agent 应该优化什么：
 
 ```bash
 autoresearch goal "lower validation loss"
 ```
 
-You can also add structure:
+也可以添加结构化信息：
 
 ```bash
 autoresearch goal "lower validation loss" --metric val_loss --direction lower
 ```
 
-That saves the objective into `.researchloop/goal.md`, which the agent and the prompt command can read later.
+这会把目标保存到 `.researchloop/goal.md`，供 agent 和 prompt 命令稍后读取。
 
-## 5. Generate experiment ideas
+## 5. 生成实验想法
 
 ```bash
 autoresearch idea --write
 ```
 
-This prints a chat-first idea prompt that reads the repo history, asks for the typical experiment length if needed, and then asks the LLM to propose a few real research ideas. For `llm-research-kit`, that usually means baseline checks, history-aware follow-ups, and the staged training ladder when the repo history says longer runs are justified. For a generic repo, it starts with finding the baseline and the real mechanism to test.
+它会打印一个聊天优先的 idea prompt：读取仓库历史，必要时询问典型实验时长，然后让 LLM 提出几个真实研究想法。对于 `llm-research-kit`，这通常意味着 baseline 检查、基于历史的后续实验，以及当仓库历史证明更长运行合理时使用分阶段训练阶梯。对于通用仓库，它会先找到 baseline 和真正要测试的机制。
 
-## 6. Inspect the repo
+## 6. 检查仓库
 
 ```bash
 autoresearch inspect
 ```
 
-This writes a repo profile into `.researchloop/repo-profile.json` and helps the agent understand:
+这会把 repo profile 写入 `.researchloop/repo-profile.json`，帮助 agent 理解：
 
-- possible training files
-- possible eval files
-- config files
-- log folders
-- likely adapters
+- 可能的训练文件
+- 可能的 eval 文件
+- 配置文件
+- 日志文件夹
+- 可能的 adapter
 
-## 7. Generate the agent prompt
+## 7. 生成 agent 提示词
 
 ```bash
 autoresearch prompt --agent codex
 ```
 
-Paste the output into your AI agent.
+把输出粘贴到你的 AI agent 中。
 
-You can also attach a focused playbook:
+也可以附加一个聚焦 playbook：
 
 ```bash
 autoresearch prompt --agent codex --focus hyperparameters
@@ -163,20 +163,20 @@ autoresearch prompt --agent codex --focus attention
 autoresearch prompt --agent codex --focus training-ladder
 ```
 
-That prompt tells the agent to first explain the detected system context and repo context in plain language, then ask for approval before running anything. After approval, it tells the agent to:
+这个提示词会要求 agent 先用简单语言解释检测到的系统上下文和仓库上下文，再请求批准运行任何内容。批准后，它要求 agent：
 
-- read the `.researchloop/` files
-- establish a baseline
-- propose small experiments
-- record runs
-- compare results
-- keep the loop moving
+- 读取 `.researchloop/` 文件
+- 建立 baseline
+- 提出小实验
+- 记录 run
+- 对比结果
+- 保持循环推进
 
-## 7b. Use the skill pack
+## 7b. 使用 skill pack
 
-The npm package also ships a downloadable `skills/` folder.
+npm 包还发布了可下载的 `skills/` 文件夹。
 
-It contains the same research loop as agent-local skills:
+它以 agent-local skill 的形式包含同一套研究循环：
 
 - `skills/researchloop-autoresearch/codex/SKILL.md`
 - `skills/researchloop-autoresearch/claude-code/CLAUDE.md`
@@ -185,127 +185,129 @@ It contains the same research loop as agent-local skills:
 - `skills/researchloop-autoresearch/references/*.md`
 - `skills/researchloop-training-ladder/SKILL.md`
 
-Use those files when you want the agent itself to carry the research rules, not just the current prompt.
+当你希望 agent 自身携带研究规则，而不只是当前 prompt 时，使用这些文件。
 
-Typical flow:
+典型流程：
 
-1. Copy the Codex or Claude Code file into the skill location your agent uses.
-2. Keep the `references/` files nearby as optional playbooks.
-3. Pair the skill with `.researchloop/goal.md` and the `autoresearch prompt` output.
+1. 把 Codex 或 Claude Code 文件复制到你的 agent 使用的 skill 位置。
+2. 把 `references/` 文件留在附近，作为可选 playbook。
+3. 将 skill 与 `.researchloop/goal.md` 和 `autoresearch prompt` 输出配合使用。
 
-You can still pass `--goal` for a one-off override, but the normal flow is to save the goal once and let the prompt command read it back.
+仍然可以用 `--goal` 做一次性覆盖，但正常流程是保存一次 goal，并让 prompt 命令读取它。
 
-If you want the prompt to narrow in on a family of experiments, use one of the built-in focus playbooks:
+如果希望 prompt 聚焦某一类实验，使用内置 focus playbook：
 
 - `hyperparameters`
 - `architecture`
 - `attention`
 - `training-ladder`
 
-## 8. Record and compare runs
+## 8. 记录和对比 run
 
-After a run finishes:
+run 结束后：
 
 ```bash
 autoresearch record --id first-run --status complete --metric val_loss=2.31 --note "first logged experiment"
 ```
 
-To compare runs:
+对比 run：
 
 ```bash
 autoresearch compare --metric val_loss --direction lower
 ```
 
-For metrics where higher is better:
+如果实验需要 NVIDIA GPU，命令行可加 `--device cuda`；需要固定卡号时再加 `--cuda-visible-devices 0`。dashboard 中对应的是 `CUDA / Python` 运行方式和 `CUDA 设备编号` 字段。
+
+对于越高越好的指标：
 
 ```bash
 autoresearch compare --metric accuracy --direction higher
 ```
 
-Then summarize the current state:
+然后汇总当前状态：
 
 ```bash
 autoresearch report
 ```
 
-For a shareable lab-note artifact:
+生成可分享的实验记录 artifact：
 
 ```bash
 autoresearch report --format markdown --out report.md --include-plots
 ```
 
-That writes `report.md` plus `report-assets/` SVG plots from the run ledger. Use it after a baseline and a few candidate runs to send a compact update to an advisor, teammate, or future session.
+这会从 run ledger 写出 `report.md` 和 `report-assets/` SVG 图表。在有 baseline 和几个候选 run 后，可以用它向导师、队友或未来会话发送紧凑更新。
 
-Before sharing the report, audit the numeric claims:
+分享报告前，审计数字声明：
 
 ```bash
 autoresearch audit report.md
 ```
 
-The audit checks loss, accuracy, perplexity, F1, and named metric claims against `runs.jsonl`.
+audit 会根据 `runs.jsonl` 检查 loss、accuracy、perplexity、F1 和命名指标声明。
 
-## 9. Open the dashboard
+## 9. 打开 dashboard
 
-Serve a local dashboard for the current repo:
+为当前仓库启动本地 dashboard：
 
 ```bash
 autoresearch dashboard
 ```
 
-Then open the localhost URL it prints. The dashboard reads the repo's `.researchloop/` files and shows:
+然后打开它打印出的 localhost URL。dashboard 会读取仓库的 `.researchloop/` 文件并展示：
 
-- the saved goal
-- the run ledger
-- the best run so far
-- the latest run
-- a small trend chart for the main metric
+- 已保存的 goal
+- run ledger
+- 当前最佳 run
+- 最新 run
+- 主指标的小趋势图
 
-It does not need accounts or auth because it stays on your machine.
+它不需要账号或认证，因为只运行在你的机器上。
 
-## 10. Generate a team board for parallel work
+## 10. 为并行工作生成团队看板
 
-If you want to develop AutoResearch-AI itself, or split any repo into parallel lanes, generate a local team board:
+如果你要开发 AutoResearch-AI 本身，或把任何仓库拆成并行工作线，生成本地团队看板：
 
 ```bash
 autoresearch team --workers 8
 ```
 
-That writes `.researchloop/team/` with:
+这会写入 `.researchloop/team/`，其中包含：
 
-- an orchestrator brief
-- a reviewer brief
-- one worker file per lane
-- a board that maps branches, files, and done criteria
+- orchestrator brief
+- reviewer brief
+- 每条工作线一个 worker 文件
+- 映射分支、文件和完成标准的 board
 
-The intended flow is:
+预期流程是：
 
-1. Human sets the release goal.
-2. Orchestrator assigns the lanes.
-3. Workers take one branch or worktree each.
-4. Reviewer checks the diffs before merge.
-5. Human merges the branches that have evidence.
+1. Human 设置发布目标。
+2. Orchestrator 分配工作线。
+3. Workers 每人处理一个分支或 worktree。
+4. Reviewer 在 merge 前检查 diff。
+5. Human 合并有证据支持的分支。
 
-## 11. Test the setup before you trust it
+## 11. 信任前先测试 setup
 
-Run the local checks from this repo:
+从本仓库运行本地检查：
 
 ```bash
 npm test
 ```
 
-That aggregates the full fast suite: `smoke`, `smoke:e2e`, `test:setup`, `test:compare`, `test:run`, `test:scan-papers`, `test:goal`, `test:idea`, `test:team`, `test:dashboard`, `test:prompts`, `test:focus-prompts`, `test:site`, and `test:adapters`.
+这会聚合完整快速测试套件：`smoke`、`smoke:e2e`、`test:setup`、`test:compare`、`test:run`、`test:scan-papers`、`test:goal`、`test:idea`、`test:team`、`test:dashboard`、`test:prompts`、`test:focus-prompts`、`test:site` 和 `test:adapters`。
 
-Before publishing, also run the packed-tarball install check:
+发布前，也运行 packed-tarball 安装检查：
 
 ```bash
 npm run test:release
 ```
 
-That runs `npm test` plus `test:packed`, which packs the npm tarball, installs it into an isolated prefix, and runs the harness end-to-end. It catches `files:` whitelist regressions that local-link testing silently masks.
+它会运行 `npm test` 加 `test:packed`：打包 npm tarball，安装到隔离 prefix，并端到端运行 harness。它能发现本地 link 测试会静默掩盖的 `files:` whitelist 回归。
 
-## 12. Use it in a real ML repo
+## 12. 在真实 ML 仓库中使用
 
-Once the basics work, move into a real project:
+基础功能可用后，进入真实项目：
 
 ```bash
 cd /path/to/your/ml-repo
@@ -314,15 +316,15 @@ autoresearch inspect
 autoresearch prompt --agent codex --goal "improve validation loss"
 ```
 
-Then give the prompt to your AI agent and let it run the loop.
+然后把提示词交给你的 AI agent，让它运行循环。
 
-AutoResearch-AI is not trying to magically solve the model for you. It gives the agent the operating system for research: goals, baseline, logs, comparison, and continuation.
+AutoResearch-AI 不是试图替你神奇地解决模型问题。它给 agent 提供研究操作系统：目标、baseline、日志、对比和延续。
 
-## 12. Publish to npm
+## 12. 发布到 npm
 
-The package is published to the public npm registry at [npmjs.com](https://www.npmjs.com/).
+这个包发布到公共 npm registry：[npmjs.com](https://www.npmjs.com/)。
 
-Before publishing:
+发布前：
 
 ```bash
 npm login
@@ -330,21 +332,21 @@ npm whoami
 npm pack --dry-run
 ```
 
-Make sure the package name is available and the contents look right.
+确认包名可用且内容正确。
 
-For this repo, the package name is `autoresearch-ai` in `package.json`. Publish with:
+本仓库中，包名在 `package.json` 中是 `autoresearch-ai`。发布命令：
 
 ```bash
 npm publish
 ```
 
-If you later switch to a scoped package like `@yourname/autoresearch`, publish with:
+如果之后切换到类似 `@yourname/autoresearch` 的 scoped package，发布命令是：
 
 ```bash
 npm publish --access public
 ```
 
-Common release flow:
+常见发布流程：
 
 ```bash
 npm version patch
@@ -352,34 +354,34 @@ git push --follow-tags
 npm publish
 ```
 
-Typical release checklist:
+典型发布检查清单：
 
-1. run the local tests
-2. check `npm pack --dry-run`
-3. bump the version
-4. publish to npm
-5. update the website and README if the usage changed
+1. 运行本地测试
+2. 检查 `npm pack --dry-run`
+3. bump 版本
+4. 发布到 npm
+5. 如果用法变化，更新网站和 README
 
-## 12. Where users install it from
+## 12. 用户从哪里安装
 
-Users install it from the npm registry with:
+用户通过 npm registry 安装：
 
 ```bash
 npm install -g autoresearch-ai
 ```
 
-If they prefer local use inside one repo:
+如果他们更喜欢在单个仓库内本地使用：
 
 ```bash
 npm install autoresearch-ai
 ```
 
-Then they run the CLI from that environment.
+然后从该环境运行 CLI。
 
-## 13. The one-line handoff to an AI agent
+## 13. 给 AI agent 的一句话交接
 
-If you want the shortest possible instruction for Codex, Claude Code, Hermes, Cursor, or a similar agent, give it this:
+如果你想给 Codex、Claude Code、Hermes、Cursor 或类似 agent 最短指令，使用这句：
 
 ```text
-Use AutoResearch-AI: install or use the package, act as an automated AI researcher, and follow `templates/prompts/first-contact.md`. Inspect the system for GPUs/accelerators, inspect the workspace for likely AI research repos, explain what I have in plain language, and check whether a baseline exists and where it is documented. Do not summarize package internals or prompt files. Do not run init, baselines, training, sweeps, or experiments until I approve the plan.
+使用 AutoResearch-AI：安装或使用这个包，作为自动化 AI 研究员，并遵循 `templates/prompts/first-contact.md`。检查系统的 GPU/加速器，检查工作区中可能的 AI 研究仓库，用简单语言解释我拥有什么，并检查 baseline 是否存在以及记录在哪里。不要总结包内部实现或 prompt 文件。在我批准计划前，不要运行 init、baselines、training、sweeps 或 experiments。
 ```

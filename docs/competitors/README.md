@@ -1,23 +1,23 @@
-# Competitors And Adjacent Projects
+# 竞品和相邻项目
 
-This folder tracks the landscape around autonomous AI research, prompt/eval tooling, and agent harnesses.
+这个文件夹跟踪自主 AI 研究、prompt/eval 工具和 agent harness 周边格局。
 
-The point is not to copy them blindly. The point is to learn which parts of the workflow are already solved, which parts are missing, and where AutoResearch-AI should stay simpler.
+重点不是盲目复制它们，而是理解工作流中哪些部分已经被解决、哪些部分缺失，以及 AutoResearch-AI 应该在哪里保持更简单。
 
-## Main Buckets
+## 主要类别
 
-- `prime-intellect.md` - durable autonomous research harness and scratchpad discipline.
-- `promptfoo.md` - prompt/model/agent evals, red teaming, CI, and local private testing.
-- `langsmith.md` - eval types, annotation queues, heuristic checks, and online/offline measurement.
-- `wandb.md` - run tracking, artifacts, sweeps, reports, and project dashboards.
-- `openhands.md` - broader agent runtime, local GUI, SDK, and hosted/cloud split.
-- `swe-agent.md` - issue-to-fix coding agent and benchmark-first framing.
-- `adjacent-autoresearch.md` - the wider autoresearch ecosystem and skill-first loop tools.
+- `prime-intellect.md` - 持久自主研究 harness 和 scratchpad 纪律。
+- `promptfoo.md` - prompt/model/agent eval、red teaming、CI 和本地私有测试。
+- `langsmith.md` - eval 类型、annotation queue、启发式检查，以及在线/离线测量。
+- `wandb.md` - run tracking、artifact、sweep、report 和项目 dashboard。
+- `openhands.md` - 更宽的 agent runtime、本地 GUI、SDK，以及 hosted/cloud 分层。
+- `swe-agent.md` - issue-to-fix 代码 agent 和 benchmark-first 叙事。
+- `adjacent-autoresearch.md` - 更广泛的 autoresearch 生态和 skill-first loop 工具。
 
-## What We Learn
+## 我们学到什么
 
-- Keep the first product a plain CLI plus files, not a giant platform.
-- Make runs first-class and structured.
-- Support both local experimentation and later hosted collaboration.
-- Keep the loop visible in files so agents can recover after context loss.
-- Make onboarding/test/setup a product surface, not just an internal convenience.
+- 第一个产品保持为普通 CLI 加文件，而不是大型平台。
+- 让 run 成为一等对象，并保持结构化。
+- 同时支持本地实验，以及之后的托管协作。
+- 让循环在文件中可见，方便 agent 在上下文丢失后恢复。
+- 把 onboarding/test/setup 当作产品表面，而不只是内部便利。

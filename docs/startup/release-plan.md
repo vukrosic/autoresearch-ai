@@ -1,72 +1,72 @@
 # Release Plan
 
-AutoResearch-AI should ship like a living developer tool, not a one-time launch.
+AutoResearch-AI 应该像一个活的开发者工具一样发布，而不是一次性 launch。
 
-The release rhythm should be small and frequent: every few days when there is a real improvement, and never only for ceremony.
+发布节奏应该小而频繁：只要有真实改进，就每隔几天发布一次；不要只为了仪式感发布。
 
-## What We Release
+## 发布什么
 
-Each release should ship one or more of these:
+每次 release 应该交付以下一项或多项：
 
-- better onboarding
-- a clearer prompt
-- a stronger adapter
-- a more useful dashboard
-- a better experiment command
-- a more trustworthy test or log
-- a real benchmark or proof on `llm-research-kit`
+- 更好的 onboarding
+- 更清晰的 prompt
+- 更强的 adapter
+- 更有用的 dashboard
+- 更好的 experiment command
+- 更可信的 test 或 log
+- 在 `llm-research-kit` 上的真实 benchmark 或 proof
 
-Do not release vague "startup progress." Release a concrete user-visible change.
+不要发布模糊的 “startup progress”。发布具体、用户可见的变化。
 
-## Release Cadence
+## 发布节奏
 
-Use a lightweight cadence:
+使用轻量节奏：
 
-- `0.1.x` for the first public loop
-- prereleases like `0.1.1-beta.1` when the package is moving fast
-- full patch releases when the loop and tests are stable
+- `0.1.x` 用于第一个公开循环
+- 当包快速变化时使用 `0.1.1-beta.1` 这样的 prerelease
+- 当循环和测试稳定时发布完整 patch release
 
-The goal is to make shipping normal. Small releases create trust because users can see momentum.
+目标是让 shipping 变成常态。小 release 会建立信任，因为用户能看到动量。
 
 ## GitHub Setup
 
-The GitHub repo should be simple and public:
+GitHub repo 应该简单公开：
 
-- default branch protected
-- CI required on pull requests
-- issue templates for bugs, adapter requests, and user feedback
-- labels for `release`, `adapter`, `onboarding`, `docs`, `bug`, `good first issue`
-- release drafts enabled
-- a changelog or release note file in the repo
+- 默认 branch protected
+- pull request 要求 CI
+- bug、adapter request 和 user feedback 的 issue templates
+- `release`、`adapter`、`onboarding`、`docs`、`bug`、`good first issue` labels
+- 启用 release drafts
+- 仓库内有 changelog 或 release note 文件
 
-The repo should make the product legible to outside users:
+repo 应该让外部用户理解产品：
 
-- one README
-- one getting-started guide
-- one roadmap
-- one place for startup notes
-- one place for competitor notes
-- one place for release notes
+- 一个 README
+- 一个 getting-started guide
+- 一个 roadmap
+- 一个放 startup notes 的地方
+- 一个放 competitor notes 的地方
+- 一个放 release notes 的地方
 
 ## Release Process
 
-1. Pick one user-visible improvement.
-2. Verify it locally on a clean temp repo.
-3. Verify `npm test` is green and `npm run test:packed` succeeds.
-4. Bump the version.
-5. Write a short release note with:
-   - what changed
-   - why it matters
-   - what was tested
-   - any limitations
-6. Tag the release on GitHub.
-7. Publish the npm package.
-8. Post the release on X.
-9. Ask one or two users to try the new loop.
+1. 选择一个用户可见改进。
+2. 在干净临时仓库中本地验证它。
+3. 确认 `npm test` 绿色，且 `npm run test:packed` 成功。
+4. bump 版本。
+5. 写一条短 release note，包含：
+   - 变了什么
+   - 为什么重要
+   - 测试了什么
+   - 任何限制
+6. 在 GitHub 上打 tag。
+7. 发布 npm 包。
+8. 在 X 上发布 release。
+9. 邀请一两个用户试用新循环。
 
 ## Pre-Publish Checklist
 
-Run this literal checklist for every release. Tick each box in the release PR description.
+每次 release 都运行这份字面 checklist。把每个框勾在 release PR 描述里。
 
 ```text
 [ ] git status clean, on main, up to date with origin
@@ -87,53 +87,53 @@ Run this literal checklist for every release. Tick each box in the release PR de
 [ ] GitHub release draft published with the CHANGELOG entry
 ```
 
-The "LLM-driven onboarding scenario" uses `researchloop-dev/skills/researchloop-onboarding-tester/SKILL.md`. It is slow and flaky, so it is not part of CI. It is part of the release gate.
+“LLM-driven onboarding scenario” 使用 `researchloop-dev/skills/researchloop-onboarding-tester/SKILL.md`。它慢且容易波动，所以不属于 CI。它属于 release gate。
 
 ## Regression Gate
 
-Three layers, smallest to largest:
+三层，从小到大：
 
-1. **`npm test`** runs every fast script in `scripts/test-*.sh`. Every PR must keep this green. CI enforces this on Node 18 / 20 / 22 against ubuntu + macos.
-2. **`npm run test:packed`** packs the tarball, installs it into an isolated npm prefix, and runs the harness end-to-end. Catches `files:` whitelist drift and ESM resolution issues that the linked-checkout path silently masks.
-3. **LLM onboarding scenario** (manual) — a fresh agent in a clean lab folder runs the published onboarding prompt against the packed tarball. Saves the transcript and a short summary into `researchloop-dev/transcripts/` and `researchloop-dev/summaries/`. This catches behavioral regressions (prompt drift, missing target-selection question, sweep-first defaults) that the file-based tests do not see.
+1. **`npm test`** 运行 `scripts/test-*.sh` 中每个快速脚本。每个 PR 都必须保持绿色。CI 会在 ubuntu + macos 上用 Node 18 / 20 / 22 强制执行。
+2. **`npm run test:packed`** 打包 tarball，安装到隔离 npm prefix，并端到端运行 harness。它会抓住 `files:` whitelist drift 和 linked-checkout 路径会静默掩盖的 ESM resolution 问题。
+3. **LLM onboarding scenario**（手动）- 干净 lab 文件夹中的新 agent 对 packed tarball 运行已发布 onboarding prompt。把 transcript 和短 summary 保存到 `researchloop-dev/transcripts/` 和 `researchloop-dev/summaries/`。这会抓住文件测试看不到的行为回归（prompt drift、缺失 target-selection question、sweep-first 默认行为）。
 
-If a regression is found, write a failing test for it before fixing it.
+如果发现 regression，先为它写 failing test，再修复。
 
 ## Release Note Style
 
-Keep release notes short and concrete.
+保持 release notes 简短具体。
 
-Good release notes mention:
+好的 release notes 会提到：
 
-- the feature name
-- the user problem it solves
-- the exact command or workflow it improves
-- the test or proof that backs it up
+- feature name
+- 它解决的用户问题
+- 它改进的确切命令或 workflow
+- 支撑它的 test 或 proof
 
-Bad release notes talk about "vision" without showing a user-facing change.
+糟糕 release notes 只谈 “vision”，但不展示用户可见变化。
 
 ## Launch Sequence
 
-The first launch should be:
+第一次 launch 应该是：
 
-1. Public GitHub repo for `autoresearch-ai`
-2. First npm publish
-3. Short demo video or screen recording
-4. X post announcing the loop
-5. 3 to 5 direct messages to PhD students or lab users
-6. One public request for feedback
+1. `autoresearch-ai` 的公开 GitHub repo
+2. 第一次 npm publish
+3. 简短 demo video 或 screen recording
+4. X post 宣布这个循环
+5. 给博士生或实验室用户发 3 到 5 条 direct messages
+6. 公开请求一次 feedback
 
-The launch is not finished when the package is published. It is finished when someone else tries the loop and gives usable feedback.
+包发布并不代表 launch 结束。有人尝试这个循环并给出有用反馈，才算结束。
 
-## What To Improve Next
+## 下一步改进什么
 
-The next improvements should be boring and practical:
+下一步改进应该枯燥且实用：
 
-- better first-run onboarding
-- a more obvious `autoresearch goal`
-- one more adapter if a user actually needs it
-- better `autoresearch compare` output
-- a richer dashboard view
-- a clearer `autoresearch idea` flow that starts from repo history and chat, then suggests real research ideas instead of defaulting to sweeps
+- 更好的 first-run onboarding
+- 更明显的 `autoresearch goal`
+- 如果用户真正需要，再加一个 adapter
+- 更好的 `autoresearch compare` 输出
+- 更丰富的 dashboard view
+- 更清晰的 `autoresearch idea` 流程：从 repo history 和 chat 开始，然后建议真实研究想法，而不是默认 sweep
 
-The first release after launch should focus on removing friction from the first 10 minutes.
+launch 后的第一个 release 应专注移除前 10 分钟的摩擦。

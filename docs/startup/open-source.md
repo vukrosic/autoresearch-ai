@@ -1,8 +1,8 @@
-# Open Source Plan
+# 开源计划
 
-AutoResearch-AI should be open source because trust matters in research workflows.
+AutoResearch-AI 应该开源，因为研究工作流需要信任。
 
-Users should be able to inspect:
+用户应该能够检查：
 
 - prompts
 - agent rules
@@ -12,9 +12,9 @@ Users should be able to inspect:
 - experiment templates
 - report generation
 
-## Repository Goal
+## 仓库目标
 
-The public repo should be simple:
+公开仓库应该保持简单：
 
 ```text
 autoresearch/
@@ -29,7 +29,7 @@ autoresearch/
   LICENSE
 ```
 
-## What Stays Open
+## 保持开放的内容
 
 - npm CLI
 - harness generator
@@ -39,7 +39,7 @@ autoresearch/
 - local reports
 - examples and templates
 
-## What Could Be Paid Later
+## 以后可能付费的内容
 
 - hosted dashboard
 - team collaboration
@@ -50,6 +50,6 @@ autoresearch/
 - lab-specific templates
 - private eval and compliance workflows
 
-## Boundary
+## 边界
 
-The open source project should be useful on its own. Paid features should add convenience, scale, and collaboration, not lock away the core research loop.
+开源项目本身应该有用。付费功能应该增加便利性、规模化和协作，而不是锁住核心研究循环。

@@ -1,26 +1,26 @@
-# Interview Script
+# 访谈脚本
 
-Goal: understand the workflow before pitching.
+目标：在 pitch 前先理解工作流。
 
-## Opening
+## 开场
 
-I am building an open source npm package that installs an autonomous research harness into AI repos. It is for agents like Codex and Claude Code, so they can plan experiments, run checks, and log results more reliably.
+我正在构建一个开源 npm 包，它会把 autonomous research harness 安装进 AI 仓库。它面向 Codex 和 Claude Code 这类 agent，让它们可以更可靠地规划实验、运行检查并记录结果。
 
-Could you walk me through how you currently run experiments in one repo?
+你能带我看一下你现在如何在一个仓库里运行实验吗？
 
-## Questions
+## 问题
 
-- What repo or research workflow are you focused on now?
-- What metric matters most?
-- How do you establish a baseline?
-- Where do experiment ideas come from?
-- How do you track runs and failed attempts?
-- What is annoying or slow in the workflow?
-- Where would an agent help?
-- Where would an agent be dangerous?
-- Would you install an npm package that creates prompt files, rules, and a run ledger?
-- What would make you trust or reject it?
+- 你现在关注哪个仓库或研究工作流？
+- 最重要的 metric 是什么？
+- 你如何建立 baseline？
+- 实验想法来自哪里？
+- 你如何跟踪 run 和失败尝试？
+- 工作流里什么最烦或最慢？
+- agent 在哪里会有帮助？
+- agent 在哪里会危险？
+- 你会安装一个创建 prompt files、rules 和 run ledger 的 npm 包吗？
+- 什么会让你信任或拒绝它？
 
-## Closing
+## 结束
 
-Could I try AutoResearch-AI on a small repo or example workflow and send you the result?
+我可以在一个小仓库或示例 workflow 上试用 AutoResearch-AI，然后把结果发给你吗？

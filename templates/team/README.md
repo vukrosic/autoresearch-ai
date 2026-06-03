@@ -1,23 +1,23 @@
-# AutoResearch-AI Development Team
+# AutoResearch-AI 开发团队
 
-Use this pack when you want to split AutoResearch-AI work across many agents without losing the merge story.
+当你想把 AutoResearch-AI 工作拆给多个 agent，同时不丢失 merge 叙事时，使用这个包。
 
-## Roles
+## 角色
 
-- human: release direction and final merge gate
-- orchestrator: decomposition and assignment
-- reviewer: merge safety and test gate
-- workers: one lane each
+- human：release direction 和最终 merge gate
+- orchestrator：拆解和分配
+- reviewer：merge safety 和 test gate
+- workers：每人一条 lane
 
-## Flow
+## 流程
 
-1. The human sets the release goal.
-2. The orchestrator reads the board and assigns non-overlapping lanes.
-3. Each worker gets one branch or worktree.
-4. The reviewer checks diffs, tests, and overlap before merge.
-5. The human merges the accepted branches.
+1. human 设置 release goal。
+2. orchestrator 读取 board 并分配不重叠 lanes。
+3. 每个 worker 获得一个 branch 或 worktree。
+4. reviewer 在 merge 前检查 diffs、tests 和 overlap。
+5. human 合并被接受的 branches。
 
-## Commands
+## 命令
 
 ```bash
 autoresearch team --workers 8
@@ -28,6 +28,6 @@ autoresearch prompt --agent codex
 
 ## Board
 
-Open `board.md` first. It is the quick map for who owns what.
+先打开 `board.md`。它是快速地图，说明谁负责什么。
 
-If you want to create the branches and worktrees in one shot, run `setup.sh`.
+如果想一次性创建 branches 和 worktrees，运行 `setup.sh`。

@@ -1,6 +1,6 @@
 # Feedback Log
 
-Format:
+格式：
 
 ```text
 YYYY-MM-DD - Source
@@ -12,5 +12,4 @@ YYYY-MM-DD - Source
 - Next action:
 ```
 
-## Log
-
+## 记录

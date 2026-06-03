@@ -1,26 +1,26 @@
-# Prompt Template Test Plan
+# Prompt 模板测试计划
 
-Purpose:
+目的：
 
-Make sure the generated prompt stays clean and the focus overlays still work.
+确保生成的 prompt 保持干净，并且 focus overlay 仍然可用。
 
-## Commands
+## 命令
 
 ```bash
 npm run test:prompts
 ```
 
-## Checks
+## 检查项
 
-- `autoresearch` prompt includes the goal and the durable working-memory instructions.
-- the prompt includes the repo-memory and experiment-history instructions.
-- the prompt includes realistic time-band guidance.
-- the prompt includes exactly one upfront time-budget question when missing.
-- the prompt includes the target-selection fallback wording.
-- the focus overlays still append cleanly.
-- the training-ladder mode is available as a focus overlay.
-- No prompt contains the raw `{{GOAL}}` placeholder.
+- `autoresearch` prompt 包含 goal 和持久工作记忆指令。
+- prompt 包含 repo-memory 和 experiment-history 指令。
+- prompt 包含现实的 time-band 指导。
+- 当缺少时间预算时，prompt 恰好包含一个前置 time-budget 问题。
+- prompt 包含 target-selection fallback 文案。
+- focus overlay 仍然能干净追加。
+- training-ladder 模式可作为 focus overlay 使用。
+- 没有 prompt 包含原始 `{{GOAL}}` placeholder。
 
-## Why It Matters
+## 为什么重要
 
-Prompt drift is the kind of bug that quietly breaks the product without breaking the CLI. This test keeps the packaging honest.
+Prompt drift 是一种会悄悄破坏产品、但不一定破坏 CLI 的 bug。这个测试让打包保持诚实。

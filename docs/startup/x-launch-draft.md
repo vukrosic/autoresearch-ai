@@ -1,31 +1,31 @@
-# X Launch Draft
+# X 发布草稿
 
-Draft 1:
+草稿 1：
 
-Automated AI research is the next wedge.
+自动化 AI 研究是下一个切入点。
 
-I built AutoResearch-AI, an open source npm package that installs a local research harness for Codex, Claude Code, Hermes, and similar agents.
+我构建了 AutoResearch-AI，这是一个开源 npm 包，会为 Codex、Claude Code、Hermes 和类似 agent 安装本地 research harness。
 
-It gives agents goals, prompts, ideas, logs, compare, and report so they can run disciplined experiments instead of wandering.
+它给 agent 提供 goals、prompts、ideas、logs、compare 和 report，让它们可以做有纪律的实验，而不是随意游走。
 
-Local-first. Open source. MacBook-tested.
+Local-first。开源。已在 MacBook 上测试。
 
 Repo: https://github.com/vukrosic/autoresearch-ai
 
-Draft 2:
+草稿 2：
 
-AutoResearch-AI is an open source npm package for automated AI research.
+AutoResearch-AI 是一个用于自动化 AI 研究的开源 npm 包。
 
-Install it in a repo, set a goal, generate ideas, run experiments, compare results, and keep the whole loop on disk.
+把它安装进仓库，设置目标，生成想法，运行实验，对比结果，并把整个循环保存在磁盘上。
 
-It is built for PhD students, labs, and teams optimizing models, prompts, evals, and agents.
+它为博士生、实验室，以及优化模型、prompt、eval 和 agent 的团队构建。
 
-Draft 3:
+草稿 3：
 
-Built AutoResearch-AI: an npm-installed research harness for AI agents.
+构建了 AutoResearch-AI：一个通过 npm 安装的 AI agent research harness。
 
 Humans scope. Agents run.
 
-It keeps the research loop local, reproducible, and inspectable with goals, ideas, logs, compare, dashboard, and reports.
+它用 goals、ideas、logs、compare、dashboard 和 reports，让研究循环保持本地、可复现、可检查。
 
-I want this to be the simple tool PhD students and labs can actually use.
+我希望它成为博士生和实验室真正能用的简单工具。

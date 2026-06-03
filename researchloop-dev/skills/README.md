@@ -1,5 +1,5 @@
 # Skills
 
-This folder is the source-of-truth location for local-only skills used to test AutoResearch-AI onboarding and deployment.
+这个文件夹是用于测试 AutoResearch-AI onboarding 和 deployment 的 local-only skills 的事实来源位置。
 
-If a skill becomes useful in regular operation, mirror it into the agent-specific skill locations you actually use.
+如果某个 skill 在常规运行中也有用，把它 mirror 到你实际使用的 agent-specific skill 位置。

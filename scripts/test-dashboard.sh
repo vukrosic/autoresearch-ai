@@ -19,6 +19,20 @@ node ./bin/researchloop.js goal --dir "$tmpdir" "lower validation loss" --metric
 node ./bin/researchloop.js run --dir "$tmpdir" --id run-a --metric val_loss --command "printf 'val_loss=3.20\nval_loss=3.00\nval_loss=2.85\n'" >/tmp/researchloop-dashboard-run-a.log
 node ./bin/researchloop.js run --dir "$tmpdir" --id run-b --metric val_loss --command "printf 'val_loss=3.10\nval_loss=2.95\nval_loss=2.70\n'" >/tmp/researchloop-dashboard-run-b.log
 node ./bin/researchloop.js run --dir "$tmpdir" --id run-c --metric val_loss --command "printf 'val_loss=2.95\nval_loss=2.80\nval_loss=2.60\n'" >/tmp/researchloop-dashboard-run-c.log
+cat > "$tmpdir/bench.py" <<'PY'
+print("latency_ms=1.11")
+PY
+mkdir -p "$tmpdir/bench_pkg"
+: > "$tmpdir/bench_pkg/__init__.py"
+cat > "$tmpdir/bench_pkg/run_benchmark.py" <<'PY'
+print("latency_ms=1.23")
+PY
+cat > "$tmpdir/CMakeLists.txt" <<'CMAKE'
+cmake_minimum_required(VERSION 3.20)
+project(dashboard_perf_smoke LANGUAGES CXX)
+CMAKE
+mkdir -p "$tmpdir/.researchloop/scratchpad"
+printf 'report ok\001still parseable\n' > "$tmpdir/.researchloop/scratchpad/dashboard-report.md"
 
 node ./bin/researchloop.js dashboard --dir "$tmpdir" --port 0 >"$logfile" 2>&1 &
 pid=$!
@@ -41,12 +55,40 @@ if [[ -z "$url" ]]; then
 fi
 
 state="$(curl -s "$url/api/state")"
+system="$(curl -s "$url/api/system")"
 page="$(curl -s "$url/")"
 
-grep -q 'AutoResearch-AI Dashboard' <<<"$page"
-grep -q 'Loss comparison' <<<"$page"
-grep -q 'Experiments' <<<"$page"
+grep -q 'AutoResearch-AI 本地实验看板' <<<"$page"
+grep -q '实验效果对比' <<<"$page"
+grep -q '实验记录' <<<"$page"
+grep -q '点击操作 · 不用记命令' <<<"$page"
+grep -q 'id="toastStack"' <<<"$page"
+grep -q '清空看板记录' <<<"$page"
+grep -q '本机环境与工具链自动检测' <<<"$page"
+grep -q '自动检测并配置' <<<"$page"
+grep -q '一键性能诊断' <<<"$page"
+grep -q '性能分析 · 参数扫描 · Profiler' <<<"$page"
+grep -q '运行 Benchmark' <<<"$page"
+grep -q '批量实验 · 队列工作台' <<<"$page"
+grep -q '功能目录' <<<"$page"
+grep -q '导出作品集' <<<"$page"
 grep -q '"primaryMetric": "val_loss"' <<<"$state"
+grep -q '"performanceTools":' <<<"$state"
+grep -q '"projectEnvironment":' <<<"$state"
+grep -q '"recommendations":' <<<"$state"
+grep -q '"google-benchmark":' <<<"$state"
+grep -q '"gpu":' <<<"$state"
+grep -q '"disk":' <<<"$state"
+grep -q '"compute":' <<<"$state"
+grep -q '"sample":' <<<"$state"
+grep -q '"seq":' <<<"$state"
+grep -q '"ageMs":' <<<"$state"
+grep -q '"collectMs":' <<<"$state"
+grep -q '"missedSamples":' <<<"$state"
+grep -q '"sample":' <<<"$system"
+grep -q '"seq":' <<<"$system"
+grep -q '"ageMs":' <<<"$system"
+grep -q '"projectBytes":' <<<"$state"
 grep -q '"traces"' <<<"$state"
 grep -q '"comparison"' <<<"$state"
 grep -q '"run-c"' <<<"$state"
@@ -55,5 +97,202 @@ grep -q '"val_loss": \[' <<<"$state"
 grep -q '3.1' <<<"$state"
 grep -q '2.95' <<<"$state"
 grep -q '2.7' <<<"$state"
+node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const j=JSON.parse(s); if (j.activeRun?.active) process.exit(1);});' <<<"$state"
+node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const j=JSON.parse(s); const report=j.researchArtifacts?.dashboardReport; if (!report?.hasContent || !report?.sizeBytes) process.exit(1); if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(report.text || "")) process.exit(1);});' <<<"$state"
+
+autoconfig_resp="$(curl -s -X POST "$url/api/action/perf-autoconfig" \
+  -H 'content-type: application/json' \
+  --data '{"metric":"latency_ms","direction":"lower"}')"
+grep -q '"ok": true' <<<"$autoconfig_resp"
+grep -q '"action": "perf-autoconfig"' <<<"$autoconfig_resp"
+grep -q '"detectionFile": ".researchloop/scratchpad/environment-detection.json"' <<<"$autoconfig_resp"
+grep -q '"benchmarkCommand": "python3 bench_pkg/run_benchmark.py"' <<<"$autoconfig_resp"
+grep -q '"benchmarkMode": "generic"' <<<"$autoconfig_resp"
+! grep -q '__init__.py' <<<"$autoconfig_resp"
+grep -q '"buildSystem": "cmake"' <<<"$autoconfig_resp"
+
+batch_autoconfig_resp="$(curl -s -X POST "$url/api/action/batch-autoconfig" \
+  -H 'content-type: application/json' \
+  --data '{"metric":"latency_ms","direction":"lower"}')"
+grep -q '"ok": true' <<<"$batch_autoconfig_resp"
+grep -q '"action": "batch-autoconfig"' <<<"$batch_autoconfig_resp"
+grep -q '"batchCommandTemplate":' <<<"$batch_autoconfig_resp"
+grep -q '"batchParamGrid":' <<<"$batch_autoconfig_resp"
+
+config_resp="$(curl -s -X POST "$url/api/action/config" \
+  -H 'content-type: application/json' \
+  --data '{"runner":"node","entry":"-e","baselineArgs":"\"console.log('\''val_loss=1.00'\'')\"","experimentArgs":"\"console.log('\''val_loss=0.90'\'')\"","metric":"val_loss","regex":"","timeout":"60","device":"auto"}')"
+grep -q '"ok": true' <<<"$config_resp"
+grep -q '"dashboardConfig"' <<<"$config_resp"
+grep -q '"entry": "-e"' <<<"$config_resp"
+
+cuda_config_resp="$(curl -s -X POST "$url/api/action/config" \
+  -H 'content-type: application/json' \
+  --data '{"runner":"cuda","entry":"train.py","metric":"val_loss","timeout":"60","device":"auto","cudaVisibleDevices":"0"}')"
+grep -q '"ok": true' <<<"$cuda_config_resp"
+grep -q '"runner": "cuda"' <<<"$cuda_config_resp"
+grep -q '"device": "cuda"' <<<"$cuda_config_resp"
+grep -q '"cudaVisibleDevices": "0"' <<<"$cuda_config_resp"
+
+cuda_goal_resp="$(curl -s -X POST "$url/api/action/goal" \
+  -H 'content-type: application/json' \
+  --data '{"goal":"cuda ui smoke","metric":"val_loss","direction":"lower","runner":"cuda","entry":"train.py","timeout":"60","device":"auto","cudaVisibleDevices":"0"}')"
+grep -q '"ok": true' <<<"$cuda_goal_resp"
+grep -q 'python3 train.py' <<<"$cuda_goal_resp"
+
+switch_resp="$(curl -s -X POST "$url/api/action/switch-project" \
+  -H 'content-type: application/json' \
+  --data "{\"path\":\"$tmpdir\"}")"
+grep -q '"ok": true' <<<"$switch_resp"
+grep -q "\"cwd\": \"$tmpdir\"" <<<"$switch_resp"
+
+goal_resp="$(curl -s -X POST "$url/api/action/goal" \
+  -H 'content-type: application/json' \
+  --data '{"goal":"ui goal smoke","metric":"val_loss","direction":"lower","runner":"node","entry":"-e","baselineArgs":"\"console.log('\''val_loss=1.00'\'')\"","experimentArgs":"\"console.log('\''val_loss=0.90'\'')\"","timeout":"60","device":"auto"}')"
+grep -q '"ok": true' <<<"$goal_resp"
+grep -q '"goalText": "ui goal smoke"' <<<"$goal_resp"
+grep -q "console.log" <<<"$goal_resp"
+
+record_resp="$(curl -s -X POST "$url/api/action/record" \
+  -H 'content-type: application/json' \
+  --data '{"id":"ui-manual","metricText":"val_loss=2.44\naccuracy=0.88","note":"ui smoke"}')"
+grep -q '"ok": true' <<<"$record_resp"
+grep -q '"ui-manual"' <<<"$record_resp"
+
+state_after="$(curl -s "$url/api/state")"
+grep -q '"goal": "ui goal smoke"' <<<"$state_after"
+grep -q '"dashboardConfig"' <<<"$state_after"
+grep -q '"id": "ui-manual"' <<<"$state_after"
+grep -q '"accuracy": 0.88' <<<"$state_after"
+
+clear_resp="$(curl -s -X POST "$url/api/action/clear-runs" \
+  -H 'content-type: application/json' \
+  --data '{}')"
+grep -q '"ok": true' <<<"$clear_resp"
+grep -q '"action": "clear-runs"' <<<"$clear_resp"
+grep -q '"clearedRuns": 4' <<<"$clear_resp"
+archive_rel="$(node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>console.log(JSON.parse(s).archive || ""));' <<<"$clear_resp")"
+test -n "$archive_rel"
+test -f "$tmpdir/$archive_rel"
+state_cleared="$(curl -s "$url/api/state")"
+node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const j=JSON.parse(s); if (j.summary?.totalRuns !== 0) process.exit(1); if ((j.runs || []).length !== 0) process.exit(1); if ((j.traces || []).length !== 0) process.exit(1);});' <<<"$state_cleared"
+
+perf_build_payload="$(cat <<'JSON'
+{"buildCommand":"printf 'build_ok=1\n'","metric":"latency_ms","direction":"lower"}
+JSON
+)"
+perf_build_resp="$(curl -s -X POST "$url/api/action/perf-build" \
+  -H 'content-type: application/json' \
+  --data "$perf_build_payload")"
+grep -q '"ok": true' <<<"$perf_build_resp"
+grep -q '"action": "perf-build"' <<<"$perf_build_resp"
+
+perf_bench_payload="$(cat <<'JSON'
+{"benchmarkMode":"generic","benchmarkCommand":"printf 'latency_ms=2.50\n'","metric":"latency_ms","direction":"lower","timeout":"60"}
+JSON
+)"
+perf_bench_resp="$(curl -s -X POST "$url/api/action/perf-benchmark" \
+  -H 'content-type: application/json' \
+  --data "$perf_bench_payload")"
+grep -q '"ok": true' <<<"$perf_bench_resp"
+grep -q '"action": "perf-benchmark"' <<<"$perf_bench_resp"
+
+perf_profile_payload="$(cat <<'JSON'
+{"profileTool":"time","profileCommand":"printf 'profile_ok=1\n'","metric":"latency_ms","direction":"lower","timeout":"60"}
+JSON
+)"
+perf_profile_resp="$(curl -s -X POST "$url/api/action/perf-profile" \
+  -H 'content-type: application/json' \
+  --data "$perf_profile_payload")"
+grep -q '"ok": true' <<<"$perf_profile_resp"
+grep -q '"profiler": "time"' <<<"$perf_profile_resp"
+
+perf_compile_payload="$(cat <<'JSON'
+{"compilerCommand":"printf 'ptxas info    : Used 32 registers\\n'","compilerFlags":"","metric":"latency_ms","direction":"lower"}
+JSON
+)"
+perf_compile_resp="$(curl -s -X POST "$url/api/action/perf-compile" \
+  -H 'content-type: application/json' \
+  --data "$perf_compile_payload")"
+grep -q '"ok": true' <<<"$perf_compile_resp"
+grep -q '"action": "perf-compile"' <<<"$perf_compile_resp"
+
+perf_sweep_payload="$(cat <<'JSON'
+{"sweepName":"dashboard-smoke","sweepTemplate":"printf 'latency_ms={tile}\\n'","sweepGrid":"{\"tile\":[4,2]}","metric":"latency_ms","direction":"lower","timeout":"60"}
+JSON
+)"
+perf_sweep_resp="$(curl -s -X POST "$url/api/action/perf-sweep" \
+  -H 'content-type: application/json' \
+  --data "$perf_sweep_payload")"
+grep -q '"ok": true' <<<"$perf_sweep_resp"
+grep -q '"action": "perf-sweep"' <<<"$perf_sweep_resp"
+grep -q '"spec":' <<<"$perf_sweep_resp"
+
+batch_payload="$(cat <<'JSON'
+{"specText":"name: dashboard-queue\nmetric: val_loss\ndirection: lower\ncommand_template: \"printf 'val_loss={loss}\\\\n'\"\ngrid:\n  loss: [0.44, 0.22]\n","maxRuns":"5","maxRetries":"1"}
+JSON
+)"
+batch_preview_resp="$(curl -s -X POST "$url/api/action/sweep-preview" \
+  -H 'content-type: application/json' \
+  --data "$batch_payload")"
+grep -q '"ok": true' <<<"$batch_preview_resp"
+grep -q '"action": "sweep-preview"' <<<"$batch_preview_resp"
+grep -q '"count": 2' <<<"$batch_preview_resp"
+
+batch_param_payload="$(cat <<'JSON'
+{"commandTemplate":"printf 'latency_ms={tile}\\n'","paramGrid":"{\"tile\":[4,8,16,32],\"dtype\":[\"fp16\",\"bf16\"]}","metric":"latency_ms","direction":"lower","maxRuns":"3","maxRetries":"1"}
+JSON
+)"
+batch_param_preview_resp="$(curl -s -X POST "$url/api/action/sweep-preview" \
+  -H 'content-type: application/json' \
+  --data "$batch_param_payload")"
+grep -q '"ok": true' <<<"$batch_param_preview_resp"
+grep -q '"count": 3' <<<"$batch_param_preview_resp"
+
+batch_create_resp="$(curl -s -X POST "$url/api/action/sweep-create" \
+  -H 'content-type: application/json' \
+  --data "$batch_payload")"
+grep -q '"ok": true' <<<"$batch_create_resp"
+grep -q '"action": "sweep-create"' <<<"$batch_create_resp"
+queue_id="$(node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>console.log(JSON.parse(s).queueId));' <<<"$batch_create_resp")"
+test -n "$queue_id"
+
+batch_start_resp="$(curl -s -X POST "$url/api/action/sweep-start" \
+  -H 'content-type: application/json' \
+  --data "{\"queueId\":\"$queue_id\"}")"
+grep -q '"ok": true' <<<"$batch_start_resp"
+grep -q '"action": "sweep-start"' <<<"$batch_start_resp"
+
+batch_status_resp=""
+for _ in $(seq 1 80); do
+  batch_status_resp="$(curl -s -X POST "$url/api/action/sweep-status" \
+    -H 'content-type: application/json' \
+    --data "{\"queueId\":\"$queue_id\"}")"
+  if node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const j=JSON.parse(s);process.exit(j.queue?.status==="complete" && j.queue?.counts?.complete===2 ? 0 : 1);});' <<<"$batch_status_resp"; then
+    break
+  fi
+  sleep 0.1
+done
+node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const j=JSON.parse(s);if(j.queue?.status!=="complete" || j.queue?.counts?.complete!==2) process.exit(1);});' <<<"$batch_status_resp"
+
+batch_report_resp="$(curl -s -X POST "$url/api/action/sweep-report" \
+  -H 'content-type: application/json' \
+  --data "{\"queueId\":\"$queue_id\"}")"
+grep -q '"ok": true' <<<"$batch_report_resp"
+grep -q 'sweep-report.md' <<<"$batch_report_resp"
+
+perf_report_resp="$(curl -s -X POST "$url/api/action/perf-report" \
+  -H 'content-type: application/json' \
+  --data '{"metric":"latency_ms","direction":"lower"}')"
+grep -q '"ok": true' <<<"$perf_report_resp"
+grep -q '"out": ".researchloop/scratchpad/performance-analysis.md"' <<<"$perf_report_resp"
+
+portfolio_resp="$(curl -s -X POST "$url/api/action/portfolio" \
+  -H 'content-type: application/json' \
+  --data '{"metric":"latency_ms","direction":"lower"}')"
+grep -q '"ok": true' <<<"$portfolio_resp"
+grep -q '"out": ".researchloop/scratchpad/portfolio-report.md"' <<<"$portfolio_resp"
+test -f "$tmpdir/.researchloop/scratchpad/portfolio-report.md"
+test -f "$tmpdir/.researchloop/env/environment.md"
 
 echo "autoresearch test:dashboard passed"

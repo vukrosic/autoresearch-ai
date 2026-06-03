@@ -1,34 +1,34 @@
-# Research Notes
+# 研究笔记
 
-This folder tracks the real research and product evidence behind AutoResearch-AI.
+这个文件夹跟踪 AutoResearch-AI 背后的真实研究和产品证据。
 
-The rule is simple: no claim without a run, a user conversation, or a concrete artifact.
+规则很简单：没有 run、用户对话或具体 artifact，就不做声明。
 
-## Current Local Testbed
+## 当前本地测试台
 
-Primary local test repo:
+主要本地测试仓库：
 
 `/Users/vukrosic/my-life/research-repos/llm-research-kit`
 
-Current role of the MacBook:
+MacBook 当前角色：
 
-- test the harness
-- inspect repos
-- generate prompts
-- run tiny smoke training loops
-- validate Mac/MPS compatibility
-- prepare experiments that can later run on NVIDIA
+- 测试 harness
+- 检查仓库
+- 生成 prompts
+- 运行很小的 smoke training loops
+- 验证 Mac/MPS 兼容性
+- 准备之后可在 NVIDIA 上运行的实验
 
-The MacBook is not the main serious-training machine. It is the fast reality-check machine.
+MacBook 不是主要严肃训练机器。它是快速 reality-check 机器。
 
-## Product Research Questions
+## 产品研究问题
 
-- Can the package get a user from install to first useful prompt in under 2 minutes?
-- Can a coding agent use the harness without losing track of the goal?
-- Does the run ledger make results more trustworthy?
-- Which adapters do real users ask for first?
-- What is the smallest command that makes the package feel alive?
+- 这个包能否让用户在 2 分钟内从安装到第一个有用 prompt？
+- 代码 agent 能否使用 harness 且不丢失目标？
+- run ledger 是否让结果更可信？
+- 真实用户会首先请求哪些 adapter？
+- 哪个最小命令会让这个包感觉活起来？
 
-## Experiments
+## 实验
 
-See `experiments/`.
+见 `experiments/`。

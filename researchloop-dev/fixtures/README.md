@@ -1,5 +1,5 @@
 # Fixtures
 
-This folder holds generated tarballs and any reusable sample inputs for local AutoResearch-AI deployment tests.
+这个文件夹保存本地 AutoResearch-AI 部署测试使用的 generated tarballs 和可复用 sample inputs。
 
-The packed build helper writes tarballs into `fixtures/packages/`.
+packed build helper 会把 tarballs 写入 `fixtures/packages/`。

@@ -1,33 +1,33 @@
-# Adjacent AutoResearch Projects
+# 相邻 AutoResearch 项目
 
-These are useful because they show many ways to package the same underlying idea: give the agent a goal, a metric, a loop, and a memory file.
+这些项目有参考价值，因为它们展示了打包同一底层想法的多种方式：给 agent 一个目标、一个指标、一个循环和一个记忆文件。
 
-## Projects To Watch
+## 值得关注的项目
 
-- `pi-autoresearch` - autonomous experiment loop with tools, widget, and JSONL ledger.
-- `autoresearch-skill` - skill-first loop where `research.md` is the program.
-- `autoresearch-agents` - eval-driven autonomous agent optimization setup.
-- `autoresearch-claude-code` - Claude Code-flavored port of the loop.
-- `autoresearch-mlx` - Apple Silicon / MLX adaptation for Mac users.
+- `pi-autoresearch` - 带工具、widget 和 JSONL ledger 的自主实验循环。
+- `autoresearch-skill` - skill-first 循环，其中 `research.md` 就是程序。
+- `autoresearch-agents` - eval-driven 自主 agent 优化 setup。
+- `autoresearch-claude-code` - 适配 Claude Code 风格的循环移植版。
+- `autoresearch-mlx` - 面向 Mac 用户的 Apple Silicon / MLX 适配。
 
-## What To Learn
+## 要学习什么
 
-- The loop should survive restarts and context resets.
-- Plain files are a strong interface for agents.
-- A skill or prompt should create a ready-to-run setup quickly.
-- AutoResearch loops can target many domains, not only ML training.
+- 循环应能跨重启和上下文 reset 存活。
+- 普通文件是 agent 的强接口。
+- skill 或 prompt 应能快速创建 ready-to-run 的 setup。
+- AutoResearch 循环可以面向很多领域，不只 ML 训练。
 
-## What AutoResearch-AI Should Keep
+## AutoResearch-AI 应保留什么
 
 - `AGENTS.md`
 - `goal.md`
 - `plan.md`
 - `THREAD.md`
 - `runs.jsonl`
-- idea notes and experiment records
+- idea notes 和 experiment records
 
-## What AutoResearch-AI Should Add
+## AutoResearch-AI 应增加什么
 
-- a more polished npm installation path
-- explicit setup tests
-- stronger onboarding for PhD students and labs
+- 更顺滑的 npm 安装路径
+- 明确的 setup 测试
+- 面向博士生和实验室的更强 onboarding

@@ -1,18 +1,18 @@
-# Local Dev Tools
+# 本地开发工具
 
-Local-only helper scripts for running AutoResearch-AI development experiments. These are not part of the published npm package — they live under `researchloop-dev/` and ship only via the git repo.
+用于运行 AutoResearch-AI 开发实验的 local-only helper scripts。这些不是已发布 npm 包的一部分；它们位于 `researchloop-dev/`，只随 git repo 分发。
 
 ## `codex-swarm.sh`
 
-Opens a grid of `Terminal.app` windows on macOS, each running the [Codex CLI](https://github.com/openai/codex). Use it to fan out multiple agent sessions in parallel — for example, six contributors each working a different `G##` goal from [GOALS.md](../../GOALS.md), or one orchestrator + five workers.
+在 macOS 上打开一组 `Terminal.app` 窗口，每个窗口运行 [Codex CLI](https://github.com/openai/codex)。用它并行展开多个 agent session，例如六个 contributor 分别处理 [GOALS.md](../../GOALS.md) 中不同的 `G##` 目标，或一个 orchestrator + 五个 workers。
 
-### Requirements
+### 要求
 
-- macOS (uses AppleScript + Terminal.app)
-- The `codex` CLI on `PATH` (`npm install -g @openai/codex` or equivalent)
-- First run prompts once for **Automation permission** to control Terminal — approve under *System Settings → Privacy & Security → Automation* and re-run.
+- macOS（使用 AppleScript + Terminal.app）
+- `PATH` 中有 `codex` CLI（`npm install -g @openai/codex` 或等价方式）
+- 第一次运行会请求一次**自动化权限**来控制 Terminal，请在 *System Settings -> Privacy & Security -> Automation* 中批准后重新运行。
 
-### Usage
+### 用法
 
 ```bash
 ./researchloop-dev/tools/codex-swarm.sh                              # 3x2 grid (6 codex windows)
@@ -22,26 +22,26 @@ Opens a grid of `Terminal.app` windows on macOS, each running the [Codex CLI](ht
 ./researchloop-dev/tools/codex-swarm.sh --bottom-pad 120             # leave more room for the dock
 ```
 
-### Options
+### 选项
 
 | Flag | Default | Purpose |
 | --- | --- | --- |
-| `--cols N` | `3` | Columns in the grid |
-| `--rows M` | `2` | Rows in the grid |
-| `--cmd "STR"` | `codex` | Command to run in each window |
-| `--cwd /path` | (none) | Working directory for each window |
-| `--bottom-pad N` | `80` | Pixels reserved at the bottom for the dock |
-| `-h`, `--help` | — | Show inline help |
+| `--cols N` | `3` | grid 中的列数 |
+| `--rows M` | `2` | grid 中的行数 |
+| `--cmd "STR"` | `codex` | 每个窗口中运行的命令 |
+| `--cwd /path` | (none) | 每个窗口的 working directory |
+| `--bottom-pad N` | `80` | 底部为 dock 保留的像素 |
+| `-h`, `--help` | - | 显示 inline help |
 
-### Notes
+### 备注
 
-- If Terminal.app wasn't already running, you may get one stray empty window in addition to the grid. Close it manually, or open a Terminal window first before running the script.
-- Window bounds use the main display only. Multi-monitor support is not implemented yet.
-- Each window is an independent Terminal session — closing them doesn't affect the others.
+- 如果 Terminal.app 之前没有运行，除了 grid 外，可能会出现一个额外空窗口。手动关闭它，或先打开一个 Terminal 窗口再运行脚本。
+- Window bounds 只使用主显示器。尚未实现 multi-monitor support。
+- 每个窗口都是独立 Terminal session，关闭一个不会影响其他窗口。
 
-### Suggested patterns
+### 建议模式
 
-**Parallel goal work.** Open 6 windows, each in its own checkout or worktree:
+**并行目标工作。** 打开 6 个窗口，每个在自己的 checkout 或 worktree 中：
 
 ```bash
 for i in 1 2 3 4 5 6; do
@@ -50,15 +50,15 @@ done
 ./researchloop-dev/tools/codex-swarm.sh --cwd "$(pwd)/../autoresearch-ai-wt-1"  # then tell each agent which goal
 ```
 
-**Orchestrator + workers.** Run one window as the orchestrator, the rest as worker agents reading shared state from `.researchloop/team/`.
+**Orchestrator + workers。** 一个窗口作为 orchestrator，其余作为 worker agents，从 `.researchloop/team/` 读取共享状态。
 
-**Timed sprints.** Combine with the [timed research sprint module](../experiments/protocols/timed-research-sprint-module.md) — each window runs its own 5-minute / 5-second probe sprint against a different `change_label`.
+**Timed sprints。** 与 [timed research sprint module](../experiments/protocols/timed-research-sprint-module.md) 结合使用，每个窗口针对不同 `change_label` 运行自己的 5-minute / 5-second probe sprint。
 
 ### Roadmap
 
-These extensions are not built yet — open an issue if you want one:
+这些扩展尚未构建。如果你需要，请打开 issue：
 
-- `--prompt-file path` so each window starts with a different role prompt (researcher / coder / planner)
-- `--worktree-from /path` to auto-create N disposable git worktrees of a target repo
-- Linux support (xterm / gnome-terminal / kitty)
-- A tmux-backed variant so a parent agent can `send-keys` into specific windows after launch
+- `--prompt-file path`，让每个窗口以不同 role prompt 启动（researcher / coder / planner）
+- `--worktree-from /path`，自动创建目标 repo 的 N 个 disposable git worktrees
+- Linux support（xterm / gnome-terminal / kitty）
+- tmux-backed variant，让 parent agent 在启动后可以 `send-keys` 到指定窗口

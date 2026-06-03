@@ -1,32 +1,32 @@
 # Prime Intellect
 
-Sources:
+来源：
 
 - [Autonomous AI research for nanogpt speedrun](https://www.primeintellect.ai/auto-nanogpt)
 - [Prime Intellect home](https://www.primeintellect.ai/)
 
-## What They Do
+## 它们做什么
 
-Prime Intellect publicly released an autonomous speedrun setup around nanoGPT and described the harness files they used. The public lesson is that the durable working memory matters as much as the optimizer or model code.
+Prime Intellect 公开发布了围绕 nanoGPT 的自主 speedrun setup，并描述了他们使用的 harness 文件。公开经验是：持久工作记忆和 optimizer 或模型代码同样重要。
 
-Their blog describes:
+他们的博客描述了：
 
-- `AGENTS.md` for rules and autonomy constraints
-- `goal.md` for mission context
-- `plan.md` for mutable attempt state
-- `scratchpad/THREAD.md` for durable mission logging
-- run logs, idea notes, paper notes, variants, and sweeps
+- `AGENTS.md`：规则和自主约束
+- `goal.md`：任务上下文
+- `plan.md`：可变尝试状态
+- `scratchpad/THREAD.md`：持久任务日志
+- run logs、idea notes、paper notes、variants 和 sweeps
 
-## What To Learn
+## 要学习什么
 
-- The harness is the product, not just the benchmark.
-- File-based durability matters because agents lose context.
-- Public scratchpads are a powerful trust and learning signal.
-- The loop should preserve evidence, not just outcomes.
+- harness 才是产品，而不只是 benchmark。
+- 基于文件的持久性很重要，因为 agent 会丢上下文。
+- 公开 scratchpad 是强信任信号和学习信号。
+- 循环应保存证据，而不只是结果。
 
-## What AutoResearch-AI Should Do Differently
+## AutoResearch-AI 应如何不同
 
-- Stay smaller and easier to install.
-- Target repo onboarding, not only benchmark runs.
-- Make setup tests a first-class command path.
-- Keep the open source npm package easy to fork.
+- 保持更小、更容易安装。
+- 面向 repo onboarding，而不只是 benchmark run。
+- 把 setup 测试做成一等命令路径。
+- 让开源 npm 包容易 fork。

@@ -1,14 +1,14 @@
 # Sprint Runs
 
-This folder stores permanent results from timed ResearchLoop sprints.
+这个文件夹保存 timed ResearchLoop sprints 的永久结果。
 
-Each run should write at least:
+每个 run 至少应写入：
 
-- a JSONL ledger with every probe
-- a markdown report with the summary and reset proof
-- a self-contained HTML report with loss-over-time and running-minimum graphs
+- 包含每个 probe 的 JSONL ledger
+- 带 summary 和 reset proof 的 markdown report
+- 带 loss-over-time 和 running-minimum 图的自包含 HTML report
 
-Current runs:
+当前 runs：
 
 - [llm-kit-timed-sprint-20260517-061853.md](./llm-kit-timed-sprint-20260517-061853.md)
 - [llm-kit-timed-sprint-20260517-061853.jsonl](./llm-kit-timed-sprint-20260517-061853.jsonl)

@@ -1,24 +1,24 @@
 # Deploy Helpers
 
-These helpers are for testing the current local AutoResearch-AI build.
+这些 helpers 用于测试当前本地 AutoResearch-AI build。
 
-## Preferred install flow
+## 推荐安装流程
 
-1. Pack the current `autoresearch-ai` checkout.
-2. Install the tarball into the test environment.
-3. Launch a fresh agent in an empty lab folder.
-4. Use the onboarding prompt from `../prompts/onboarding.md`.
+1. 打包当前 `autoresearch-ai` checkout。
+2. 把 tarball 安装到测试环境。
+3. 在空 lab folder 中启动 fresh agent。
+4. 使用来自 `../prompts/onboarding.md` 的 onboarding prompt。
 
-Scripts:
+Scripts：
 
 - `./pack-current-build.sh`
 - `./install-current-build.sh`
 - `./create-lab.sh`
 
-## Local build path
+## 本地 build 路径
 
-Use the packed tarball when you want the freshest current changes.
+当你想测试最新当前改动时，使用 packed tarball。
 
-## Why not ship this
+## 为什么不发布这些
 
-These scripts and notes are local deployment tooling, not product features.
+这些 scripts 和 notes 是本地部署工具，不是产品功能。

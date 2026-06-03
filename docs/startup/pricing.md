@@ -1,17 +1,17 @@
-# Pricing Notes
+# 定价笔记
 
-Start open source and free.
+从开源和免费开始。
 
-Do not price the product before the first repeat users. The first goal is proof that PhD students, labs, and companies want this workflow.
+在出现第一批重复用户之前，不要给产品定价。第一个目标是证明博士生、实验室和公司想要这个工作流。
 
-Possible future offers:
+未来可能的 offer：
 
-- Free: local CLI, templates, adapters, reports.
-- Pro: hosted dashboard and synced run history.
-- Team: shared lab workspace, private templates, integrations.
-- Managed: AutoResearch-AI plus GPU runner and support.
-- Enterprise: compliance, private deployment, procurement, custom integrations.
+- Free：本地 CLI、templates、adapters、reports。
+- Pro：托管 dashboard 和同步 run history。
+- Team：共享实验室 workspace、private templates、integrations。
+- Managed：AutoResearch-AI 加 GPU runner 和 support。
+- Enterprise：compliance、private deployment、procurement、custom integrations。
 
-Early paid wedge:
+早期付费切入点：
 
-Help a lab or company install the harness into one real repo, define the metric, run the first experiment, and leave them with a repeatable workflow.
+帮助一个实验室或公司把 harness 安装进一个真实仓库，定义 metric，运行第一次实验，并给他们留下一个可重复工作流。

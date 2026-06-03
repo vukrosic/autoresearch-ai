@@ -24,6 +24,117 @@ function packageVersion() {
 
 const args = process.argv.slice(2);
 const command = args.find((arg) => !arg.startsWith("-")) || "help";
+const systemMetricsCache = {
+  macGpu: { ts: 0, data: null },
+  diskByCwd: new Map(),
+  envByCwd: new Map(),
+};
+
+const METRIC_TIER_LEVELS = [
+  { key: "level1", label: "一级指标", weight: 5, maxSelect: 3 },
+  { key: "level2", label: "二级指标", weight: 3, maxSelect: 3 },
+  { key: "level3", label: "三级指标", weight: 2, maxSelect: 4 },
+];
+
+const METRIC_DIRECTION_DEFAULTS = {
+  p95_latency: "lower",
+  p50_latency: "lower",
+  p99_latency: "lower",
+  latency_ms: "lower",
+  mean_ms: "lower",
+  min_ms: "lower",
+  max_ms: "lower",
+  ttft: "lower",
+  tpot: "lower",
+  cost_per_request: "lower",
+  cost_per_token: "lower",
+  cost_per_step: "lower",
+  gpu_memory: "lower",
+  memory_footprint: "lower",
+  cache_miss_rate: "lower",
+  branch_divergence: "lower",
+  kernel_time: "lower",
+  launch_overhead: "lower",
+  queue_wait_time: "lower",
+  communication_overhead: "lower",
+  data_loading_time: "lower",
+  checkpoint_time: "lower",
+  error_rate: "lower",
+  timeout_rate: "lower",
+  energy_per_run: "lower",
+  throughput: "higher",
+  tokens_per_sec: "higher",
+  samples_per_sec: "higher",
+  tflops: "higher",
+  speedup: "higher",
+  memory_bandwidth: "higher",
+  io_bandwidth: "higher",
+  network_bandwidth: "higher",
+  gpu_util: "higher",
+  cpu_util: "higher",
+  mfu: "higher",
+  scaling_efficiency: "higher",
+  cache_hit_rate: "higher",
+  occupancy: "higher",
+  warp_efficiency: "higher",
+  kv_cache_usage: "higher",
+  loss_stability: "higher",
+  gradient_norm: "higher",
+};
+
+const METRIC_TIER_PROFILES = {
+  model_inference: {
+    label: "模型推理服务",
+    level1: ["ttft", "tpot", "tokens_per_sec"],
+    level2: ["p95_latency", "p99_latency", "gpu_util", "gpu_memory", "cost_per_token"],
+    level3: [
+      "kv_cache_usage",
+      "queue_wait_time",
+      "batch_size_effective",
+      "error_rate",
+      "timeout_rate",
+      "memory_footprint",
+      "cpu_util",
+      "network_bandwidth",
+      "launch_overhead",
+      "cost_per_request",
+    ],
+  },
+  ai_infra_training: {
+    label: "AI Infra 训练",
+    level1: ["throughput", "mfu", "cost_per_step"],
+    level2: ["gpu_util", "gpu_memory", "step_time", "scaling_efficiency", "error_rate"],
+    level3: [
+      "communication_overhead",
+      "data_loading_time",
+      "checkpoint_time",
+      "memory_footprint",
+      "network_bandwidth",
+      "cpu_util",
+      "io_bandwidth",
+      "gradient_norm",
+      "loss_stability",
+      "timeout_rate",
+    ],
+  },
+  hpc_operator: {
+    label: "HPC / 算子优化",
+    level1: ["tflops", "memory_bandwidth", "speedup"],
+    level2: ["p95_latency", "kernel_time", "cpu_util", "gpu_util", "scaling_efficiency"],
+    level3: [
+      "cache_miss_rate",
+      "cache_hit_rate",
+      "occupancy",
+      "warp_efficiency",
+      "branch_divergence",
+      "launch_overhead",
+      "io_bandwidth",
+      "communication_overhead",
+      "memory_footprint",
+      "energy_per_run",
+    ],
+  },
+};
 
 function option(name, fallback = undefined) {
   const idx = args.indexOf(name);
@@ -48,6 +159,23 @@ function optionsAll(name) {
     }
   }
   return values;
+}
+
+function subcommandFor(name, allowed = []) {
+  const idx = args.indexOf(name);
+  if (idx === -1) return "";
+  const allowedSet = new Set(allowed);
+  for (let i = idx + 1; i < args.length; i += 1) {
+    const arg = args[i];
+    if (!arg) continue;
+    if (arg.startsWith("--")) {
+      const value = args[i + 1];
+      if (value && !value.startsWith("--")) i += 1;
+      continue;
+    }
+    if (!allowed.length || allowedSet.has(arg)) return arg;
+  }
+  return "";
 }
 
 function positionalText(excludedFlags = []) {
@@ -474,6 +602,37 @@ function appendRunRow(cwd, row) {
   const ledger = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
   ensureDir(path.dirname(ledger));
   fs.appendFileSync(ledger, `${JSON.stringify(row)}\n`);
+}
+
+function archiveAndClearDashboardRuns(cwd) {
+  const ledger = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
+  const scratchpad = path.dirname(ledger);
+  ensureDir(scratchpad);
+
+  const raw = fs.existsSync(ledger) ? readTextIfExists(ledger) : "";
+  const rows = parseRunsLedger(ledger);
+  let archive = null;
+
+  if (raw.trim()) {
+    const archiveDir = path.join(scratchpad, "archive");
+    ensureDir(archiveDir);
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const archiveFile = path.join(archiveDir, `runs-${stamp}.jsonl`);
+    fs.copyFileSync(ledger, archiveFile);
+    archive = path.relative(cwd, archiveFile);
+  }
+
+  fs.writeFileSync(ledger, "");
+
+  const thread = path.join(scratchpad, "THREAD.md");
+  fs.appendFileSync(thread, `- ${new Date().toISOString()} dashboard cleared run ledger${archive ? ` archive=${archive}` : ""}\n`);
+
+  return {
+    ledger: path.relative(cwd, ledger),
+    archive,
+    clearedRuns: rows.filter((row) => row && !row.parse_error).length,
+    parseErrors: rows.filter((row) => row && row.parse_error).length,
+  };
 }
 
 function depsMention(cwd, needle) {
@@ -1195,6 +1354,88 @@ function writeReportPlots(cwd, outPath, entries, traces, metricName, preferHighe
   return written;
 }
 
+function formatReportPercent(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "—";
+  const sign = num > 0 ? "+" : "";
+  return `${sign}${(num * 100).toFixed(2)}%`;
+}
+
+function renderMetricTierMarkdown(analysis) {
+  const lines = [];
+  lines.push("## Multi-Level Metric Score");
+  lines.push("");
+  lines.push(`- Profile: \`${analysis.profile}\` (${analysis.profile_label || "custom"})`);
+  lines.push(`- Baseline: ${analysis.baseline_id ? `\`${analysis.baseline_id}\`` : "not available"}`);
+  lines.push(`- Candidate: ${analysis.candidate_id ? `\`${analysis.candidate_id}\`` : "not available"}`);
+  lines.push(`- Recommendation: **${analysis.recommendation.label}** — ${analysis.recommendation.reason}`);
+  lines.push(`- Overall 5/3/2 score: ${formatReportNumber(analysis.overall_score)}`);
+  lines.push("");
+  lines.push(markdownTable(
+    ["Tier", "Weight", "Available", "Avg improvement", "Weighted score"],
+    analysis.levels.map((level) => [
+      level.label,
+      level.weight,
+      `${level.available}/${level.metrics.length}`,
+      formatReportPercent(level.avg_improvement),
+      formatReportNumber(level.weighted_score),
+    ])
+  ));
+  const metricRows = analysis.levels.flatMap((level) => level.metrics.map((metric) => [
+    level.label,
+    metric.name,
+    metric.direction,
+    metric.baseline === null ? "—" : formatReportNumber(metric.baseline),
+    metric.current === null ? "—" : formatReportNumber(metric.current),
+    metric.improvement === null ? "—" : formatReportPercent(metric.improvement),
+  ]));
+  if (metricRows.length) {
+    lines.push("");
+    lines.push(markdownTable(["Tier", "Metric", "Direction", "Baseline", "Candidate", "Improvement"], metricRows));
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+function optimizerSchedulerRowsFromConfig(config = {}) {
+  const optimizer = config.resolvedOptimizer
+    ? `${config.optimizer || "auto"} -> ${config.resolvedOptimizer}`
+    : (config.optimizer || "auto");
+  const scheduler = config.resolvedScheduler
+    ? `${config.scheduler || "auto"} -> ${config.resolvedScheduler}`
+    : (config.scheduler || "auto");
+  const rows = [
+    ["Task type", config.trainingTaskType || "auto"],
+    ["Optimizer", optimizer],
+    ["Advanced optimizer", config.advancedOptimizer || "none"],
+    ["Learning rate", config.optimizerLearningRate || config.learningRate || "—"],
+    ["Weight decay", config.optimizerWeightDecay || config.weightDecay || "—"],
+    ["Betas", config.optimizerBetas || "—"],
+    ["Eps", config.optimizerEps || "—"],
+    ["Momentum", config.optimizerMomentum || "—"],
+    ["LR scheduler", scheduler],
+    ["Advanced scheduler", config.advancedScheduler || "none"],
+    ["Warmup steps", config.schedulerWarmupSteps || "—"],
+    ["Total steps", config.schedulerTotalSteps || "—"],
+    ["Min LR", config.schedulerMinLr || "—"],
+    ["Step size", config.schedulerStepSize || "—"],
+    ["Gamma", config.schedulerGamma || "—"],
+    ["Recommendation", config.optimizerRecommendation || "—"],
+  ];
+  return rows.filter(([, value]) => value !== "—" && value !== "" && value !== null && value !== undefined);
+}
+
+function renderOptimizerSchedulerMarkdown(config = {}) {
+  const rows = optimizerSchedulerRowsFromConfig(config);
+  if (!rows.length) return "";
+  return [
+    "## Optimizer / Scheduler Config",
+    "",
+    markdownTable(["Field", "Value"], rows),
+    "",
+  ].join("\n");
+}
+
 function renderMarkdownReport(cwd, runs, goal, plan, opts = {}) {
   const cleanRuns = runs.filter((row) => row && !row.parse_error);
   const primaryMetric = choosePrimaryMetric(goal, cleanRuns);
@@ -1213,6 +1454,8 @@ function renderMarkdownReport(cwd, runs, goal, plan, opts = {}) {
   const totalCost = cleanRuns.reduce((sum, row) => sum + (Number(row.est_cost_usd) || 0), 0);
   const totalGpuHours = cleanRuns.reduce((sum, row) => sum + (Number(row.gpu_hours) || 0), 0);
   const baselineRuns = cleanRuns.filter((row) => String(row.id || "").toLowerCase().includes("baseline") || String(row.agent || "").toLowerCase().includes("baseline"));
+  const metricTierAnalysis = evaluateMetricTiers(cleanRuns, readMetricTierConfig(cwd));
+  const dashboardConfig = readDashboardConfig(cwd);
   const topRows = entries.slice(0, 5).map((entry, rank) => [
     rank + 1,
     `\`${entry.row.id}\``,
@@ -1298,6 +1541,9 @@ function renderMarkdownReport(cwd, runs, goal, plan, opts = {}) {
     lines.push("No numeric run metric was found yet.");
   }
   lines.push("");
+  lines.push(renderMetricTierMarkdown(metricTierAnalysis));
+  const optimizerMarkdown = renderOptimizerSchedulerMarkdown(dashboardConfig);
+  if (optimizerMarkdown) lines.push(optimizerMarkdown);
   lines.push("## Sweep Summary");
   lines.push("");
   lines.push(markdownTable(["Metric", "Value"], [
@@ -1355,6 +1601,223 @@ function renderMarkdownReport(cwd, runs, goal, plan, opts = {}) {
   }
   lines.push("");
   return lines.join("\n");
+}
+
+function latestSweepReportRows(cwd, limit = 5) {
+  const sweepDir = path.join(cwd, ".researchloop", "scratchpad", "sweeps");
+  if (!fs.existsSync(sweepDir)) return [];
+  const rows = [];
+  for (const entry of fs.readdirSync(sweepDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const report = path.join(sweepDir, entry.name, "sweep-report.md");
+    if (!fs.existsSync(report)) continue;
+    try {
+      const stat = fs.statSync(report);
+      rows.push({
+        label: `Sweep report: ${entry.name}`,
+        path: path.relative(cwd, report),
+        mtime: stat.mtime.toISOString(),
+        mtimeMs: stat.mtimeMs,
+      });
+    } catch {
+      // Ignore incomplete sweep directories.
+    }
+  }
+  return rows
+    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+    .slice(0, limit)
+    .map(({ mtimeMs, ...row }) => row);
+}
+
+function existingArtifactRows(cwd, envFiles = null) {
+  const candidates = [
+    ["Run ledger", ".researchloop/scratchpad/runs.jsonl"],
+    ["Dashboard experiment report", ".researchloop/scratchpad/dashboard-report.md"],
+    ["Performance analysis", ".researchloop/scratchpad/performance-analysis.md"],
+    ["Environment report", envFiles?.markdown || ".researchloop/env/environment.md"],
+    ["Environment JSON", envFiles?.json || ".researchloop/env/environment.json"],
+  ];
+  const rows = [];
+  for (const [label, rel] of candidates) {
+    const file = path.join(cwd, rel);
+    if (!fs.existsSync(file)) continue;
+    try {
+      const stat = fs.statSync(file);
+      rows.push([label, rel, formatBytesCompact(stat.size)]);
+    } catch {
+      rows.push([label, rel, "—"]);
+    }
+  }
+  for (const row of latestSweepReportRows(cwd, 5)) {
+    rows.push([row.label, row.path, row.mtime]);
+  }
+  return rows;
+}
+
+function renderPortfolioReport(cwd, runs, goal, plan, dashboardConfig, aiInfraReport, envFiles = null) {
+  const cleanRuns = runs.filter((row) => row && !row.parse_error);
+  const primaryMetric = choosePrimaryMetric(goal, cleanRuns);
+  const direction = String(goal.direction || dashboardConfig.direction || "").toLowerCase();
+  const preferHigher = direction.includes("high") || direction.includes("max");
+  const entries = buildReportMetricEntries(cleanRuns, primaryMetric, preferHigher);
+  const best = entries[0] || null;
+  const worst = entries[entries.length - 1] || null;
+  const completeRuns = cleanRuns.filter((row) => ["complete", "completed", "promoted"].includes(String(row.status || "").toLowerCase()));
+  const failedRuns = cleanRuns.filter((row) => {
+    const status = String(row.status || "").toLowerCase();
+    return status.includes("fail") || status.includes("timeout") || status.includes("killed") || status.includes("no_metric");
+  });
+  const metricTierConfig = readMetricTierConfig(cwd, dashboardConfig.metricProfile || "hpc_operator");
+  const metricTierAnalysis = evaluateMetricTiers(cleanRuns, metricTierConfig);
+  const optimizerRows = optimizerSchedulerRowsFromConfig(dashboardConfig);
+  const artifactRows = existingArtifactRows(cwd, envFiles);
+  const topRows = entries.slice(0, 8).map((entry, index) => [
+    index + 1,
+    `\`${entry.row.id}\``,
+    entry.row.status || "unknown",
+    primaryMetric || "metric",
+    formatReportNumber(entry.value),
+    reportRunTimestamp(entry.row) || "—",
+  ]);
+  const recentRows = cleanRuns.slice(-8).reverse().map((row) => [
+    `\`${row.id || "unknown"}\``,
+    row.status || "unknown",
+    row.command || "—",
+    reportRunTimestamp(row) || "—",
+  ]);
+  const readinessRows = Object.entries(aiInfraReport.readiness || {}).map(([key, item]) => [
+    key,
+    item.status,
+    item.evidence,
+  ]);
+  const recommendationRows = [];
+  if (!best) recommendationRows.push("Record at least one numeric run before using this as external project evidence.");
+  if (best) recommendationRows.push(`Verify the current best run \`${best.row.id}\` before making a performance claim.`);
+  if (!cleanRuns.some(isBaselineRow)) recommendationRows.push("Record a clear baseline run so future reports can separate baseline and optimized candidates.");
+  if (failedRuns.length) recommendationRows.push(`Review ${failedRuns.length} failed or no-metric run(s) before exporting a final README.`);
+  if (!aiInfraReport.aiInfra?.cudaLocalReady && !aiInfraReport.aiInfra?.remoteCudaConfigured) {
+    recommendationRows.push("Keep Apple Silicon tests local; configure a remote NVIDIA Linux host for real CUDA/Nsight evidence.");
+  }
+  if (!artifactRows.some((row) => row[0] === "Dashboard experiment report")) {
+    recommendationRows.push("Generate the dashboard experiment report once so this portfolio links to a full run comparison.");
+  }
+
+  const lines = [];
+  lines.push("# AutoResearch-AI Portfolio Evidence");
+  lines.push("");
+  lines.push(`Generated: ${new Date().toISOString()}`);
+  lines.push(`Project: \`${cwd}\``);
+  lines.push(`Recommended execution mode: \`${aiInfraReport.aiInfra?.recommendedExecutionMode || "unknown"}\``);
+  lines.push("");
+  lines.push("## Project Story");
+  lines.push("");
+  lines.push(goal.goal || "No project goal has been recorded yet.");
+  lines.push("");
+  lines.push(markdownTable(["Field", "Value"], [
+    ["Primary metric", primaryMetric || "not detected"],
+    ["Direction", preferHigher ? "higher is better" : "lower is better"],
+    ["Runs recorded", cleanRuns.length],
+    ["Completed runs", completeRuns.length],
+    ["Failed / no-metric runs", failedRuns.length],
+    ["Time budget", normalizeTimeBudget(plan.timeBudget) || "not recorded"],
+  ]));
+  lines.push("");
+  lines.push("## Best Evidence");
+  lines.push("");
+  if (best) {
+    lines.push(`Best recorded run is \`${best.row.id}\` with \`${primaryMetric}\` = ${formatReportNumber(best.value)}.`);
+    if (worst && worst.row.id !== best.row.id) {
+      const spread = preferHigher ? best.value - worst.value : worst.value - best.value;
+      lines.push(`The spread between best and worst recorded runs is ${formatReportNumber(spread)}.`);
+    }
+    lines.push("");
+    lines.push(markdownTable(["Rank", "Run", "Status", "Metric", "Value", "Timestamp"], topRows));
+  } else {
+    lines.push("No numeric metric is available yet.");
+  }
+  lines.push("");
+  lines.push("## Multi-Level Metric Decision");
+  lines.push("");
+  lines.push(`- Profile: \`${metricTierAnalysis.profile}\` (${metricTierAnalysis.profile_label || "custom"})`);
+  lines.push(`- Recommendation: **${metricTierAnalysis.recommendation.label}** — ${metricTierAnalysis.recommendation.reason}`);
+  lines.push(`- Overall score: ${formatReportNumber(metricTierAnalysis.overall_score)}`);
+  lines.push("");
+  lines.push(markdownTable(
+    ["Tier", "Weight", "Available", "Avg improvement"],
+    metricTierAnalysis.levels.map((level) => [
+      level.label,
+      level.weight,
+      `${level.available}/${level.metrics.length}`,
+      formatReportPercent(level.avg_improvement),
+    ])
+  ));
+  if (optimizerRows.length) {
+    lines.push("");
+    lines.push("## Optimizer / Scheduler");
+    lines.push("");
+    lines.push(markdownTable(["Field", "Value"], optimizerRows));
+  }
+  lines.push("");
+  lines.push("## Environment Readiness");
+  lines.push("");
+  lines.push(markdownTable(["Area", "Status", "Evidence"], readinessRows));
+  lines.push("");
+  lines.push("## Evidence Artifacts");
+  lines.push("");
+  if (artifactRows.length) {
+    lines.push(markdownTable(["Artifact", "Path", "Size / Time"], artifactRows));
+  } else {
+    lines.push("No export artifacts were found yet.");
+  }
+  lines.push("");
+  lines.push("## Recent Runs");
+  lines.push("");
+  if (recentRows.length) {
+    lines.push(markdownTable(["Run", "Status", "Command", "Timestamp"], recentRows));
+  } else {
+    lines.push("No runs recorded.");
+  }
+  lines.push("");
+  lines.push("## Next Actions");
+  lines.push("");
+  for (const item of recommendationRows.length ? recommendationRows : ["Keep this report with the project README after reproducing the best run."]) {
+    lines.push(`- ${item}`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+function writePortfolioReport(cwd, opts = {}) {
+  const ledger = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
+  const runs = parseRunsLedger(ledger);
+  const goal = parseGoalFile(path.join(cwd, ".researchloop", "goal.md"));
+  const plan = parsePlanFile(path.join(cwd, ".researchloop", "plan.md"));
+  const dashboardConfig = readDashboardConfig(cwd);
+  const aiInfraReport = buildAiInfraReport(cwd, { python: opts.python || "python3" });
+  const envFiles = opts.writeEnv === false ? null : writeAiInfraReport(cwd, aiInfraReport);
+  const outPath = opts.out
+    ? path.resolve(cwd, String(opts.out))
+    : path.join(cwd, ".researchloop", "scratchpad", "portfolio-report.md");
+  ensureDir(path.dirname(outPath));
+  const markdown = `${renderPortfolioReport(cwd, runs, goal, plan, dashboardConfig, aiInfraReport, envFiles)}\n`;
+  fs.writeFileSync(outPath, markdown);
+  return {
+    out: path.relative(cwd, outPath),
+    env: envFiles,
+    runs: runs.filter((row) => row && !row.parse_error).length,
+  };
+}
+
+function cmdPortfolio() {
+  const cwd = targetDir();
+  const outFile = option("--out", null);
+  const written = writePortfolioReport(cwd, {
+    out: outFile,
+    python: String(option("--python", "python3")),
+    writeEnv: !hasFlag("--no-env"),
+  });
+  console.log(`portfolio: ${written.out}`);
+  if (written.env?.markdown) console.log(`environment: ${written.env.markdown}`);
 }
 
 function cmdReport() {
@@ -2106,6 +2569,285 @@ function parseRunsLedger(ledgerFile) {
     });
 }
 
+function metricTiersPath(cwd) {
+  return path.join(cwd, ".researchloop", "metric-tiers.yaml");
+}
+
+function normalizeMetricDirection(direction, metricName) {
+  const normalized = String(direction || "").trim().toLowerCase();
+  if (["higher", "high", "max", "maximize", "up"].includes(normalized)) return "higher";
+  if (["lower", "low", "min", "minimize", "down"].includes(normalized)) return "lower";
+  return METRIC_DIRECTION_DEFAULTS[String(metricName || "").trim()] || "lower";
+}
+
+function metricNamesFromInput(value) {
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => {
+      if (entry && typeof entry === "object" && !Array.isArray(entry)) return metricNamesFromInput(entry.name || "");
+      return metricNamesFromInput(entry);
+    });
+  }
+  return String(value || "")
+    .split(/[,\n]+/)
+    .map((name) => name.trim())
+    .filter(Boolean);
+}
+
+function normalizeMetricList(metrics, maxSelect) {
+  const rawList = Array.isArray(metrics) ? metrics : metricNamesFromInput(metrics);
+  const seen = new Set();
+  const normalized = [];
+  for (const entry of rawList) {
+    const item = entry && typeof entry === "object" && !Array.isArray(entry)
+      ? entry
+      : { name: entry };
+    const name = String(item.name || "").trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    const threshold = Number(item.threshold ?? item.max_degradation ?? item.degradation_threshold ?? 0.05);
+    normalized.push({
+      name,
+      direction: normalizeMetricDirection(item.direction, name),
+      threshold: Number.isFinite(threshold) && threshold >= 0 ? threshold : 0.05,
+    });
+    if (Number.isFinite(maxSelect) && maxSelect > 0 && normalized.length >= maxSelect) break;
+  }
+  return normalized;
+}
+
+function buildDefaultMetricTierConfig(profileKey = "hpc_operator") {
+  const profile = METRIC_TIER_PROFILES[profileKey] ? profileKey : "hpc_operator";
+  const defaults = METRIC_TIER_PROFILES[profile];
+  const tiers = {};
+  for (const level of METRIC_TIER_LEVELS) {
+    tiers[level.key] = {
+      label: level.label,
+      weight: level.weight,
+      max_select: level.maxSelect,
+      metrics: normalizeMetricList(defaults[level.key] || [], level.maxSelect),
+    };
+  }
+  return {
+    version: 1,
+    profile,
+    profile_label: defaults.label,
+    tiers,
+  };
+}
+
+function normalizeMetricTierConfig(input = {}, fallbackProfile = "hpc_operator") {
+  const requestedProfile = String(input.profile || fallbackProfile || "hpc_operator").trim();
+  const base = buildDefaultMetricTierConfig(requestedProfile);
+  const sourceTiers = input.tiers && typeof input.tiers === "object" ? input.tiers : {};
+  const tiers = {};
+  for (const level of METRIC_TIER_LEVELS) {
+    const source = sourceTiers[level.key] && typeof sourceTiers[level.key] === "object"
+      ? sourceTiers[level.key]
+      : {};
+    const configuredMaxSelect = Number(source.max_select ?? source.maxSelect ?? level.maxSelect);
+    const maxSelect = Number.isFinite(configuredMaxSelect) && configuredMaxSelect > 0
+      ? Math.min(configuredMaxSelect, level.maxSelect)
+      : level.maxSelect;
+    const weight = Number(source.weight ?? level.weight);
+    tiers[level.key] = {
+      label: String(source.label || level.label),
+      weight: Number.isFinite(weight) && weight > 0 ? weight : level.weight,
+      max_select: maxSelect,
+      metrics: normalizeMetricList(source.metrics || base.tiers[level.key].metrics, maxSelect),
+    };
+  }
+  return {
+    version: Number(input.version || 1),
+    profile: base.profile,
+    profile_label: base.profile_label,
+    tiers,
+  };
+}
+
+function metricTierConfigFromDashboardBody(body = {}) {
+  const profile = String(body.profile || "hpc_operator").trim() || "hpc_operator";
+  const base = buildDefaultMetricTierConfig(profile);
+  const tiers = {};
+  for (const level of METRIC_TIER_LEVELS) {
+    const raw = body[level.key] ?? body[level.key.replace("level", "level_")] ?? null;
+    const metrics = raw !== null && raw !== undefined
+      ? metricNamesFromInput(raw)
+      : base.tiers[level.key].metrics;
+    tiers[level.key] = {
+      ...base.tiers[level.key],
+      metrics,
+    };
+  }
+  return normalizeMetricTierConfig({ version: 1, profile, tiers }, profile);
+}
+
+function metricTierConfigToYaml(config) {
+  const normalized = normalizeMetricTierConfig(config);
+  const lines = [
+    "version: 1",
+    `profile: ${normalized.profile}`,
+    "tiers:",
+  ];
+  for (const level of METRIC_TIER_LEVELS) {
+    const tier = normalized.tiers[level.key];
+    lines.push(`  ${level.key}:`);
+    lines.push(`    weight: ${tier.weight}`);
+    lines.push(`    max_select: ${tier.max_select}`);
+    lines.push("    metrics:");
+    for (const metric of tier.metrics) {
+      lines.push(`      - name: ${metric.name}`);
+      lines.push(`        direction: ${metric.direction}`);
+      lines.push(`        threshold: ${metric.threshold}`);
+    }
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function readMetricTierConfig(cwd, profileOverride = null) {
+  const file = metricTiersPath(cwd);
+  if (!fs.existsSync(file)) {
+    return buildDefaultMetricTierConfig(profileOverride || "hpc_operator");
+  }
+  try {
+    const parsed = parseSimpleYaml(readTextIfExists(file));
+    return normalizeMetricTierConfig(parsed, profileOverride || parsed.profile || "hpc_operator");
+  } catch {
+    return buildDefaultMetricTierConfig(profileOverride || "hpc_operator");
+  }
+}
+
+function writeMetricTierConfig(cwd, config) {
+  const normalized = normalizeMetricTierConfig(config);
+  const file = metricTiersPath(cwd);
+  ensureDir(path.dirname(file));
+  fs.writeFileSync(file, metricTierConfigToYaml(normalized));
+  return { ...normalized, file: path.relative(cwd, file) };
+}
+
+function configuredMetricNames(config) {
+  const names = [];
+  for (const level of METRIC_TIER_LEVELS) {
+    for (const metric of config?.tiers?.[level.key]?.metrics || []) {
+      if (metric?.name) names.push(metric.name);
+    }
+  }
+  return [...new Set(names)];
+}
+
+function rowHasAnyMetric(row, metricNames) {
+  return metricNames.some((metric) => Number.isFinite(runMetricValue(row, metric)));
+}
+
+function isBaselineRow(row) {
+  const text = `${row?.id || ""} ${row?.agent || ""} ${row?.tags || ""}`.toLowerCase();
+  return text.includes("baseline");
+}
+
+function pickTierComparisonRows(runs, config) {
+  const cleanRuns = (runs || []).filter((row) => row && !row.parse_error && row.metrics && typeof row.metrics === "object");
+  const metricNames = configuredMetricNames(config);
+  const comparable = metricNames.length ? cleanRuns.filter((row) => rowHasAnyMetric(row, metricNames)) : cleanRuns;
+  const baseline = comparable.find(isBaselineRow) || comparable[0] || null;
+  const candidate = [...comparable].reverse().find((row) => !baseline || String(row.id) !== String(baseline.id)) || comparable[comparable.length - 1] || null;
+  return { baseline, candidate, comparable };
+}
+
+function metricImprovement(baselineValue, currentValue, direction) {
+  const baseline = Number(baselineValue);
+  const current = Number(currentValue);
+  if (!Number.isFinite(baseline) || !Number.isFinite(current)) return Number.NaN;
+  const numerator = direction === "higher" ? current - baseline : baseline - current;
+  const denom = Math.max(Math.abs(baseline), 1e-9);
+  return numerator / denom;
+}
+
+function recommendationForTierAnalysis(levels, baseline, candidate) {
+  if (!baseline || !candidate || String(baseline.id) === String(candidate.id)) {
+    return { code: "needs_retest", label: "需要复测", reason: "缺少 baseline 或候选实验，无法形成对照。" };
+  }
+  const level1 = levels.find((level) => level.key === "level1");
+  const level2 = levels.find((level) => level.key === "level2");
+  const available = levels.flatMap((level) => level.metrics).filter((metric) => metric.available);
+  if (!available.length) {
+    return { code: "needs_retest", label: "需要复测", reason: "没有可用于多级评分的数值指标。" };
+  }
+  const badPrimary = (level1?.metrics || []).find((metric) => metric.available && metric.improvement < -metric.threshold);
+  if (badPrimary) {
+    return {
+      code: "not_recommended",
+      label: "不推荐",
+      reason: `${badPrimary.name} 退化超过 ${(badPrimary.threshold * 100).toFixed(1)}%。`,
+    };
+  }
+  const degradedSecondary = (level2?.metrics || []).find((metric) => metric.available && metric.improvement < -metric.threshold);
+  if ((level1?.avg_improvement || 0) > 0 && (degradedSecondary || (level2 && level2.available > 0 && level2.avg_improvement < 0))) {
+    return {
+      code: "conditional",
+      label: "有条件推荐",
+      reason: degradedSecondary
+        ? `${degradedSecondary.name} 有明显退化，需要确认资源或稳定性代价。`
+        : "一级指标改善，但二级指标整体偏弱。",
+    };
+  }
+  if ((level1?.available || 0) > 0 && (level1?.avg_improvement || 0) >= 0 && (!level2 || level2.available === 0 || level2.avg_improvement >= 0)) {
+    return { code: "recommended", label: "推荐", reason: "一级指标未退化，二级指标没有明显反向信号。" };
+  }
+  return { code: "needs_retest", label: "需要复测", reason: "指标数量不足或改善不稳定。" };
+}
+
+function evaluateMetricTiers(runs, configInput) {
+  const config = normalizeMetricTierConfig(configInput || {});
+  const { baseline, candidate, comparable } = pickTierComparisonRows(runs, config);
+  const levels = METRIC_TIER_LEVELS.map((level) => {
+    const tier = config.tiers[level.key];
+    const metrics = (tier.metrics || []).map((metric) => {
+      const direction = normalizeMetricDirection(metric.direction, metric.name);
+      const baselineValue = runMetricValue(baseline, metric.name);
+      const currentValue = runMetricValue(candidate, metric.name);
+      const improvement = metricImprovement(baselineValue, currentValue, direction);
+      return {
+        name: metric.name,
+        direction,
+        threshold: metric.threshold ?? 0.05,
+        baseline: Number.isFinite(baselineValue) ? baselineValue : null,
+        current: Number.isFinite(currentValue) ? currentValue : null,
+        improvement: Number.isFinite(improvement) ? improvement : null,
+        available: Number.isFinite(improvement),
+      };
+    });
+    const usable = metrics.filter((metric) => metric.available);
+    const avg = usable.length
+      ? usable.reduce((sum, metric) => sum + metric.improvement, 0) / usable.length
+      : null;
+    return {
+      key: level.key,
+      label: tier.label || level.label,
+      weight: tier.weight,
+      max_select: tier.max_select,
+      available: usable.length,
+      missing: metrics.length - usable.length,
+      avg_improvement: avg,
+      weighted_score: avg === null ? null : avg * tier.weight,
+      metrics,
+    };
+  });
+  const overall = levels
+    .map((level) => level.weighted_score)
+    .filter((value) => Number.isFinite(value))
+    .reduce((sum, value) => sum + value, 0);
+  const recommendation = recommendationForTierAnalysis(levels, baseline, candidate);
+  return {
+    profile: config.profile,
+    profile_label: config.profile_label,
+    baseline_id: baseline?.id || null,
+    candidate_id: candidate?.id || null,
+    comparable_runs: comparable.length,
+    overall_score: Number.isFinite(overall) ? overall : null,
+    recommendation,
+    levels,
+  };
+}
+
 function extractMetricSeriesFromText(text, metricName, customRegexSource) {
   const regex = customRegexSource
     ? new RegExp(customRegexSource, "gi")
@@ -2328,19 +3070,401 @@ function summarizeDashboardRuns(runs, primaryMetric, preferHigher = false) {
   };
 }
 
-function readSystemMetrics() {
+function parseDisplayMemoryBytes(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  const match = text.match(/([0-9.]+)\s*(TB|GB|GIB|MB|MIB|KB|KIB)?/i);
+  if (!match) return null;
+  const n = Number(match[1]);
+  if (!Number.isFinite(n)) return null;
+  const unit = String(match[2] || "MB").toUpperCase();
+  const scale = unit.startsWith("T") ? 1024 ** 4
+    : unit.startsWith("G") ? 1024 ** 3
+      : unit.startsWith("K") ? 1024
+        : 1024 ** 2;
+  return Math.round(n * scale);
+}
+
+function parseTopMemoryBytes(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  const match = text.match(/^([0-9.]+)\s*([KMGTPE]?)(?:I?B)?$/i);
+  if (!match) return null;
+  const n = Number(match[1]);
+  if (!Number.isFinite(n)) return null;
+  const unit = String(match[2] || "").toUpperCase();
+  const scale = unit === "P" ? 1024 ** 5
+    : unit === "T" ? 1024 ** 4
+      : unit === "G" ? 1024 ** 3
+        : unit === "M" ? 1024 ** 2
+          : unit === "K" ? 1024
+            : 1;
+  return Math.round(n * scale);
+}
+
+function clampPct(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, n));
+}
+
+function readMacActivityMetrics(totalMem) {
+  if (process.platform !== "darwin") return null;
+  try {
+    const out = execSync("top -l 1 -s 0 -n 0", {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 1500,
+    });
+    const cpuLine = out.match(/^CPU usage:.*$/m)?.[0] || "";
+    const cpuMatch = cpuLine.match(/CPU usage:\s*([0-9.]+)%\s*user,\s*([0-9.]+)%\s*sys,\s*([0-9.]+)%\s*idle/i);
+    const memoryLine = out.match(/^PhysMem:.*$/m)?.[0] || "";
+    const usedMatch = memoryLine.match(/PhysMem:\s*([0-9.]+\s*[KMGTPE]?(?:I?B)?)\s+used/i);
+    const unusedMatch = memoryLine.match(/,\s*([0-9.]+\s*[KMGTPE]?(?:I?B)?)\s+unused/i);
+    const wiredMatch = memoryLine.match(/\(([0-9.]+\s*[KMGTPE]?(?:I?B)?)\s+wired/i);
+    const compressedMatch = memoryLine.match(/,\s*([0-9.]+\s*[KMGTPE]?(?:I?B)?)\s+compressor/i);
+
+    const usedBytes = parseTopMemoryBytes(usedMatch?.[1]);
+    const unusedBytes = parseTopMemoryBytes(unusedMatch?.[1]);
+    const freeBytes = usedBytes != null ? Math.max(0, totalMem - usedBytes) : unusedBytes;
+    const usagePct = usedBytes != null && totalMem > 0 ? clampPct((usedBytes / totalMem) * 100) : null;
+    const cpu = cpuMatch
+      ? {
+        source: "top",
+        userPct: Number(Number(cpuMatch[1]).toFixed(1)),
+        systemPct: Number(Number(cpuMatch[2]).toFixed(1)),
+        idlePct: Number(Number(cpuMatch[3]).toFixed(1)),
+        usagePct: Number(clampPct(100 - Number(cpuMatch[3])).toFixed(1)),
+      }
+      : null;
+    const memory = usedBytes != null
+      ? {
+        source: "top",
+        usedBytes,
+        freeBytes,
+        unusedBytes,
+        wiredBytes: parseTopMemoryBytes(wiredMatch?.[1]),
+        compressedBytes: parseTopMemoryBytes(compressedMatch?.[1]),
+        usagePct: Number(usagePct.toFixed(1)),
+      }
+      : null;
+    return cpu || memory ? { cpu, memory } : null;
+  } catch {
+    return null;
+  }
+}
+
+function readMacGpuInfo(totalMem, usedMem, memPct) {
+  if (process.platform !== "darwin") return null;
+  const now = Date.now();
+  if (systemMetricsCache.macGpu.data && now - systemMetricsCache.macGpu.ts < 60_000) {
+    const cached = systemMetricsCache.macGpu.data;
+    if (!cached.present || cached.memory?.kind !== "unified") return cached;
+    return {
+      ...cached,
+      memory: {
+        ...cached.memory,
+        totalBytes: totalMem,
+        usedBytes: usedMem,
+        usagePct: Number(memPct.toFixed(1)),
+      },
+    };
+  }
+  try {
+    const out = execSync("system_profiler SPDisplaysDataType -json", {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 2500,
+    });
+    const parsed = JSON.parse(out);
+    const devices = (parsed.SPDisplaysDataType || [])
+      .map((item) => {
+        const name = item.sppci_model || item._name || "GPU";
+        const vendor = item.spdisplays_vendor || item.sppci_vendor || "";
+        const cores = Number(item.sppci_cores);
+        const vramBytes = parseDisplayMemoryBytes(item.spdisplays_vram || item.sppci_vram);
+        const isUnified = /apple/i.test(`${name} ${vendor}`) || !vramBytes;
+        return {
+          name,
+          vendor,
+          cores: Number.isFinite(cores) ? cores : null,
+          bus: item.sppci_bus || null,
+          metal: item.spdisplays_mtlgpufamilysupport || null,
+          memoryKind: isUnified ? "unified" : "dedicated",
+          memoryTotalBytes: isUnified ? totalMem : vramBytes,
+        };
+      })
+      .filter((gpu) => gpu.name);
+    if (!devices.length) {
+      const empty = { present: false, source: "system_profiler", devices: [] };
+      systemMetricsCache.macGpu = { ts: now, data: empty };
+      return empty;
+    }
+    const primary = devices[0];
+    const isUnified = primary.memoryKind === "unified";
+    const memoryTotalBytes = isUnified ? totalMem : primary.memoryTotalBytes;
+    const memoryUsedBytes = isUnified ? usedMem : null;
+    const memoryPct = memoryTotalBytes && memoryUsedBytes != null
+      ? (memoryUsedBytes / memoryTotalBytes) * 100
+      : null;
+    const data = {
+      present: true,
+      source: "system_profiler",
+      kind: isUnified ? "integrated-unified" : "mac-dedicated",
+      count: devices.length,
+      name: primary.name,
+      utilizationPct: 0,
+      utilizationNote: "macOS 暂未提供轻量全局 GPU 利用率采样",
+      devices,
+      memory: {
+        kind: isUnified ? "unified" : "dedicated",
+        totalBytes: memoryTotalBytes || null,
+        usedBytes: memoryUsedBytes ?? 0,
+        usagePct: Number.isFinite(memoryPct) ? Number(memoryPct.toFixed(1)) : 0,
+      },
+    };
+    systemMetricsCache.macGpu = { ts: now, data };
+    return data;
+  } catch {
+    const empty = { present: false, source: "system_profiler", devices: [] };
+    systemMetricsCache.macGpu = { ts: now, data: empty };
+    return empty;
+  }
+}
+
+function readGpuMetrics(totalMem, usedMem, memPct) {
+  const nvidia = probeGpuStats();
+  if (nvidia && nvidia.length) {
+    let utilSum = 0;
+    let utilCount = 0;
+    let memUsedMb = 0;
+    let memTotalMb = 0;
+    for (const gpu of nvidia) {
+      if (Number.isFinite(gpu.util_pct)) {
+        utilSum += gpu.util_pct;
+        utilCount += 1;
+      }
+      if (Number.isFinite(gpu.mem_used_mb)) memUsedMb += gpu.mem_used_mb;
+      if (Number.isFinite(gpu.mem_total_mb)) memTotalMb += gpu.mem_total_mb;
+    }
+    const usagePct = memTotalMb > 0 ? (memUsedMb / memTotalMb) * 100 : null;
+    return {
+      present: true,
+      source: "nvidia-smi",
+      kind: "dedicated",
+      count: nvidia.length,
+      name: nvidia.length === 1 ? "NVIDIA GPU" : `${nvidia.length} NVIDIA GPUs`,
+      utilizationPct: utilCount ? Number((utilSum / utilCount).toFixed(1)) : 0,
+      devices: nvidia,
+      memory: {
+        kind: "dedicated",
+        totalBytes: Number.isFinite(memTotalMb) ? memTotalMb * 1024 * 1024 : null,
+        usedBytes: Number.isFinite(memUsedMb) ? memUsedMb * 1024 * 1024 : 0,
+        usagePct: Number.isFinite(usagePct) ? Number(usagePct.toFixed(1)) : null,
+      },
+    };
+  }
+  return readMacGpuInfo(totalMem, usedMem, memPct) || {
+    present: false,
+    source: "none",
+    count: 0,
+    devices: [],
+    utilizationPct: 0,
+    memory: { kind: "unknown", totalBytes: null, usedBytes: 0, usagePct: 0 },
+  };
+}
+
+function computeDeviceEnv(effective, options = {}) {
+  const device = String(effective || "cpu");
+  const env = {
+    RESEARCHLOOP_DEVICE: device,
+    RESEARCHLOOP_ACCELERATOR: device,
+  };
+  const cudaVisibleDevices = String(options.cudaVisibleDevices || "").trim();
+  if (device === "cuda" && cudaVisibleDevices) {
+    env.CUDA_VISIBLE_DEVICES = cudaVisibleDevices;
+  }
+  if (device === "mps") {
+    env.PYTORCH_ENABLE_MPS_FALLBACK = "1";
+  }
+  if (device === "directml") {
+    env.RESEARCHLOOP_WINDOWS_GPU_BACKEND = "directml";
+  }
+  if (device === "cpu") {
+    env.CUDA_VISIBLE_DEVICES = "";
+  }
+  return env;
+}
+
+function inferComputeDevice(requested = "auto", gpu = null, options = {}) {
+  const allowed = new Set(["auto", "cpu", "cuda", "mps", "directml", "integrated"]);
+  const req = allowed.has(String(requested || "").toLowerCase())
+    ? String(requested || "").toLowerCase()
+    : "auto";
+  const gpuInfo = gpu || readGpuMetrics(os.totalmem(), os.totalmem() - os.freemem(), os.totalmem() ? ((os.totalmem() - os.freemem()) / os.totalmem()) * 100 : 0);
+  let effective = req;
+  let reason = "user_selected";
+  if (req === "auto") {
+    if (gpuInfo?.source === "nvidia-smi" && gpuInfo.present) {
+      effective = "cuda";
+      reason = "nvidia_cuda_detected";
+    } else if (process.platform === "darwin" && gpuInfo?.present) {
+      effective = "mps";
+      reason = "macos_integrated_gpu_detected";
+    } else if (process.platform === "win32") {
+      effective = "directml";
+      reason = "windows_no_cuda_prefer_integrated_gpu";
+    } else {
+      effective = "cpu";
+      reason = "no_supported_gpu_backend_detected";
+    }
+  } else if (req === "integrated") {
+    if (process.platform === "darwin" && gpuInfo?.present) {
+      effective = "mps";
+      reason = "macos_integrated_gpu_requested";
+    } else if (process.platform === "win32") {
+      effective = "directml";
+      reason = "windows_integrated_gpu_requested";
+    } else {
+      effective = "cpu";
+      reason = "integrated_gpu_backend_unavailable";
+    }
+  }
+  const labels = {
+    auto: "自动",
+    cpu: "CPU",
+    cuda: "CUDA",
+    mps: "Apple GPU / MPS",
+    directml: "Windows DirectML / 核显",
+    integrated: "集成显卡",
+  };
+  return {
+    requested: req,
+    effective,
+    label: labels[effective] || effective,
+    reason,
+    env: computeDeviceEnv(effective, options),
+    cudaVisibleDevices: String(options.cudaVisibleDevices || "").trim() || null,
+    frameworkHint: effective === "mps"
+      ? "PyTorch code should choose torch.device('mps') or read RESEARCHLOOP_DEVICE=mps"
+      : effective === "directml"
+        ? "Windows integrated GPU compute usually needs DirectML-capable code, for example torch-directml or ONNX Runtime DirectML"
+        : effective === "cuda"
+          ? "CUDA detected through nvidia-smi"
+          : "CPU fallback",
+  };
+}
+
+function directorySizeBytes(dir) {
+  try {
+    if (!fs.existsSync(dir)) return 0;
+    const out = execSync(`du -sk ${shellQuote(dir)}`, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 4000,
+    });
+    const kb = Number(String(out).trim().split(/\s+/)[0]);
+    return Number.isFinite(kb) ? kb * 1024 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function archiveBytesInDir(dir, maxEntries = 20_000) {
+  let total = 0;
+  let seen = 0;
+  const archivePattern = /\.(zip|tar|tgz|tar\.gz|gz|bz2|xz|7z|rar)$/i;
+  const walk = (current) => {
+    if (seen > maxEntries) return;
+    let entries;
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (seen > maxEntries) return;
+      if (entry.name === ".git" || entry.name === "node_modules") continue;
+      const full = path.join(current, entry.name);
+      seen += 1;
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.isFile() && archivePattern.test(entry.name)) {
+        try {
+          total += fs.statSync(full).size;
+        } catch {
+          // ignore deleted files during scan
+        }
+      }
+    }
+  };
+  walk(dir);
+  return total;
+}
+
+function readDiskMetrics(cwd) {
+  const key = path.resolve(cwd || process.cwd());
+  const now = Date.now();
+  const cached = systemMetricsCache.diskByCwd.get(key);
+  if (cached && now - cached.ts < 15_000) return cached.data;
+
+  let totalBytes = null;
+  let freeBytes = null;
+  let availableBytes = null;
+  try {
+    if (typeof fs.statfsSync === "function") {
+      const stats = fs.statfsSync(key);
+      totalBytes = Number(stats.blocks) * Number(stats.bsize);
+      freeBytes = Number(stats.bfree) * Number(stats.bsize);
+      availableBytes = Number(stats.bavail) * Number(stats.bsize);
+    }
+  } catch {
+    totalBytes = null;
+    freeBytes = null;
+    availableBytes = null;
+  }
+  const usedBytes = totalBytes != null && freeBytes != null ? totalBytes - freeBytes : null;
+  const usagePct = totalBytes && usedBytes != null ? (usedBytes / totalBytes) * 100 : null;
+  const checkpointsBytes = ["checkpoints", "checkpoint", "ckpts", "outputs"]
+    .map((name) => directorySizeBytes(path.join(key, name)))
+    .reduce((sum, size) => sum + size, 0);
+  const researchBytes = directorySizeBytes(path.join(key, ".researchloop"));
+  const projectBytes = directorySizeBytes(key);
+  const archiveBytes = archiveBytesInDir(key);
+  const data = {
+    path: key,
+    source: "statfs+du",
+    totalBytes,
+    usedBytes,
+    freeBytes,
+    availableBytes,
+    usagePct: Number.isFinite(usagePct) ? Number(usagePct.toFixed(1)) : null,
+    projectBytes,
+    researchBytes,
+    checkpointsBytes,
+    archiveBytes,
+  };
+  systemMetricsCache.diskByCwd.set(key, { ts: now, data });
+  return data;
+}
+
+function readSystemMetrics(cwd = process.cwd()) {
   const cpus = os.cpus() || [];
   const loadAvg = os.loadavg ? os.loadavg() : [0, 0, 0];
   const totalMem = os.totalmem();
-  const freeMem = os.freemem();
-  const usedMem = totalMem - freeMem;
-  const memPct = totalMem > 0 ? (usedMem / totalMem) * 100 : 0;
+  const osFreeMem = os.freemem();
+  const macActivity = readMacActivityMetrics(totalMem);
+  const freeMem = macActivity?.memory?.freeBytes ?? osFreeMem;
+  const usedMem = macActivity?.memory?.usedBytes ?? (totalMem - osFreeMem);
+  const memPct = macActivity?.memory?.usagePct ?? (totalMem > 0 ? (usedMem / totalMem) * 100 : 0);
   const cpuCount = cpus.length || 1;
   const loadPct = Math.min(100, (loadAvg[0] / cpuCount) * 100);
+  const cpuUsagePct = macActivity?.cpu?.usagePct ?? loadPct;
   const platform = `${os.platform()} ${os.arch()}`;
   const hostname = os.hostname();
   const nodeVersion = process.version;
 
+  const gpu = readGpuMetrics(totalMem, usedMem, memPct);
   return {
     hostname,
     platform,
@@ -2349,14 +3473,116 @@ function readSystemMetrics() {
     cpu: {
       count: cpuCount,
       model: cpus[0]?.model || "unknown",
+      source: macActivity?.cpu?.source || "loadavg",
       loadAvg: { "1m": loadAvg[0], "5m": loadAvg[1], "15m": loadAvg[2] },
-      usagePct: Number.isFinite(loadPct) ? Number(loadPct.toFixed(1)) : 0,
+      usagePct: Number.isFinite(cpuUsagePct) ? Number(cpuUsagePct.toFixed(1)) : 0,
+      userPct: macActivity?.cpu?.userPct ?? null,
+      systemPct: macActivity?.cpu?.systemPct ?? null,
+      idlePct: macActivity?.cpu?.idlePct ?? null,
     },
     memory: {
+      source: macActivity?.memory?.source || "os",
       totalBytes: totalMem,
       freeBytes: freeMem,
       usedBytes: usedMem,
       usagePct: Number(memPct.toFixed(1)),
+      unusedBytes: macActivity?.memory?.unusedBytes ?? null,
+      wiredBytes: macActivity?.memory?.wiredBytes ?? null,
+      compressedBytes: macActivity?.memory?.compressedBytes ?? null,
+    },
+    gpu,
+    disk: readDiskMetrics(cwd),
+    compute: inferComputeDevice("auto", gpu),
+  };
+}
+
+function startDashboardSystemSampler(getCwd, intervalMs = 1000) {
+  let seq = 0;
+  let latest = null;
+  let missedSamples = 0;
+  let errorCount = 0;
+  let lastStartMs = 0;
+
+  const sample = () => {
+    const startedMs = Date.now();
+    if (lastStartMs > 0) {
+      const driftMs = startedMs - lastStartMs - intervalMs;
+      if (driftMs > intervalMs * 0.8) {
+        missedSamples += Math.max(1, Math.floor(driftMs / intervalMs));
+      }
+    }
+    lastStartMs = startedMs;
+    const sampledAt = new Date(startedMs).toISOString();
+    try {
+      const cwd = getCwd();
+      const metrics = readSystemMetrics(cwd);
+      const finishedMs = Date.now();
+      seq += 1;
+      latest = {
+        ...metrics,
+        sample: {
+          seq,
+          cwd,
+          intervalMs,
+          sampledAt,
+          collectedAt: new Date(finishedMs).toISOString(),
+          collectMs: finishedMs - startedMs,
+          ageMs: 0,
+          missedSamples,
+          errorCount,
+          lastError: null,
+        },
+      };
+    } catch (err) {
+      const finishedMs = Date.now();
+      seq += 1;
+      errorCount += 1;
+      latest = {
+        hostname: os.hostname(),
+        platform: `${os.platform()} ${os.arch()}`,
+        nodeVersion: process.version,
+        uptimeSeconds: Math.round(os.uptime()),
+        cpu: { count: os.cpus()?.length || 1, model: "unknown", source: "error", loadAvg: { "1m": 0, "5m": 0, "15m": 0 }, usagePct: 0 },
+        memory: { source: "error", totalBytes: os.totalmem(), freeBytes: os.freemem(), usedBytes: 0, usagePct: 0 },
+        gpu: { present: false, source: "error", count: 0, devices: [], utilizationPct: 0, memory: { kind: "unknown", totalBytes: null, usedBytes: 0, usagePct: 0 } },
+        disk: { source: "error", totalBytes: null, usedBytes: null, freeBytes: null, availableBytes: null, usagePct: 0, projectBytes: 0, researchBytes: 0, checkpointsBytes: 0, archiveBytes: 0 },
+        compute: inferComputeDevice("cpu"),
+        sample: {
+          seq,
+          cwd: getCwd(),
+          intervalMs,
+          sampledAt,
+          collectedAt: new Date(finishedMs).toISOString(),
+          collectMs: finishedMs - startedMs,
+          ageMs: 0,
+          missedSamples,
+          errorCount,
+          lastError: err.message,
+        },
+      };
+    }
+  };
+
+  sample();
+  const timer = setInterval(sample, intervalMs);
+  if (typeof timer.unref === "function") timer.unref();
+
+  return {
+    sampleNow: sample,
+    getSnapshot() {
+      if (!latest) sample();
+      const sampleAtMs = Date.parse(latest?.sample?.sampledAt || "");
+      const ageMs = Number.isFinite(sampleAtMs) ? Math.max(0, Date.now() - sampleAtMs) : null;
+      return {
+        ...latest,
+        sample: {
+          ...latest.sample,
+          ageMs,
+        },
+      };
+    },
+    stop() {
+      clearInterval(timer);
     },
   };
 }
@@ -2367,6 +3593,152 @@ function readThreadTail(cwd, lineCount = 24) {
   if (!text) return { path: threadPath, lines: [], hasContent: false };
   const lines = text.split("\n").filter(Boolean).slice(-lineCount);
   return { path: threadPath, lines, hasContent: lines.length > 0 };
+}
+
+function markdownTitle(text, fallback = "Untitled") {
+  const heading = String(text || "").match(/^#\s+(.+)$/m);
+  if (heading) return heading[1].trim();
+  const first = String(text || "").split("\n").map((line) => line.trim()).find(Boolean);
+  return first ? first.replace(/^[-*]\s+/, "").replace(/^#+\s*/, "").trim() : fallback;
+}
+
+function markdownFirstParagraph(text) {
+  const lines = String(text || "").split("\n").map((line) => line.trim());
+  const useful = lines.filter((line) => line && !line.startsWith("#") && !line.startsWith("```"));
+  return useful.slice(0, 3).join(" ").slice(0, 320);
+}
+
+function listMarkdownSummaries(dir, limit = 12) {
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md") && !entry.name.startsWith("."))
+    .map((entry) => {
+      const file = path.join(dir, entry.name);
+      try {
+        const stat = fs.statSync(file);
+        const text = readTextIfExists(file);
+        return {
+          file,
+          name: entry.name,
+          title: markdownTitle(text, entry.name.replace(/\.md$/, "")),
+          status: parseMarkdownSection(text, "Status") || parseMarkdownSection(text, "状态") || "",
+          hypothesis: parseMarkdownSection(text, "Hypothesis") || parseMarkdownSection(text, "假设") || "",
+          evidence: parseMarkdownSection(text, "Evidence") || parseMarkdownSection(text, "证据") || "",
+          decision: parseMarkdownSection(text, "Decision") || parseMarkdownSection(text, "结论") || "",
+          next: parseMarkdownSection(text, "Next") || parseMarkdownSection(text, "下一步") || "",
+          summary: markdownFirstParagraph(text),
+          mtime: stat.mtime.toISOString(),
+          mtimeMs: stat.mtimeMs,
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+    .slice(0, limit)
+    .map(({ mtimeMs, ...row }) => row);
+}
+
+function readJsonlRows(file, limit = 20) {
+  if (!fs.existsSync(file)) return [];
+  return readTextIfExists(file)
+    .split("\n")
+    .filter(Boolean)
+    .slice(-limit)
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return { text: line };
+      }
+    });
+}
+
+function listSampleArtifacts(cwd, limit = 12) {
+  const samplesDir = path.join(cwd, ".researchloop", "scratchpad", "samples");
+  if (!fs.existsSync(samplesDir)) return [];
+  const rows = [];
+  for (const entry of fs.readdirSync(samplesDir, { withFileTypes: true })) {
+    const file = path.join(samplesDir, entry.name);
+    if (entry.isFile() && entry.name.endsWith(".jsonl")) {
+      for (const row of readJsonlRows(file, limit)) {
+        rows.push({ source: entry.name, ...row });
+      }
+    } else if (entry.isDirectory()) {
+      const images = fs.readdirSync(file, { withFileTypes: true })
+        .filter((child) => child.isFile() && /\.(png|jpg|jpeg|webp)$/i.test(child.name))
+        .map((child) => path.join(file, child.name))
+        .slice(0, limit);
+      if (images.length) rows.push({ source: entry.name, images });
+    }
+  }
+  return rows.slice(-limit);
+}
+
+function listCheckpointArtifacts(cwd, limit = 8) {
+  const dirs = [
+    path.join(cwd, ".researchloop", "scratchpad", "checkpoints"),
+    path.join(cwd, "checkpoints"),
+  ];
+  const rows = [];
+  for (const dir of dirs) {
+    if (!fs.existsSync(dir)) continue;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const file = path.join(dir, entry.name);
+      try {
+        const stat = fs.statSync(file);
+        if (entry.isFile() && entry.name.endsWith(".json")) {
+          rows.push({ file, name: entry.name, sizeBytes: stat.size, mtime: stat.mtime.toISOString(), ...JSON.parse(readTextIfExists(file)) });
+        } else if (entry.isFile() && !entry.name.startsWith(".")) {
+          rows.push({ file, name: entry.name, sizeBytes: stat.size, mtime: stat.mtime.toISOString() });
+        }
+      } catch {
+        // Ignore malformed sidecar files.
+      }
+    }
+  }
+  return rows.sort((a, b) => String(b.mtime || "").localeCompare(String(a.mtime || ""))).slice(0, limit);
+}
+
+function readResearchArtifacts(cwd) {
+  const scratch = path.join(cwd, ".researchloop", "scratchpad");
+  const readScratch = (name) => {
+    const file = path.join(scratch, name);
+    const text = readTextPrefix(file, 16_000)
+      .replace(/[^\S\r\n\t]+/g, " ")
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ");
+    let sizeBytes = 0;
+    let mtime = null;
+    try {
+      const stat = fs.statSync(file);
+      sizeBytes = stat.size;
+      mtime = stat.mtime.toISOString();
+    } catch {
+      // Missing scratch files are expected before the first report is generated.
+    }
+    return {
+      file,
+      text,
+      hasContent: sizeBytes > 0 || Boolean(text.trim()),
+      sizeBytes,
+      mtime,
+      truncated: sizeBytes > Buffer.byteLength(text, "utf8"),
+    };
+  };
+  return {
+    picklist: readScratch("picklist.md"),
+    memory: readScratch("memory.md"),
+    audits: readScratch("audits.md"),
+    performanceAnalysis: readScratch("performance-analysis.md"),
+    dashboardReport: readScratch("dashboard-report.md"),
+    portfolioReport: readScratch("portfolio-report.md"),
+    ideas: listMarkdownSummaries(path.join(scratch, "ideas"), 16),
+    papers: listMarkdownSummaries(path.join(scratch, "papers"), 12),
+    notebook: listMarkdownSummaries(path.join(scratch, "notebook"), 6),
+    samples: listSampleArtifacts(cwd, 12),
+    checkpoints: listCheckpointArtifacts(cwd, 8),
+  };
 }
 
 function readLatestLogTail(cwd, runs, lineCount = 30) {
@@ -2390,14 +3762,8 @@ function detectActiveRun(cwd, runs, logTail) {
   if (!latest) return { active: false };
   const inFlightStatuses = new Set(["running", "in_progress", "queued"]);
   const statusActive = inFlightStatuses.has(String(latest.status || "").toLowerCase());
-  let recentlyTouched = false;
-  if (logTail?.modifiedAt) {
-    const mtime = new Date(logTail.modifiedAt).getTime();
-    if (Number.isFinite(mtime)) {
-      recentlyTouched = Date.now() - mtime < 60_000;
-    }
-  }
-  if (!statusActive && !recentlyTouched) return { active: false, latestId: latest.id };
+  const logBelongsToLatest = logTail?.runId === latest.id;
+  if (!statusActive) return { active: false, latestId: latest.id };
   return {
     active: true,
     latestId: latest.id,
@@ -2406,13 +3772,1335 @@ function detectActiveRun(cwd, runs, logTail) {
     agent: latest.agent || "",
     startedAt: latest.started_at || latest.timestamp || null,
     logPath: latest.log || "",
-    logModifiedAt: logTail?.modifiedAt || null,
-    reason: statusActive ? "status" : "log_recent",
+    logModifiedAt: logBelongsToLatest ? logTail?.modifiedAt || null : null,
+    reason: "status",
     est_cost_usd: latest.est_cost_usd ?? null,
   };
 }
 
-function buildDashboardState(cwd) {
+function dashboardConfigPath(cwd) {
+  return path.join(cwd, ".researchloop", "dashboard-config.json");
+}
+
+function readDashboardConfig(cwd) {
+  const file = dashboardConfigPath(cwd);
+  if (!fs.existsSync(file)) {
+    return {};
+  }
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function writeDashboardConfig(cwd, config) {
+  const file = dashboardConfigPath(cwd);
+  ensureDir(path.dirname(file));
+  const current = readDashboardConfig(cwd);
+  const next = {
+    ...current,
+    ...config,
+    updated_at: new Date().toISOString(),
+  };
+  fs.writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`);
+  return next;
+}
+
+function hasOwn(obj, key) {
+  return Object.prototype.hasOwnProperty.call(obj || {}, key);
+}
+
+function normalizeDashboardConfig(body, includeDefaults = false) {
+  const out = {};
+  if (includeDefaults || hasOwn(body, "runner")) {
+    out.runner = String(body.runner || "python3").trim() || "python3";
+  }
+  if (includeDefaults || hasOwn(body, "entry")) {
+    out.entry = String(body.entry || "").trim();
+  }
+  if (includeDefaults || hasOwn(body, "baselineArgs")) {
+    out.baselineArgs = String(body.baselineArgs || "").trim();
+  }
+  if (includeDefaults || hasOwn(body, "experimentArgs")) {
+    out.experimentArgs = String(body.experimentArgs || "").trim();
+  }
+  if (includeDefaults || hasOwn(body, "metric")) {
+    out.metric = String(body.metric || "").trim();
+  }
+  if (includeDefaults || hasOwn(body, "regex")) {
+    out.regex = String(body.regex || "").trim();
+  }
+  if (includeDefaults || hasOwn(body, "timeout")) {
+    out.timeout = String(body.timeout || "").trim();
+  }
+  if (includeDefaults || hasOwn(body, "device")) {
+    out.device = String(body.device || "auto").trim() || "auto";
+  }
+  if (out.runner === "cuda" && (!out.device || out.device === "auto")) {
+    out.device = "cuda";
+  }
+  for (const key of [
+    "model",
+    "dataset",
+    "configFile",
+    "epochs",
+    "batchSize",
+    "learningRate",
+    "weightDecay",
+    "seed",
+    "trainingTaskType",
+    "optimizer",
+    "resolvedOptimizer",
+    "advancedOptimizer",
+    "optimizerLearningRate",
+    "optimizerWeightDecay",
+    "optimizerBetas",
+    "optimizerEps",
+    "optimizerMomentum",
+    "scheduler",
+    "resolvedScheduler",
+    "advancedScheduler",
+    "schedulerWarmupSteps",
+    "schedulerTotalSteps",
+    "schedulerMinLr",
+    "schedulerStepSize",
+    "schedulerGamma",
+    "optimizerRecommendation",
+    "templateArgs",
+    "systemScheduler",
+    "metricProfile",
+    "precision",
+    "perfMetrics",
+    "tags",
+    "notes",
+    "cudaVisibleDevices",
+    "appendTemplateArgs",
+    "buildCommand",
+    "benchmarkMode",
+    "benchmarkCommand",
+    "benchmarkRepeat",
+    "benchmarkMinTime",
+    "profileTool",
+    "profileCommand",
+    "profileArgs",
+    "compilerCommand",
+    "compilerFlags",
+    "sweepName",
+    "sweepTemplate",
+    "sweepGrid",
+	    "batchSweepSpec",
+	    "batchCommandTemplate",
+	    "batchParamPreset",
+	    "batchSelectedParams",
+	    "batchParamGrid",
+	    "batchMaxRuns",
+	    "batchMaxRetries",
+	    "batchQueueId",
+    "allowLocalPerf",
+    "direction",
+  ]) {
+    if (includeDefaults || hasOwn(body, key)) {
+      out[key] = String(body[key] || "").trim();
+    }
+  }
+  return out;
+}
+
+function expandUserPath(input) {
+  const text = String(input || "").trim();
+  if (!text) return "";
+  if (text === "~") return os.homedir();
+  if (text.startsWith("~/")) return path.join(os.homedir(), text.slice(2));
+  return text;
+}
+
+function shellQuote(value) {
+  const text = String(value || "");
+  if (/^[A-Za-z0-9_./:=@%+-]+$/.test(text)) return text;
+  return `'${text.replaceAll("'", "'\\''")}'`;
+}
+
+function commandPath(name) {
+  const executable = String(name || "").trim();
+  if (!executable || /[^\w.+/-]/.test(executable)) return "";
+  try {
+    const out = execSync(`command -v ${shellQuote(executable)}`, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 1000,
+    }).trim();
+    return out.split(/\r?\n/)[0] || "";
+  } catch {
+    return "";
+  }
+}
+
+function readPerformanceToolStatus() {
+  const toolNames = [
+    "nsys",
+    "ncu",
+    "nvcc",
+    "nvidia-smi",
+    "cmake",
+    "make",
+    "ninja",
+    "perf",
+    "clang",
+    "gcc",
+    "g++",
+    "python3",
+    "time",
+  ];
+  const tools = {};
+  for (const name of toolNames) {
+    const resolved = commandPath(name);
+    tools[name] = { present: Boolean(resolved), path: resolved || null };
+  }
+  tools["google-benchmark"] = {
+    present: null,
+    path: null,
+    note: "Google Benchmark 是链接到 C++ benchmark 二进制里的库；请在面板里填写已编译好的 benchmark 命令。",
+  };
+  const apps = detectLocalDeveloperApps();
+  for (const [name, info] of Object.entries(apps)) {
+    tools[name] = info;
+  }
+  return tools;
+}
+
+function detectLocalDeveloperApps() {
+  const apps = {};
+  const home = os.homedir();
+  const macAppCandidates = {
+    clion: [
+      "/Applications/CLion.app",
+      path.join(home, "Applications", "CLion.app"),
+    ],
+    vscode: [
+      "/Applications/Visual Studio Code.app",
+      path.join(home, "Applications", "Visual Studio Code.app"),
+    ],
+  };
+  for (const [name, candidates] of Object.entries(macAppCandidates)) {
+    const cli = commandPath(name === "vscode" ? "code" : name);
+    const appPath = candidates.find((candidate) => fs.existsSync(candidate)) || "";
+    apps[name] = {
+      present: Boolean(cli || appPath),
+      path: cli || appPath || null,
+      kind: appPath ? "mac-app" : (cli ? "cli" : "missing"),
+    };
+  }
+  if (process.platform === "darwin" && !apps.clion.present) {
+    try {
+      const out = execSync("mdfind 'kMDItemCFBundleIdentifier == \"com.jetbrains.CLion\"' | head -n 1", {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 1200,
+      }).trim();
+      if (out) {
+        apps.clion = { present: true, path: out, kind: "mac-app" };
+      }
+    } catch {
+      // Spotlight may be unavailable; command/known paths are enough.
+    }
+  }
+  if (process.platform === "darwin" && !apps.vscode.present) {
+    try {
+      const out = execSync("mdfind 'kMDItemCFBundleIdentifier == \"com.microsoft.VSCode\"' | head -n 1", {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 1200,
+      }).trim();
+      if (out) {
+        apps.vscode = { present: true, path: out, kind: "mac-app" };
+      }
+    } catch {
+      // Spotlight may be unavailable; command/known paths are enough.
+    }
+  }
+  return apps;
+}
+
+function listProjectFiles(cwd, maxDepth = 4, maxEntries = 3000) {
+  const root = path.resolve(cwd || process.cwd());
+  const skip = new Set([".git", ".researchloop", "node_modules", ".venv", "venv", "__pycache__", ".pytest_cache"]);
+  const files = [];
+  const walk = (dir, depth) => {
+    if (depth > maxDepth || files.length >= maxEntries) return;
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (files.length >= maxEntries) return;
+      if (skip.has(entry.name)) continue;
+      const full = path.join(dir, entry.name);
+      const rel = path.relative(root, full);
+      if (entry.isDirectory()) {
+        walk(full, depth + 1);
+      } else if (entry.isFile()) {
+        let mode = 0;
+        try {
+          mode = fs.statSync(full).mode;
+        } catch {
+          mode = 0;
+        }
+        files.push({ path: rel, full, name: entry.name, executable: Boolean(mode & 0o111) });
+      }
+    }
+  };
+  walk(root, 0);
+  return files;
+}
+
+function firstExistingProjectFile(cwd, names) {
+  for (const name of names) {
+    const full = path.join(cwd, name);
+    if (fs.existsSync(full)) return name;
+  }
+  return "";
+}
+
+function readJsonIfExists(file) {
+  try {
+    if (!fs.existsSync(file)) return null;
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function readTextPrefix(file, maxBytes = 64_000) {
+  try {
+    const fd = fs.openSync(file, "r");
+    try {
+      const buffer = Buffer.alloc(maxBytes);
+      const bytesRead = fs.readSync(fd, buffer, 0, maxBytes, 0);
+      return buffer.subarray(0, bytesRead).toString("utf8");
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return "";
+  }
+}
+
+function chooseCMakeBuildCommand(cwd) {
+  const presets = readJsonIfExists(path.join(cwd, "CMakePresets.json"));
+  const buildPresets = Array.isArray(presets?.buildPresets) ? presets.buildPresets : [];
+  const buildPreset = buildPresets.find((preset) => /release|relwithdebinfo/i.test(preset.name || ""))
+    || buildPresets.find((preset) => /default/i.test(preset.name || ""))
+    || buildPresets[0];
+  if (buildPreset?.name) {
+    return `cmake --build --preset ${shellQuote(buildPreset.name)} --parallel`;
+  }
+  const buildDirs = ["build", "cmake-build-release", "cmake-build-debug", "out/build"]
+    .filter((dir) => fs.existsSync(path.join(cwd, dir)));
+  if (buildDirs.length) {
+    return `cmake --build ${shellQuote(buildDirs[0])} --parallel`;
+  }
+  return "cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --parallel";
+}
+
+function chooseBenchmarkCandidate(cwd, files, project) {
+  const executable = files.find((file) => file.executable && /(^|[/_-])(bench|benchmark|perf)([/_.-]|$)/i.test(file.path));
+  if (executable) return `./${executable.path}`;
+  const pythonBench = files
+    .filter((file) => /\.py$/i.test(file.name) && !isEmptyPythonPackageInit(file))
+    .map((file) => ({ file, score: benchmarkCandidateScore(file) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.file.path.localeCompare(b.file.path))[0]?.file;
+  if (pythonBench) return `python3 ${shellQuote(pythonBench.path)}`;
+  const packageJson = readJsonIfExists(path.join(cwd, "package.json"));
+  const scripts = packageJson?.scripts && typeof packageJson.scripts === "object" ? packageJson.scripts : {};
+  for (const scriptName of ["benchmark", "bench", "perf", "profile"]) {
+    if (scripts[scriptName]) return `npm run ${scriptName}`;
+  }
+  if (project.hasCMake && fs.existsSync(path.join(cwd, "build", "CTestTestfile.cmake"))) {
+    return "ctest --test-dir build -R 'bench|benchmark|perf' --output-on-failure";
+  }
+  const entry = firstExistingProjectFile(cwd, ["bench.py", "benchmark.py", "perf.py", "test_benchmark.py", "train.py"]);
+  if (entry) return `python3 ${shellQuote(entry)}`;
+  return "";
+}
+
+function isEmptyPythonPackageInit(file) {
+  if (!file || file.name !== "__init__.py") return false;
+  return !readTextPrefix(file.full, 4_000).trim();
+}
+
+function benchmarkCandidateScore(file) {
+  const base = String(file.name || "").toLowerCase();
+  const rel = String(file.path || "").toLowerCase();
+  if (base === "__init__.py") return 0;
+  let score = 0;
+  if (/^(run_)?benchmark(s)?\.py$/.test(base)) score += 110;
+  else if (/^(run_)?bench\.py$/.test(base)) score += 95;
+  else if (/^(run_)?perf(ormance)?\.py$/.test(base)) score += 85;
+  else if (/^test_.*benchmark.*\.py$/.test(base)) score += 60;
+  else if (/(^|[/_-])(bench|benchmark|perf)([/_.-]|$)/i.test(rel)) score += 45;
+  else if (/run_.*(bench|benchmark|perf|ops).*\.py$/i.test(base)) score += 35;
+  const text = readTextPrefix(file.full, 40_000);
+  if (/if\s+__name__\s*==\s*["']__main__["']/.test(text)) score += 30;
+  if (/argparse|ArgumentParser|typer\.|click\./i.test(text)) score += 10;
+  if (/print\s*\(|json\.dumps|benchmark/i.test(text)) score += 5;
+  return score;
+}
+
+function detectBenchmarkMode(benchmarkCommand, files, languages) {
+  const command = String(benchmarkCommand || "");
+  const hasGoogleBenchmarkMarkers = files.some((file) =>
+    /\.(cc|cpp|cxx|cu|h|hpp|txt|cmake)$/i.test(file.name)
+    && /benchmark\/benchmark\.h|benchmark::/i.test(readTextPrefix(file.full, 60_000))
+  );
+  if (/--benchmark_/.test(command) || hasGoogleBenchmarkMarkers) return "google-benchmark";
+  if (languages.includes("cuda") || languages.includes("triton")) return "cuda-kernel";
+  return "generic";
+}
+
+function chooseSweepSpecCandidate(cwd, files) {
+  const scored = files
+    .filter((file) => /\.(ya?ml|json)$/i.test(file.name) && /sweep|grid|search/i.test(file.path))
+    .map((file) => {
+      let score = /sweep/i.test(file.name) ? 80 : 30;
+      if (/m1|mlx|operator|ops|benchmark/i.test(file.name)) score += 15;
+      if (/\.researchloop/i.test(file.path)) score -= 25;
+      try {
+        const spec = parseSweepSpec(fs.readFileSync(file.full, "utf8"));
+        if (spec.command_template || spec.command) score += 25;
+        if (spec.metric) score += 15;
+      } catch {
+        score -= 40;
+      }
+      return { file, score };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.file.path.localeCompare(b.file.path));
+  return scored[0]?.file || null;
+}
+
+function readSweepSpecCandidate(file) {
+  if (!file) return null;
+  try {
+    const text = fs.readFileSync(file.full, "utf8");
+    const spec = parseSweepSpec(text);
+    return {
+      path: file.path,
+      text,
+      spec,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function chooseProfilerTool(tools, languages) {
+  const hasCuda = languages.includes("cuda");
+  if (hasCuda && tools.nsys?.present) return "nsys";
+  if (hasCuda && tools.ncu?.present) return "ncu";
+  if (process.platform === "linux" && tools.perf?.present) return "perf";
+  return "time";
+}
+
+function chooseCompilerCommand(cwd, files, project, tools, buildCommand) {
+  const firstCu = files.find((file) => /\.cu$/i.test(file.name));
+  if (firstCu && tools.nvcc?.present) {
+    return `mkdir -p build && nvcc -O3 -lineinfo -Xptxas -v ${shellQuote(firstCu.path)} -o build/autoresearch-kernel-probe`;
+  }
+  if (project.hasCMake && buildCommand) {
+    return `${buildCommand} --verbose`;
+  }
+  const firstCpp = files.find((file) => /\.(cc|cpp|cxx)$/i.test(file.name));
+  if (firstCpp && tools.clang?.present) {
+    return `mkdir -p build && clang++ -O3 -Rpass=loop-vectorize -Rpass-missed=loop-vectorize ${shellQuote(firstCpp.path)} -o build/autoresearch-compiler-probe`;
+  }
+  return "";
+}
+
+function buildSweepDefaults(benchmarkCommand, languages) {
+  if (!benchmarkCommand) {
+    return { template: "", grid: "" };
+  }
+  if (languages.includes("cuda")) {
+    return {
+      template: `${benchmarkCommand} --block-size {block_size} --num-warps {num_warps}`,
+      grid: JSON.stringify({ block_size: [128, 256], num_warps: [4, 8] }),
+    };
+  }
+  if (languages.includes("python")) {
+    return {
+      template: `${benchmarkCommand} --batch-size {batch_size} --dtype {dtype}`,
+      grid: JSON.stringify({ batch_size: [1, 4, 8], dtype: ["fp32", "fp16"] }),
+    };
+  }
+  return {
+    template: `${benchmarkCommand} --threads {threads}`,
+    grid: JSON.stringify({ threads: [1, 2, 4, 8] }),
+  };
+}
+
+function buildDashboardBatchSpecText({ name, metric, direction, commandTemplate, grid, maxRuns, maxRetries, timeoutSeconds }) {
+  const lines = [
+    "version: 1",
+    `name: ${sanitizeIdPart(name || "dashboard-batch-sweep", "dashboard-batch-sweep")}`,
+    `metric: ${metric || "latency_ms"}`,
+    `direction: ${direction || "lower"}`,
+    `command_template: ${JSON.stringify(commandTemplate || "")}`,
+    `timeout_seconds: ${Number(timeoutSeconds || 600) || 600}`,
+    "retry:",
+    `  max_retries: ${Math.max(0, Number(maxRetries || 0) || 0)}`,
+    "budget:",
+    `  max_runs: ${Math.max(1, Number(maxRuns || 24) || 24)}`,
+    "grid:",
+  ];
+  for (const [key, values] of Object.entries(grid || {})) {
+    if (!Array.isArray(values) || !values.length) continue;
+    lines.push(`  ${key}: ${JSON.stringify(values)}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function buildDefaultBatchGrid(languages, benchmarkCommand, files) {
+  const command = String(benchmarkCommand || "");
+  if (/run_m1_safe_ops\.py/.test(command) || files.some((file) => file.name === "run_m1_safe_ops.py")) {
+    return {
+      op: ["matmul_256", "matmul_512", "layernorm_small", "softmax_small"],
+      backend: ["mlx_cpu", "mlx_gpu", "mlx_gpu_compile"],
+    };
+  }
+  if (/run_benchmark\.py/.test(command) && files.some((file) => /mlx_benchmark/.test(file.path))) {
+    return {
+      include_mlx_gpu: ["True"],
+      include_mlx_gpu_compile: ["True", "False"],
+      include_mlx_cpu: ["True", "False"],
+      include_mps: ["True", "False"],
+      include_cpu: ["False"],
+    };
+  }
+  if (languages.includes("cuda") || languages.includes("triton")) {
+    return {
+      block_size: [128, 256],
+      num_warps: [4, 8],
+      dtype: ["fp16", "bf16"],
+    };
+  }
+  if (languages.includes("python")) {
+    return {
+      batch_size: [1, 4, 8],
+      dtype: ["fp32", "fp16"],
+      seed: [1, 2],
+    };
+  }
+  return { threads: [1, 2, 4, 8] };
+}
+
+function appendGridParamsToCommandTemplate(commandTemplate, grid) {
+  let out = String(commandTemplate || "").trim();
+  for (const key of Object.keys(grid || {})) {
+    if (out.includes(`{${key}}`)) continue;
+    out = `${out} --${key.replace(/_/g, "-")} {${key}}`.trim();
+  }
+  return out;
+}
+
+function detectProjectEnvironment(cwd, systemSnapshot = null, force = false) {
+  const key = path.resolve(cwd || process.cwd());
+  const now = Date.now();
+  const cached = systemMetricsCache.envByCwd.get(key);
+  if (!force && cached && now - cached.ts < 10_000) return cached.data;
+
+  const files = listProjectFiles(key);
+  const fileNames = new Set(files.map((file) => file.path));
+  const languages = [];
+  const addLanguage = (name, present) => {
+    if (present && !languages.includes(name)) languages.push(name);
+  };
+  addLanguage("cuda", files.some((file) => /\.(cu|cuh)$/i.test(file.name)));
+  addLanguage("c++", files.some((file) => /\.(cc|cpp|cxx|hpp|hxx)$/i.test(file.name)));
+  addLanguage("c", files.some((file) => /\.(c|h)$/i.test(file.name)));
+  addLanguage("python", files.some((file) => /\.py$/i.test(file.name)) || fileNames.has("pyproject.toml") || fileNames.has("requirements.txt"));
+  addLanguage("triton", files.some((file) => /\.py$/i.test(file.name) && /triton/i.test(readTextPrefix(file.full, 20_000))));
+  addLanguage("node", fileNames.has("package.json"));
+
+  const hasCMake = fileNames.has("CMakeLists.txt");
+  const hasMakefile = fileNames.has("Makefile") || fileNames.has("makefile");
+  const hasPyProject = fileNames.has("pyproject.toml") || fileNames.has("requirements.txt") || fileNames.has("setup.py");
+  const hasCompileCommands = files.some((file) => file.name === "compile_commands.json");
+  const tools = readPerformanceToolStatus();
+  const system = systemSnapshot || readSystemMetrics(key);
+  const buildCommand = hasCMake
+    ? chooseCMakeBuildCommand(key)
+    : hasMakefile
+      ? "make -j"
+      : "";
+  const benchmarkCommand = chooseBenchmarkCandidate(key, files, { hasCMake, hasMakefile, hasPyProject });
+  const benchmarkMode = detectBenchmarkMode(benchmarkCommand, files, languages);
+  const metric = benchmarkMode === "google-benchmark" ? "real_time" : "latency_ms";
+  const profiler = chooseProfilerTool(tools, languages);
+  const compilerCommand = chooseCompilerCommand(key, files, { hasCMake }, tools, buildCommand);
+  const sweepDefaults = buildSweepDefaults(benchmarkCommand, languages);
+  const sweepCandidate = readSweepSpecCandidate(chooseSweepSpecCandidate(key, files));
+  const batchGrid = buildDefaultBatchGrid(languages, benchmarkCommand, files);
+  const batchCommandTemplate = sweepCandidate?.spec?.command_template || sweepCandidate?.spec?.command || appendGridParamsToCommandTemplate(sweepDefaults.template || benchmarkCommand, batchGrid);
+  const batchMetric = sweepCandidate?.spec?.metric || metric;
+  const batchDirection = sweepCandidate?.spec?.direction || "lower";
+  const batchMaxRuns = sweepCandidate?.spec?.budget?.max_runs || sweepCandidate?.spec?.max_runs || 24;
+  const batchMaxRetries = sweepCandidate?.spec?.retry?.max_retries ?? 1;
+  const batchSweepSpec = sweepCandidate?.text || buildDashboardBatchSpecText({
+    name: sweepCandidate?.spec?.name || "auto-perf-sweep",
+    metric: batchMetric,
+    direction: batchDirection,
+    commandTemplate: batchCommandTemplate,
+    grid: batchGrid,
+    maxRuns: batchMaxRuns,
+    maxRetries: batchMaxRetries,
+    timeoutSeconds: sweepCandidate?.spec?.timeout_seconds || sweepCandidate?.spec?.timeout || 600,
+  });
+  const device = languages.includes("cuda") && tools["nvidia-smi"]?.present
+    ? "cuda"
+    : system.compute?.effective || "auto";
+  const profileArgs = profiler === "nsys" ? "--trace=cuda,nvtx,osrt"
+    : profiler === "ncu" ? "--set full"
+      : "";
+  const markers = [
+    hasCMake ? "CMakeLists.txt" : "",
+    hasMakefile ? "Makefile" : "",
+    hasPyProject ? "Python env" : "",
+    hasCompileCommands ? "compile_commands.json" : "",
+    languages.includes("cuda") ? "CUDA sources" : "",
+    languages.includes("triton") ? "Triton imports" : "",
+  ].filter(Boolean);
+  const warnings = [];
+  if (languages.includes("cuda") && !tools.nvcc?.present) warnings.push("检测到 CUDA 源码，但本机没有 nvcc。");
+  if (languages.includes("cuda") && !tools["nvidia-smi"]?.present) warnings.push("检测到 CUDA 项目，但本机没有 NVIDIA GPU/CUDA 运行环境。");
+  if (!benchmarkCommand) warnings.push("没有找到明确的 benchmark 入口，需要手动填写 Benchmark 命令。");
+  if (sweepCandidate?.path) warnings.push(`已发现参数扫描配置：${sweepCandidate.path}`);
+  if (profiler === "time") warnings.push("未检测到 Nsight/perf，已回退到系统 time。");
+
+  const recommendedConfig = {
+    runner: languages.includes("cuda") || languages.includes("python") ? "python3" : "custom",
+    device,
+    metric: batchMetric || metric,
+    direction: batchDirection || "lower",
+    buildCommand,
+    benchmarkMode,
+    benchmarkCommand,
+    benchmarkRepeat: benchmarkMode === "google-benchmark" ? "5" : "",
+    benchmarkMinTime: benchmarkMode === "google-benchmark" ? "0.5s" : "",
+    profileTool: profiler,
+    profileArgs,
+    profileCommand: benchmarkCommand,
+    compilerCommand,
+    compilerFlags: "",
+    sweepName: sweepCandidate?.spec?.name || "auto-perf-sweep",
+    sweepTemplate: batchCommandTemplate,
+    sweepGrid: sweepCandidate?.spec?.grid ? JSON.stringify(sweepCandidate.spec.grid) : sweepDefaults.grid,
+    batchSweepSpec,
+    batchCommandTemplate,
+    batchParamGrid: JSON.stringify(batchGrid),
+    batchMaxRuns: String(batchMaxRuns || ""),
+    batchMaxRetries: String(batchMaxRetries ?? ""),
+    perfMetrics: "latency_ms,throughput,tflops,gbps,real_time",
+    allowLocalPerf: "true",
+  };
+  const data = {
+    generatedAt: new Date().toISOString(),
+    project: {
+      path: key,
+      languages,
+      markers,
+      buildSystem: hasCMake ? "cmake" : hasMakefile ? "make" : hasPyProject ? "python" : fileNames.has("package.json") ? "node" : "unknown",
+      filesScanned: files.length,
+    },
+    hardware: {
+      platform: system.platform,
+      cpu: system.cpu,
+      memory: system.memory,
+      gpu: system.gpu,
+      compute: system.compute,
+    },
+    tools,
+    recommendations: recommendedConfig,
+    warnings,
+  };
+  systemMetricsCache.envByCwd.set(key, { ts: now, data });
+  return data;
+}
+
+function formatBytesCompact(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return "unknown";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let scaled = n;
+  let unit = 0;
+  while (scaled >= 1024 && unit < units.length - 1) {
+    scaled /= 1024;
+    unit += 1;
+  }
+  const digits = unit === 0 || scaled >= 100 ? 0 : 1;
+  return `${scaled.toFixed(digits).replace(/\.0$/, "")} ${units[unit]}`;
+}
+
+function probePythonPackages(cwd, python = "python3") {
+  const pythonCmd = String(python || "python3").trim() || "python3";
+  const version = runCapture(`${shellQuote(pythonCmd)} --version 2>&1`, cwd);
+  if (!version.ok) {
+    return {
+      executable: pythonCmd,
+      ok: false,
+      version: null,
+      packages: [],
+      error: version.output || "python not found",
+    };
+  }
+
+  const probeScript = `
+import importlib.util
+import json
+try:
+    from importlib import metadata
+except Exception:
+    metadata = None
+
+packages = [
+    {"name": "numpy", "module": "numpy", "dist": "numpy", "role": "local numeric benchmark"},
+    {"name": "torch", "module": "torch", "dist": "torch", "role": "PyTorch baseline, MPS, CUDA"},
+    {"name": "triton", "module": "triton", "dist": "triton", "role": "Triton operator kernels"},
+    {"name": "transformers", "module": "transformers", "dist": "transformers", "role": "LLM model loading"},
+    {"name": "vllm", "module": "vllm", "dist": "vllm", "role": "remote NVIDIA LLM serving"},
+    {"name": "sglang", "module": "sglang", "dist": "sglang", "role": "remote NVIDIA LLM serving"},
+    {"name": "mlx", "module": "mlx", "dist": "mlx", "role": "Apple Silicon local LLM"},
+    {"name": "llama_cpp", "module": "llama_cpp", "dist": "llama-cpp-python", "role": "llama.cpp Python binding"},
+]
+
+out = []
+for item in packages:
+    present = False
+    error = None
+    try:
+        present = importlib.util.find_spec(item["module"]) is not None
+    except Exception as exc:
+        error = str(exc)
+    version = None
+    if present and metadata is not None:
+        try:
+            version = metadata.version(item["dist"])
+        except Exception:
+            version = None
+    details = {}
+    if present and item["name"] == "torch":
+        try:
+            import torch
+            details["cuda_available"] = bool(torch.cuda.is_available())
+            details["cuda_version"] = torch.version.cuda or None
+            details["mps_available"] = bool(
+                hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
+            )
+            details["device_count"] = int(torch.cuda.device_count()) if torch.cuda.is_available() else 0
+        except Exception as exc:
+            details["import_error"] = str(exc)
+    out.append({
+        "name": item["name"],
+        "module": item["module"],
+        "role": item["role"],
+        "present": present,
+        "version": version,
+        "details": details,
+        "error": error,
+    })
+
+print(json.dumps(out, sort_keys=True))
+`.trim();
+
+  const probe = runCapture(`${shellQuote(pythonCmd)} - <<'PY'\n${probeScript}\nPY`, cwd);
+  if (!probe.ok) {
+    return {
+      executable: pythonCmd,
+      ok: false,
+      version: version.output,
+      packages: [],
+      error: probe.output || "package probe failed",
+    };
+  }
+  try {
+    return {
+      executable: pythonCmd,
+      ok: true,
+      version: version.output,
+      packages: JSON.parse(probe.output),
+      error: null,
+    };
+  } catch (err) {
+    return {
+      executable: pythonCmd,
+      ok: false,
+      version: version.output,
+      packages: [],
+      error: `package probe JSON parse failed: ${err.message}`,
+    };
+  }
+}
+
+function readRemoteGpuConfig(cwd) {
+  const file = path.join(cwd, ".researchloop", "remote-gpu.json");
+  const fromFile = readJsonIfExists(file);
+  const envHost = String(process.env.RESEARCHLOOP_REMOTE_GPU_HOST || process.env.AUTORESEARCH_REMOTE_GPU_HOST || "").trim();
+  const envUser = String(process.env.RESEARCHLOOP_REMOTE_GPU_USER || process.env.AUTORESEARCH_REMOTE_GPU_USER || "").trim();
+  const envPath = String(process.env.RESEARCHLOOP_REMOTE_GPU_PATH || process.env.AUTORESEARCH_REMOTE_GPU_PATH || "").trim();
+  return {
+    file: fs.existsSync(file) ? path.relative(cwd, file) : null,
+    configured: Boolean(fromFile?.host || envHost),
+    host: fromFile?.host || envHost || null,
+    user: fromFile?.user || envUser || null,
+    remotePath: fromFile?.remotePath || fromFile?.remote_path || envPath || null,
+  };
+}
+
+function packageByName(packages, name) {
+  return (packages || []).find((pkg) => pkg.name === name) || null;
+}
+
+function buildAiInfraReadiness({ currentEnv, detection, pythonProbe, remoteConfig }) {
+  const tools = detection.tools || {};
+  const system = detection.hardware || {};
+  const packages = pythonProbe.packages || [];
+  const torch = packageByName(packages, "torch");
+  const numpy = packageByName(packages, "numpy");
+  const hasCompiler = Boolean(tools.clang?.present || tools.gcc?.present || tools["g++"]?.present);
+  const hasBuildTool = Boolean(tools.cmake?.present || tools.make?.present || tools.ninja?.present);
+  const cudaTools = Boolean(tools.nvcc?.present && tools["nvidia-smi"]?.present);
+  const cudaPython = currentEnv.cuda_available === true || torch?.details?.cuda_available === true;
+  const mpsPython = torch?.details?.mps_available === true;
+  const profilerReady = Boolean(tools.nsys?.present || tools.ncu?.present || (process.platform === "linux" && tools.perf?.present) || tools.time?.present);
+
+  const readiness = {
+    local_python_smoke: {
+      ready: Boolean(pythonProbe.ok),
+      status: pythonProbe.ok ? "ready" : "missing",
+      evidence: pythonProbe.version || pythonProbe.error || "not detected",
+    },
+    local_python_benchmark: {
+      ready: Boolean(pythonProbe.ok),
+      status: pythonProbe.ok ? (numpy?.present ? "ready_with_numpy" : "ready_stdlib") : "missing",
+      evidence: numpy?.present ? `numpy ${numpy.version || ""}`.trim() : "stdlib benchmark path available",
+    },
+    local_cpp_benchmark: {
+      ready: hasBuildTool && hasCompiler,
+      status: hasBuildTool && hasCompiler ? "ready" : "partial",
+      evidence: [
+        tools.cmake?.present ? "cmake" : "",
+        tools.make?.present ? "make" : "",
+        tools.ninja?.present ? "ninja" : "",
+        tools.clang?.present ? "clang" : "",
+        tools.gcc?.present ? "gcc" : "",
+        tools["g++"]?.present ? "g++" : "",
+      ].filter(Boolean).join(", ") || "build tools incomplete",
+    },
+    apple_mps_path: {
+      ready: Boolean(process.platform === "darwin" && system.gpu?.present),
+      status: mpsPython ? "ready_with_torch_mps" : (process.platform === "darwin" && system.gpu?.present ? "hardware_ready_needs_framework" : "unavailable"),
+      evidence: mpsPython ? "torch.backends.mps is available" : (system.gpu?.name || "not Apple Silicon/MPS"),
+    },
+    local_cuda: {
+      ready: cudaTools && cudaPython,
+      status: cudaTools && cudaPython ? "ready" : "unavailable",
+      evidence: cudaTools
+        ? `nvcc=${tools.nvcc?.path || "present"}, nvidia-smi=${tools["nvidia-smi"]?.path || "present"}`
+        : "nvcc or nvidia-smi not detected locally",
+    },
+    profiler: {
+      ready: profilerReady,
+      status: profilerReady ? "ready" : "missing",
+      evidence: [
+        tools.nsys?.present ? "nsys" : "",
+        tools.ncu?.present ? "ncu" : "",
+        tools.perf?.present ? "perf" : "",
+        tools.time?.present ? "time" : "",
+      ].filter(Boolean).join(", ") || "no profiler fallback detected",
+    },
+    remote_cuda: {
+      ready: Boolean(remoteConfig.configured),
+      status: remoteConfig.configured ? "configured" : "not_configured",
+      evidence: remoteConfig.configured ? `${remoteConfig.user ? `${remoteConfig.user}@` : ""}${remoteConfig.host}` : "add .researchloop/remote-gpu.json when a remote NVIDIA host is available",
+    },
+  };
+
+  const aiInfra = {
+    localPythonReady: readiness.local_python_smoke.ready,
+    localCppBenchmarkReady: readiness.local_cpp_benchmark.ready,
+    appleMpsPathReady: readiness.apple_mps_path.ready,
+    cudaLocalReady: readiness.local_cuda.ready,
+    remoteCudaConfigured: readiness.remote_cuda.ready,
+    profilerReady: readiness.profiler.ready,
+    recommendedExecutionMode: readiness.local_cuda.ready
+      ? "local-cuda"
+      : readiness.remote_cuda.ready
+        ? "remote-cuda"
+        : "mac-local-python-cpp",
+  };
+
+  return { readiness, aiInfra };
+}
+
+function buildAiInfraRecommendations(report) {
+  const recs = [];
+  if (!report.aiInfra.cudaLocalReady) {
+    recs.push("Use this Mac for orchestration, Python/C++ smoke benchmarks, reports, and ledger capture; run real CUDA kernels on a remote NVIDIA Linux host.");
+  }
+  if (!report.aiInfra.remoteCudaConfigured) {
+    recs.push("Create .researchloop/remote-gpu.json later with host, user, port, remotePath, python, and projectSync when a CUDA server is available.");
+  }
+  if (!packageByName(report.python.packages, "torch")?.present) {
+    recs.push("Install PyTorch only when a local MPS or PyTorch baseline is needed; the scaffolded Python benchmark works with the standard library.");
+  }
+  if (!report.project.recommendations?.benchmarkCommand) {
+    recs.push("Generate a benchmark scaffold or add a bench.py/benchmark.py entry so runs can be captured automatically.");
+  }
+  recs.push("For benchmark claims, use warmup, repeated runs, median/p95 metrics, and record the command through autoresearch run.");
+  return recs;
+}
+
+function buildAiInfraReport(cwd, opts = {}) {
+  const python = String(opts.python || "python3").trim() || "python3";
+  const system = readSystemMetrics(cwd);
+  const detection = detectProjectEnvironment(cwd, system, true);
+  const currentEnv = captureEnv(cwd, python);
+  const pythonProbe = probePythonPackages(cwd, python);
+  const remoteConfig = readRemoteGpuConfig(cwd);
+  const { readiness, aiInfra } = buildAiInfraReadiness({
+    currentEnv,
+    detection,
+    pythonProbe,
+    remoteConfig,
+  });
+  const report = {
+    generatedAt: new Date().toISOString(),
+    cwd: path.resolve(cwd),
+    host: {
+      hostname: os.hostname(),
+      platform: `${os.type()} ${os.release()} ${os.arch()}`,
+      node: process.version,
+      cpu: system.cpu,
+      memory: system.memory,
+      gpu: system.gpu,
+      disk: system.disk,
+      compute: system.compute,
+    },
+    python: pythonProbe,
+    env: currentEnv,
+    project: detection,
+    remote: remoteConfig,
+    readiness,
+    aiInfra,
+    recommendations: [],
+  };
+  report.recommendations = buildAiInfraRecommendations(report);
+  return report;
+}
+
+function renderAiInfraText(report, files = null) {
+  const lines = [
+    "AutoResearch-AI Infra Doctor",
+    `cwd: ${report.cwd}`,
+    `mode: ${report.aiInfra.recommendedExecutionMode}`,
+    `python: ${report.python.version || report.python.error || "not found"}`,
+    `platform: ${report.host.platform}`,
+    `cpu: ${report.host.cpu?.count || "?"} cores, ${report.host.cpu?.model || "unknown"}`,
+    `memory: ${formatBytesCompact(report.host.memory?.totalBytes)} total, ${report.host.memory?.usagePct ?? "?"}% used`,
+    `gpu: ${report.host.gpu?.present ? report.host.gpu.name : "not detected"} (${report.host.gpu?.source || "none"})`,
+    "",
+    "Readiness:",
+  ];
+  for (const [key, item] of Object.entries(report.readiness || {})) {
+    lines.push(`- ${key}: ${item.status} (${item.evidence})`);
+  }
+  lines.push("");
+  lines.push("Python AI packages:");
+  for (const pkg of report.python.packages || []) {
+    lines.push(`- ${pkg.name}: ${pkg.present ? `present${pkg.version ? ` ${pkg.version}` : ""}` : "missing"} - ${pkg.role}`);
+  }
+  lines.push("");
+  lines.push("Recommendations:");
+  report.recommendations.forEach((rec, index) => lines.push(`${index + 1}. ${rec}`));
+  if (files) {
+    lines.push("");
+    lines.push(`wrote: ${files.json}, ${files.markdown}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function renderAiInfraMarkdown(report) {
+  const rows = Object.entries(report.readiness || {}).map(([key, item]) => [
+    key,
+    item.status,
+    item.evidence,
+  ]);
+  const packageRows = (report.python.packages || []).map((pkg) => [
+    pkg.name,
+    pkg.present ? "present" : "missing",
+    pkg.version || "",
+    pkg.role,
+  ]);
+  return [
+    "# AutoResearch-AI Infra Environment",
+    "",
+    `Generated: ${report.generatedAt}`,
+    `Project: \`${report.cwd}\``,
+    `Recommended mode: \`${report.aiInfra.recommendedExecutionMode}\``,
+    "",
+    "## Host",
+    "",
+    `- Platform: ${report.host.platform}`,
+    `- CPU: ${report.host.cpu?.count || "?"} cores, ${report.host.cpu?.model || "unknown"}`,
+    `- Memory: ${formatBytesCompact(report.host.memory?.totalBytes)} total`,
+    `- GPU: ${report.host.gpu?.present ? report.host.gpu.name : "not detected"} (${report.host.gpu?.source || "none"})`,
+    `- Compute: ${report.host.compute?.label || "unknown"} (${report.host.compute?.reason || "unknown"})`,
+    "",
+    "## Readiness",
+    "",
+    markdownTable(["Area", "Status", "Evidence"], rows),
+    "",
+    "## Python AI Packages",
+    "",
+    markdownTable(["Package", "State", "Version", "Role"], packageRows),
+    "",
+    "## Recommendations",
+    "",
+    ...report.recommendations.map((rec, index) => `${index + 1}. ${rec}`),
+    "",
+  ].join("\n");
+}
+
+function writeAiInfraReport(cwd, report) {
+  const dir = path.join(cwd, ".researchloop", "env");
+  ensureDir(dir);
+  const jsonFile = path.join(dir, "environment.json");
+  const markdownFile = path.join(dir, "environment.md");
+  fs.writeFileSync(jsonFile, `${JSON.stringify(report, null, 2)}\n`);
+  fs.writeFileSync(markdownFile, renderAiInfraMarkdown(report));
+  return {
+    json: path.relative(cwd, jsonFile),
+    markdown: path.relative(cwd, markdownFile),
+  };
+}
+
+function cmdInfraDoctor() {
+  const cwd = targetDir();
+  const report = buildAiInfraReport(cwd, {
+    python: String(option("--python", "python3")),
+  });
+  const files = hasFlag("--write") ? writeAiInfraReport(cwd, report) : null;
+  const format = String(option("--format", "text")).toLowerCase();
+  if (format === "json") {
+    console.log(JSON.stringify(files ? { ...report, files } : report, null, 2));
+    return;
+  }
+  process.stdout.write(renderAiInfraText(report, files));
+}
+
+function scaffoldTemplateNames() {
+  return ["python-benchmark", "cpp-benchmark", "cuda-basic", "triton-operator", "llm-serving"];
+}
+
+function pythonBenchmarkScaffold(projectName) {
+  const benchPy = `#!/usr/bin/env python3
+import argparse
+import math
+import statistics
+import time
+
+
+def make_input(size, seed):
+    return [(((i * 1103515245 + seed * 12345) & 0xFFFF) / 65535.0) - 0.5 for i in range(size)]
+
+
+def rmsnorm(values, eps):
+    inv = 1.0 / math.sqrt(sum(v * v for v in values) / len(values) + eps)
+    return [v * inv for v in values]
+
+
+def percentile(values, q):
+    ordered = sorted(values)
+    index = min(len(ordered) - 1, max(0, math.ceil(q * len(ordered)) - 1))
+    return ordered[index]
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Stdlib RMSNorm-like benchmark for AutoResearch-AI.")
+    parser.add_argument("--size", type=int, default=65536)
+    parser.add_argument("--repeat", type=int, default=9)
+    parser.add_argument("--warmup", type=int, default=2)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--eps", type=float, default=1e-6)
+    args = parser.parse_args()
+
+    values = make_input(max(1, args.size), args.seed)
+    for _ in range(max(0, args.warmup)):
+        rmsnorm(values, args.eps)
+
+    times_ms = []
+    checksum = 0.0
+    for _ in range(max(1, args.repeat)):
+        start = time.perf_counter()
+        out = rmsnorm(values, args.eps)
+        elapsed_ms = (time.perf_counter() - start) * 1000.0
+        times_ms.append(elapsed_ms)
+        checksum += out[-1]
+
+    p50 = statistics.median(times_ms)
+    p95 = percentile(times_ms, 0.95)
+    # Approximate traffic: read input once for sum, read input again for scale, write output.
+    traffic_bytes = len(values) * 8 * 3
+    gbps = (traffic_bytes / 1e9) / (p50 / 1000.0) if p50 > 0 else 0.0
+    items_s = len(values) / (p50 / 1000.0) if p50 > 0 else 0.0
+
+    print(f"latency_ms={p50:.6f}")
+    print(f"latency_ms_p50={p50:.6f}")
+    print(f"latency_ms_p95={p95:.6f}")
+    print(f"throughput_items_s={items_s:.2f}")
+    print(f"bandwidth_gb_s={gbps:.6f}")
+    print(f"checksum={checksum:.6f}")
+
+
+if __name__ == "__main__":
+    main()
+`;
+
+  return {
+    "README.md": `# ${projectName}
+
+Mac-safe AI Infra benchmark scaffold generated by AutoResearch-AI.
+
+This project uses only the Python standard library. It is meant for local run-loop testing on machines without CUDA, while keeping the same ledger/report workflow used for later CUDA or remote GPU experiments.
+
+## Run
+
+\`\`\`bash
+python3 bench.py --size 65536 --repeat 9 --warmup 2
+autoresearch run --metric latency_ms --direction lower --command "python3 bench.py --size 65536 --repeat 9 --warmup 2"
+autoresearch compare --metric latency_ms --direction lower
+autoresearch report --format markdown --out .researchloop/scratchpad/report.md --include-plots
+\`\`\`
+
+The benchmark prints latency, p95 latency, throughput, approximate bandwidth, and a checksum.
+`,
+    "bench.py": benchPy,
+    "configs/benchmark.json": `${JSON.stringify({
+      metric: "latency_ms",
+      direction: "lower",
+      warmup: 2,
+      repeat: 9,
+      size: 65536,
+    }, null, 2)}\n`,
+    ".researchloop/config.yaml": [
+      "project_type: python-benchmark",
+      "primary_metric: latency_ms",
+      "direction: lower",
+      "benchmark_command: python3 bench.py --size 65536 --repeat 9 --warmup 2",
+      "",
+    ].join("\n"),
+    "reports/README.md": "# Reports\n\nGenerated benchmark and portfolio reports can live here.\n",
+  };
+}
+
+function cppBenchmarkScaffold(projectName) {
+  return {
+    "README.md": `# ${projectName}
+
+Minimal C++ benchmark scaffold. It avoids external dependencies so the first smoke test can run on macOS.
+`,
+    "CMakeLists.txt": [
+      "cmake_minimum_required(VERSION 3.20)",
+      `project(${projectName.replace(/[^A-Za-z0-9_]/g, "_")} LANGUAGES CXX)`,
+      "set(CMAKE_CXX_STANDARD 17)",
+      "add_executable(cache_walk bench/cache_walk.cpp)",
+      "",
+    ].join("\n"),
+    "bench/cache_walk.cpp": [
+      "#include <chrono>",
+      "#include <cmath>",
+      "#include <iostream>",
+      "#include <vector>",
+      "",
+      "int main() {",
+      "  constexpr int n = 1 << 20;",
+      "  std::vector<double> x(n, 1.0);",
+      "  volatile double sink = 0.0;",
+      "  auto start = std::chrono::steady_clock::now();",
+      "  for (int r = 0; r < 20; ++r) {",
+      "    for (int i = 0; i < n; ++i) sink += std::sqrt(x[i]);",
+      "  }",
+      "  auto end = std::chrono::steady_clock::now();",
+      "  double ms = std::chrono::duration<double, std::milli>(end - start).count();",
+      "  std::cout << \"latency_ms=\" << ms << \"\\n\";",
+      "  std::cout << \"checksum=\" << sink << \"\\n\";",
+      "  return 0;",
+      "}",
+      "",
+    ].join("\n"),
+    ".researchloop/config.yaml": "project_type: cpp-benchmark\nprimary_metric: latency_ms\ndirection: lower\n",
+  };
+}
+
+function cudaBasicScaffold(projectName) {
+  return {
+    "README.md": `# ${projectName}
+
+CUDA basic scaffold for remote NVIDIA Linux execution. This Mac can create and track the project, but compiling requires a host with nvcc and an NVIDIA GPU.
+`,
+    "CMakeLists.txt": [
+      "cmake_minimum_required(VERSION 3.24)",
+      `project(${projectName.replace(/[^A-Za-z0-9_]/g, "_")} LANGUAGES CUDA CXX)`,
+      "add_executable(vector_add src/vector_add.cu)",
+      "set_target_properties(vector_add PROPERTIES CUDA_SEPARABLE_COMPILATION ON)",
+      "",
+    ].join("\n"),
+    "src/vector_add.cu": [
+      "#include <cstdio>",
+      "",
+      "__global__ void vector_add(const float* a, const float* b, float* c, int n) {",
+      "  int i = blockIdx.x * blockDim.x + threadIdx.x;",
+      "  if (i < n) c[i] = a[i] + b[i];",
+      "}",
+      "",
+      "int main() {",
+      "  std::puts(\"CUDA vector_add scaffold: compile and benchmark on a remote NVIDIA host.\");",
+      "  return 0;",
+      "}",
+      "",
+    ].join("\n"),
+    ".researchloop/config.yaml": "project_type: cuda-basic\nprimary_metric: latency_ms\ndirection: lower\nrequires_remote_cuda: true\n",
+  };
+}
+
+function tritonOperatorScaffold(projectName) {
+  return {
+    "README.md": `# ${projectName}
+
+Triton operator scaffold. Use it on a Python environment with torch and triton installed.
+`,
+    "bench_triton.py": [
+      "#!/usr/bin/env python3",
+      "import importlib.util",
+      "if importlib.util.find_spec('torch') is None or importlib.util.find_spec('triton') is None:",
+      "    print('latency_ms=nan')",
+      "    raise SystemExit('torch and triton are required for this scaffold')",
+      "print('latency_ms=0.0')",
+      "",
+    ].join("\n"),
+    ".researchloop/config.yaml": "project_type: triton-operator\nprimary_metric: latency_ms\ndirection: lower\n",
+  };
+}
+
+function llmServingScaffold(projectName) {
+  return {
+    "README.md": `# ${projectName}
+
+LLM serving benchmark scaffold. Fill in the endpoint and model, then record TTFT, TPOT, throughput, and p95 latency through AutoResearch-AI.
+`,
+    "configs/loadtest.json": `${JSON.stringify({
+      backend: "openai-compatible",
+      endpoint: "http://127.0.0.1:8000/v1/chat/completions",
+      model: "local-model",
+      concurrency: [1, 4, 8],
+      output_tokens: [64, 128],
+    }, null, 2)}\n`,
+    ".researchloop/config.yaml": "project_type: llm-serving\nprimary_metric: p95_latency_ms\ndirection: lower\n",
+  };
+}
+
+function scaffoldFilesForTemplate(template, projectName) {
+  if (template === "python-benchmark") return pythonBenchmarkScaffold(projectName);
+  if (template === "cpp-benchmark") return cppBenchmarkScaffold(projectName);
+  if (template === "cuda-basic") return cudaBasicScaffold(projectName);
+  if (template === "triton-operator") return tritonOperatorScaffold(projectName);
+  if (template === "llm-serving") return llmServingScaffold(projectName);
+  return null;
+}
+
+function cmdScaffold() {
+  const template = String(option("--template", option("--type", "python-benchmark"))).trim() || "python-benchmark";
+  if (template === "list" || hasFlag("--list")) {
+    console.log(scaffoldTemplateNames().join("\n"));
+    return;
+  }
+  const valid = scaffoldTemplateNames();
+  if (!valid.includes(template)) {
+    console.error(`Unknown scaffold template: ${template}`);
+    console.error(`Available templates: ${valid.join(", ")}`);
+    process.exitCode = 1;
+    return;
+  }
+  const force = hasFlag("--force");
+  const outRaw = option("--out", "") || positionalText(["--template", "--type", "--out", "--agent"]);
+  const outDir = path.resolve(expandUserPath(outRaw || `./autoresearch-${template}`));
+  const projectName = slugify(path.basename(outDir) || `autoresearch-${template}`).replace(/-/g, "_");
+  if (fs.existsSync(outDir) && fs.readdirSync(outDir).length > 0 && !force) {
+    console.error(`Destination is not empty: ${outDir}`);
+    console.error("Use --force to allow writing missing files into the existing directory.");
+    process.exitCode = 1;
+    return;
+  }
+
+  ensureDir(outDir);
+  copyDir(path.join(templatesRoot, "base"), path.join(outDir, ".researchloop"), force);
+  copyDir(path.join(templatesRoot, "adapters"), path.join(outDir, ".researchloop", "adapters"), force);
+  installAgentFile(outDir, String(option("--agent", "codex")), force);
+
+  const files = scaffoldFilesForTemplate(template, projectName);
+  const written = [];
+  const skipped = [];
+  for (const [rel, content] of Object.entries(files)) {
+    const ok = writeFileSafe(path.join(outDir, rel), content, force);
+    (ok ? written : skipped).push(rel);
+    if (rel.endsWith(".py")) {
+      try {
+        fs.chmodSync(path.join(outDir, rel), 0o755);
+      } catch {
+        // chmod is best-effort.
+      }
+    }
+  }
+  const profile = detectRepo(outDir);
+  fs.writeFileSync(path.join(outDir, ".researchloop", "repo-profile.json"), `${JSON.stringify(profile, null, 2)}\n`);
+  const envReport = buildAiInfraReport(outDir, { python: String(option("--python", "python3")) });
+  const envFiles = writeAiInfraReport(outDir, envReport);
+
+  console.log(`Scaffolded ${template} project at ${outDir}`);
+  console.log(`written_files: ${written.length}`);
+  if (skipped.length) console.log(`skipped_existing: ${skipped.join(", ")}`);
+  console.log(`environment_report: ${envFiles.markdown}`);
+  if (template === "python-benchmark") {
+    console.log('next: autoresearch run --metric latency_ms --direction lower --command "python3 bench.py --size 65536 --repeat 9 --warmup 2"');
+  }
+}
+
+function dashboardRunnerExecutable(runner) {
+  const normalized = String(runner || "python3").trim();
+  if (normalized === "custom") return "";
+  if (normalized === "cuda") return "python3";
+  return normalized || "python3";
+}
+
+function buildDashboardCommand(config, variant = "experiment") {
+  const runner = String(config.runner || "python3").trim();
+  const entry = String(config.entry || "").trim();
+  const customCommand = String(config.command || "").trim();
+  if (customCommand) return customCommand;
+  if (!entry) return "";
+
+  const paramText = variant === "baseline"
+    ? String(config.baselineArgs || "").trim()
+    : String(config.experimentArgs || "").trim();
+  const executable = dashboardRunnerExecutable(runner);
+  const prefix = executable ? `${shellQuote(executable)} ` : "";
+  return `${prefix}${shellQuote(entry)}${paramText ? ` ${paramText}` : ""}`.trim();
+}
+
+function buildDashboardState(cwd, systemSnapshot = null) {
   const goalPath = path.join(cwd, ".researchloop", "goal.md");
   const planPath = path.join(cwd, ".researchloop", "plan.md");
   const profilePath = path.join(cwd, ".researchloop", "repo-profile.json");
@@ -2434,13 +5122,28 @@ function buildDashboardState(cwd) {
   const summary = summarizeDashboardRuns(runs, primaryMetric, preferHigher);
   const traces = buildRunTraces(cwd, runs, primaryMetric, preferHigher);
   const comparison = summarizeTraces(traces, preferHigher);
-  const system = readSystemMetrics();
+  const system = systemSnapshot || readSystemMetrics(cwd);
   const thread = readThreadTail(cwd, 24);
   const logTail = readLatestLogTail(cwd, runs, 30);
   const activeRun = detectActiveRun(cwd, runs, logTail);
+  const dashboardConfig = readDashboardConfig(cwd);
+  const metricTiers = readMetricTierConfig(cwd, dashboardConfig.metricProfile || "hpc_operator");
+  const metricTierAnalysis = evaluateMetricTiers(runs, metricTiers);
+  const performanceTools = readPerformanceToolStatus();
+  const projectEnvironment = detectProjectEnvironment(cwd, system);
+  const sweepQueues = listSweepQueues(cwd, 8);
+  const researchArtifacts = readResearchArtifacts(cwd);
 
   return {
     cwd,
+    dashboardConfig,
+    metricTiers,
+    metricTierProfiles: METRIC_TIER_PROFILES,
+    metricTierAnalysis,
+    sweepQueues,
+    researchArtifacts,
+    performanceTools,
+    projectEnvironment,
     generatedAt: new Date().toISOString(),
     goal,
     plan,
@@ -2458,12 +5161,943 @@ function buildDashboardState(cwd) {
   };
 }
 
+function sendDashboardJson(res, status, payload) {
+  res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
+  res.end(`${JSON.stringify(payload, null, 2)}\n`);
+}
+
+function readDashboardJson(req, limitBytes = 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk) => {
+      body += chunk;
+      if (body.length > limitBytes) {
+        reject(new Error("request body too large"));
+        req.destroy();
+      }
+    });
+    req.on("end", () => {
+      if (!body.trim()) {
+        resolve({});
+        return;
+      }
+      try {
+        resolve(JSON.parse(body));
+      } catch {
+        reject(new Error("invalid JSON body"));
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+function dashboardActionId(prefix = "action") {
+  return `${prefix}-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+}
+
+function dashboardActionLog(cwd, actionId) {
+  const dir = path.join(cwd, ".researchloop", "scratchpad", "dashboard-actions");
+  ensureDir(dir);
+  return path.join(dir, `${actionId}.log`);
+}
+
+function dashboardActionArtifactsDir(cwd, actionId) {
+  const dir = path.join(cwd, ".researchloop", "scratchpad", "dashboard-actions", actionId);
+  ensureDir(dir);
+  return dir;
+}
+
+function spawnDashboardCliAction(cwd, command, args, prefix = command) {
+  const actionId = dashboardActionId(prefix);
+  const logFile = dashboardActionLog(cwd, actionId);
+  const out = fs.openSync(logFile, "a");
+  const child = spawn(process.execPath, [__filename, command, "--dir", cwd, ...args], {
+    cwd,
+    detached: true,
+    env: process.env,
+    stdio: ["ignore", out, out],
+  });
+  child.unref();
+  return {
+    actionId,
+    pid: child.pid,
+    log: path.relative(cwd, logFile),
+  };
+}
+
+function spawnDashboardShellAction(cwd, commandText, prefix = "shell", opts = {}) {
+  const command = String(commandText || "").trim();
+  if (!command) {
+    throw new Error("command is required");
+  }
+  const actionId = opts.actionId || dashboardActionId(prefix);
+  const logFile = dashboardActionLog(cwd, actionId);
+  const out = fs.openSync(logFile, "a");
+  fs.writeSync(out, [
+    `# AutoResearch dashboard action: ${actionId}`,
+    `# cwd: ${cwd}`,
+    `# command: ${command}`,
+    `# started_at: ${new Date().toISOString()}`,
+    "",
+  ].join("\n"));
+  const child = spawn(command, {
+    cwd,
+    shell: true,
+    detached: true,
+    env: { ...process.env, ...(opts.env || {}) },
+    stdio: ["ignore", out, out],
+  });
+  child.unref();
+  return {
+    actionId,
+    pid: child.pid,
+    log: path.relative(cwd, logFile),
+    command,
+    artifacts: opts.artifacts || null,
+  };
+}
+
+function mergeDashboardPerfConfig(cwd, body) {
+  const merged = {
+    ...readDashboardConfig(cwd),
+    ...normalizeDashboardConfig(body),
+  };
+  if (hasOwn(body, "direction")) {
+    merged.direction = String(body.direction || "").trim();
+  }
+  return merged;
+}
+
+function appendGoogleBenchmarkFlags(commandText, config) {
+  let command = String(commandText || "").trim();
+  if (!command || String(config.benchmarkMode || "") !== "google-benchmark") return command;
+  const repeat = Number(config.benchmarkRepeat);
+  const minTime = String(config.benchmarkMinTime || "").trim();
+  if (Number.isFinite(repeat) && repeat > 0 && !command.includes("--benchmark_repetitions")) {
+    command += ` --benchmark_repetitions=${Math.floor(repeat)}`;
+  }
+  if (minTime && !command.includes("--benchmark_min_time")) {
+    command += ` --benchmark_min_time=${shellQuote(minTime)}`;
+  }
+  if (!command.includes("--benchmark_format")) {
+    command += " --benchmark_format=json";
+  }
+  return command;
+}
+
+function buildDashboardBenchmarkCommand(config) {
+  const explicit = String(config.benchmarkCommand || "").trim();
+  const fallback = buildDashboardCommand(config, "experiment");
+  return appendGoogleBenchmarkFlags(explicit || fallback, config);
+}
+
+function buildDashboardSweepSpec(config) {
+  const template = String(config.sweepTemplate || config.benchmarkCommand || "").trim();
+  if (!template) {
+    throw new Error("请先填写参数扫描命令模板，例如 ./bench --tile {tile}");
+  }
+  const rawGrid = String(config.sweepGrid || "").trim();
+  if (!rawGrid) {
+    throw new Error("请填写参数网格 JSON，例如 {\"tile\":[16,32],\"dtype\":[\"fp16\",\"bf16\"]}");
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(rawGrid);
+  } catch (err) {
+    throw new Error(`参数网格 JSON 无法解析：${err.message}`);
+  }
+  const spec = parsed && typeof parsed === "object" && (Array.isArray(parsed.variants) || parsed.grid)
+    ? parsed
+    : { grid: parsed };
+  return {
+    name: String(config.sweepName || "dashboard-perf-sweep").replace(/[^A-Za-z0-9._-]/g, "-"),
+    command_template: template,
+    metric: String(config.metric || "latency_ms").trim() || "latency_ms",
+    direction: String(config.direction || "lower").trim() || "lower",
+    timeout: Number(config.timeout) || 600,
+    ...spec,
+  };
+}
+
+function buildProfilerCommand(cwd, config, actionId) {
+  const toolRequested = String(config.profileTool || "auto").trim() || "auto";
+  const command = String(config.profileCommand || config.benchmarkCommand || buildDashboardCommand(config, "experiment")).trim();
+  if (!command) {
+    throw new Error("请先填写 profiler 目标命令，或填写 benchmark 命令");
+  }
+  const artifactsDir = dashboardActionArtifactsDir(cwd, actionId);
+  const scriptPath = path.join(artifactsDir, "target-command.sh");
+  fs.writeFileSync(scriptPath, [
+    "#!/usr/bin/env sh",
+    "set -eu",
+    `cd ${shellQuote(cwd)}`,
+    `exec sh -lc ${shellQuote(command)}`,
+    "",
+  ].join("\n"));
+  fs.chmodSync(scriptPath, 0o755);
+
+  const chooseTool = () => {
+    if (toolRequested !== "auto") return toolRequested;
+    for (const candidate of ["nsys", "ncu", "perf", "time"]) {
+      if (candidate === "perf" && process.platform !== "linux") continue;
+      if (commandPath(candidate)) return candidate;
+    }
+    return "time";
+  };
+  const tool = chooseTool();
+  const toolPath = commandPath(tool);
+  if (!toolPath && tool !== "time") {
+    throw new Error(`未检测到 profiler 工具：${tool}`);
+  }
+  const profileArgs = String(config.profileArgs || "").trim();
+  const reportBase = path.join(artifactsDir, "profile");
+  if (tool === "nsys") {
+    return {
+      tool,
+      command: `${shellQuote(toolPath)} profile --stats=true --force-overwrite=true -o ${shellQuote(reportBase)} ${profileArgs} ${shellQuote(scriptPath)}`.trim(),
+      artifactsDir,
+    };
+  }
+  if (tool === "ncu") {
+    return {
+      tool,
+      command: `${shellQuote(toolPath)} --set full --target-processes all --force-overwrite -o ${shellQuote(reportBase)} ${profileArgs} ${shellQuote(scriptPath)}`.trim(),
+      artifactsDir,
+    };
+  }
+  if (tool === "perf") {
+    return {
+      tool,
+      command: `${shellQuote(toolPath)} stat -d -o ${shellQuote(path.join(artifactsDir, "perf-stat.txt"))} --append ${profileArgs} ${shellQuote(scriptPath)}`.trim(),
+      artifactsDir,
+    };
+  }
+  const timePath = fs.existsSync("/usr/bin/time") ? "/usr/bin/time" : (toolPath || "time");
+  const timeFlag = process.platform === "darwin" ? "-lp" : "-v";
+  return {
+    tool: "time",
+    command: `${shellQuote(timePath)} ${timeFlag} ${profileArgs} ${shellQuote(scriptPath)}`.trim(),
+    artifactsDir,
+  };
+}
+
+function latestDashboardActionLog(cwd, prefixes) {
+  const dir = path.join(cwd, ".researchloop", "scratchpad", "dashboard-actions");
+  if (!fs.existsSync(dir)) return null;
+  const wanted = new Set(prefixes);
+  const files = fs.readdirSync(dir)
+    .filter((name) => name.endsWith(".log") && [...wanted].some((prefix) => name.startsWith(`${prefix}-`)))
+    .map((name) => {
+      const full = path.join(dir, name);
+      let mtimeMs = 0;
+      try {
+        mtimeMs = fs.statSync(full).mtimeMs;
+      } catch {
+        mtimeMs = 0;
+      }
+      return { name, full, mtimeMs };
+    })
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+  const latest = files[0];
+  if (!latest) return null;
+  const text = readTextIfExists(latest.full);
+  return { path: latest.full, relative: path.relative(cwd, latest.full), text };
+}
+
+function compilerHintsFromText(text) {
+  const hints = [];
+  const add = (title, detail) => hints.push({ title, detail });
+  const ptxas = text.match(/ptxas info\s*:\s*Used\s+([0-9]+)\s+registers/i);
+  if (ptxas) add("CUDA 寄存器", `ptxas 显示每线程使用 ${ptxas[1]} 个 registers，后续可结合 occupancy 判断是否需要降寄存器压力。`);
+  if (/spill stores|spill loads|local memory/i.test(text)) {
+    add("寄存器溢出", "日志出现 spill/local memory，优先检查展开、临时变量、模板参数和 launch bounds。");
+  }
+  if (/not vectorized|missed.*vector|couldn't vectorize/i.test(text)) {
+    add("向量化失败", "编译器报告未向量化，检查循环依赖、对齐、restrict、步长和分支。");
+  }
+  if (/bank conflict/i.test(text)) {
+    add("Shared Memory Bank Conflict", "日志出现 bank conflict，检查 shared memory layout、padding 和访问模式。");
+  }
+  if (/occupancy/i.test(text)) {
+    add("Occupancy", "日志包含 occupancy 信息，建议结合 block size、registers、shared memory 三者一起看。");
+  }
+  return hints;
+}
+
+function writeDashboardPerformanceReport(cwd, config) {
+  const metric = String(config.metric || "latency_ms").trim() || "latency_ms";
+  const direction = String(config.direction || "lower").toLowerCase();
+  const preferHigher = direction === "higher" || direction === "max" || direction === "maximize";
+  const ledgerPath = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
+  const runs = parseRunsLedger(ledgerPath);
+  const metricRows = runs
+    .filter((run) => isNumericMetric(run.metrics?.[metric]))
+    .map((run) => ({ id: run.id, value: Number(run.metrics[metric]), status: run.status, command: run.command || "" }))
+    .sort((a, b) => preferHigher ? b.value - a.value : a.value - b.value);
+  const best = metricRows[0] || null;
+  const worst = metricRows[metricRows.length - 1] || null;
+  const latestProfile = latestDashboardActionLog(cwd, ["perf-profile", "perf-compile", "perf-build"]);
+  const hints = compilerHintsFromText(latestProfile?.text || "");
+  const tools = readPerformanceToolStatus();
+  const outFile = path.join(cwd, ".researchloop", "scratchpad", "performance-analysis.md");
+  ensureDir(path.dirname(outFile));
+  const lines = [
+    "# Performance Analysis",
+    "",
+    `Generated: ${new Date().toISOString()}`,
+    `Project: ${cwd}`,
+    `Primary metric: ${metric} (${preferHigher ? "higher is better" : "lower is better"})`,
+    "",
+    "## Tool Status",
+    "",
+    ...Object.entries(tools).map(([name, info]) => `- ${name}: ${info.present ? "available" : info.present === null ? "configure in project" : "missing"}${info.path ? ` (${info.path})` : ""}`),
+    "",
+    "## Run Comparison",
+    "",
+  ];
+  if (best) {
+    lines.push(`- Best: ${best.id} ${metric}=${best.value}`);
+  } else {
+    lines.push("- Best: no numeric benchmark runs recorded yet.");
+  }
+  if (worst && best && worst.id !== best.id) {
+    const delta = preferHigher ? best.value - worst.value : worst.value - best.value;
+    lines.push(`- Spread vs worst: ${delta}`);
+  }
+  const optimizerRows = optimizerSchedulerRowsFromConfig(config);
+  if (optimizerRows.length) {
+    lines.push("", "## Optimizer / Scheduler Config", "");
+    lines.push(markdownTable(["Field", "Value"], optimizerRows));
+  }
+  lines.push("", "## Benchmark Quality Checklist", "");
+  lines.push("- Use warmup before timing so cache, JIT, and GPU clocks settle.");
+  lines.push("- Repeat runs and compare median/p50 plus tail latency when applicable.");
+  lines.push("- Keep input shapes, dtype, thread count, GPU clocks, and batch size fixed across baseline and experiment.");
+  lines.push("- Separate compile time from runtime unless compile time is the target metric.");
+  lines.push("", "## Profiler / Compiler Hints", "");
+  if (hints.length) {
+    for (const hint of hints) lines.push(`- ${hint.title}: ${hint.detail}`);
+  } else {
+    lines.push("- No specific compiler/profiler warning pattern found yet. Run Nsight, perf, or compiler analysis from the dashboard first.");
+  }
+  if (latestProfile) {
+    lines.push("", `Latest action log: ${latestProfile.relative}`);
+  }
+  fs.writeFileSync(outFile, `${lines.join("\n")}\n`);
+  return { out: path.relative(cwd, outFile), best, hints };
+}
+
+function writeEnvironmentDetection(cwd, detection) {
+  const outFile = path.join(cwd, ".researchloop", "scratchpad", "environment-detection.json");
+  ensureDir(path.dirname(outFile));
+  fs.writeFileSync(outFile, `${JSON.stringify(detection, null, 2)}\n`);
+  return path.relative(cwd, outFile);
+}
+
+function allowLocalPerf(body, config) {
+  return body.allowUnsafe === true
+    || String(body.allowLocalPerf || config.allowLocalPerf || "").toLowerCase() === "true";
+}
+
+function shellRunCommand(commandText) {
+  const command = String(commandText || "").trim();
+  if (!command) return "";
+  if (/^(python|python3|node|npm|npx|bash|sh|cmake|make|ninja|pytest|printf|echo)\b/.test(command)) {
+    return command;
+  }
+  return `bash -lc ${shellQuote(command)}`;
+}
+
+function buildAutoDiagnoseCommand(cwd, config, body) {
+  const actionId = dashboardActionId("perf-auto");
+  const logDir = dashboardActionArtifactsDir(cwd, actionId);
+  const benchmarkCommand = buildDashboardBenchmarkCommand(config);
+  if (!benchmarkCommand) {
+    throw new Error("自动检测没有找到 benchmark 命令，请先手动填写 Benchmark 命令。");
+  }
+  const metric = String(config.metric || "latency_ms").trim() || "latency_ms";
+  const timeout = String(config.timeout || "600").trim() || "600";
+  const runId = `${actionId}-bench`;
+  const buildCommand = String(config.buildCommand || "").trim();
+  const compilerCommand = String(config.compilerCommand || "").trim();
+  const allowFlag = allowLocalPerf(body, config) ? " --allow-unsafe" : "";
+  const runCommand = [
+    shellQuote(process.execPath),
+    shellQuote(__filename),
+    "run",
+    "--dir", shellQuote(cwd),
+    "--id", shellQuote(runId),
+    "--metric", shellQuote(metric),
+    "--command", shellQuote(shellRunCommand(benchmarkCommand)),
+    "--timeout", shellQuote(timeout),
+    "--device", shellQuote(String(config.device || "auto")),
+    "--tags", shellQuote("performance,autodetect,benchmark"),
+    allowFlag.trim(),
+  ].filter(Boolean).join(" ");
+  let profiler = null;
+  try {
+    profiler = buildProfilerCommand(cwd, { ...config, profileCommand: String(config.profileCommand || benchmarkCommand) }, `${actionId}-profile`);
+  } catch {
+    profiler = null;
+  }
+  const lines = [
+    "set -eu",
+    `cd ${shellQuote(cwd)}`,
+    "echo '[AutoResearch] 自动性能诊断开始'",
+  ];
+  if (buildCommand) {
+    lines.push("echo '[AutoResearch] 构建项目'", shellRunCommand(buildCommand));
+  }
+  lines.push("echo '[AutoResearch] 运行 benchmark 并记录指标'", runCommand);
+  if (profiler?.command) {
+    lines.push("echo '[AutoResearch] 运行 profiler'", `(${profiler.command}) || true`);
+  }
+  if (compilerCommand) {
+    lines.push("echo '[AutoResearch] 运行编译器分析'", `(${shellRunCommand(compilerCommand)}) || true`);
+  }
+  lines.push("echo '[AutoResearch] 自动性能诊断结束'");
+  const scriptFile = path.join(logDir, "auto-diagnose.sh");
+  fs.writeFileSync(scriptFile, `#!/usr/bin/env bash\n${lines.join("\n")}\n`);
+  fs.chmodSync(scriptFile, 0o755);
+  return { actionId, scriptFile, command: shellQuote(scriptFile), logDir };
+}
+
+function openLocalIde(cwd, ide) {
+  const normalized = String(ide || "clion").trim().toLowerCase();
+  const apps = detectLocalDeveloperApps();
+  const app = apps[normalized];
+  if (!app?.present) {
+    throw new Error(`${normalized} 未检测到，请先安装或把命令加入 PATH。`);
+  }
+  if (process.platform === "darwin" && normalized === "clion") {
+    const child = spawn("open", ["-a", "CLion", cwd], { detached: true, stdio: "ignore" });
+    child.unref();
+    return { ide: "clion", path: app.path };
+  }
+  if (normalized === "vscode") {
+    const command = commandPath("code");
+    if (command) {
+      const child = spawn(command, [cwd], { detached: true, stdio: "ignore" });
+      child.unref();
+      return { ide: "vscode", path: command };
+    }
+    if (process.platform === "darwin") {
+      const child = spawn("open", ["-a", "Visual Studio Code", cwd], { detached: true, stdio: "ignore" });
+      child.unref();
+      return { ide: "vscode", path: app.path };
+    }
+  }
+  if (app.path && app.kind === "cli") {
+    const child = spawn(app.path, [cwd], { detached: true, stdio: "ignore" });
+    child.unref();
+    return { ide: normalized, path: app.path };
+  }
+  throw new Error(`${normalized} 已检测到，但当前系统暂不支持从面板打开。`);
+}
+
+function writeResearchGoal(cwd, fields) {
+  const researchDir = path.join(cwd, ".researchloop");
+  ensureDir(researchDir);
+  const goalFile = path.join(researchDir, "goal.md");
+  const goalText = String(fields.goal || "").trim();
+  if (!goalText) {
+    throw new Error("research goal is required");
+  }
+  const metric = String(fields.metric || "validation loss").trim() || "validation loss";
+  const direction = String(fields.direction || "lower").trim() || "lower";
+  const baseline = String(fields.baseline || "unknown").trim() || "unknown";
+  const evaluation = String(fields.evaluation || "unknown").trim() || "unknown";
+  const allowed = String(fields.allowed || "optimizer, schedules, initialization, hyperparameters").trim();
+  const forbidden = String(fields.forbidden || "data, architecture, batch size, benchmark definition").trim();
+
+  const content = [
+    "# Research Goal",
+    "",
+    "## Goal",
+    goalText,
+    "",
+    "## Target Metric",
+    metric,
+    "",
+    "## Direction",
+    direction,
+    "",
+    "## Baseline Command",
+    baseline,
+    "",
+    "## Evaluation Command",
+    evaluation,
+    "",
+    "## Allowed Changes",
+    allowed,
+    "",
+    "## Forbidden Changes",
+    forbidden,
+    "",
+    "## Current Best",
+    "Unknown.",
+    "",
+    "## Notes",
+    "Use `autoresearch inspect` to generate a repo profile, then ask an agent to fill in the missing benchmark details.",
+    "",
+  ].join("\n");
+
+  fs.writeFileSync(goalFile, content);
+  return { goalText, metric, direction, file: path.relative(cwd, goalFile) };
+}
+
+function parseDashboardMetricText(text) {
+  const metrics = {};
+  for (const rawLine of String(text || "").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const [key, value] = parseMetric(line);
+    if (key) metrics[key] = value;
+  }
+  return metrics;
+}
+
+function appendDashboardRecord(cwd, body) {
+  const metrics = {
+    ...(body.metrics && typeof body.metrics === "object" && !Array.isArray(body.metrics) ? body.metrics : {}),
+    ...parseDashboardMetricText(body.metricText || ""),
+  };
+  if (!Object.keys(metrics).length) {
+    throw new Error("at least one metric is required, for example val_loss=0.42");
+  }
+  const id = String(body.id || dashboardActionId("manual")).trim();
+  const row = {
+    id,
+    timestamp: new Date().toISOString(),
+    status: String(body.status || "complete"),
+    agent: "dashboard",
+    command: body.command ? String(body.command) : null,
+    metrics,
+    notes: String(body.note || ""),
+  };
+  const tags = String(body.tags || "").split(",").map((tag) => tag.trim()).filter(Boolean);
+  if (tags.length) row.tags = tags;
+  appendRunRow(cwd, row);
+  const thread = path.join(cwd, ".researchloop", "scratchpad", "THREAD.md");
+  ensureDir(path.dirname(thread));
+  const metricSuffix = Object.entries(metrics).map(([k, v]) => `${k}=${v}`).join(" ");
+  fs.appendFileSync(thread, `- ${row.timestamp} dashboard record ${id} status=${row.status} ${metricSuffix}\n`);
+  return row;
+}
+
+function dashboardRunArgs(cwd, body, isBaseline) {
+  const goalFields = readGoalFields(cwd);
+  const savedConfig = readDashboardConfig(cwd);
+  const mergedConfig = {
+    ...savedConfig,
+    ...normalizeDashboardConfig(body),
+  };
+  if (mergedConfig.runner === "cuda" && (!mergedConfig.device || mergedConfig.device === "auto")) {
+    mergedConfig.device = "cuda";
+  }
+  if (hasOwn(body, "command")) {
+    mergedConfig.command = String(body.command || "").trim();
+  }
+  if (!isBaseline && hasOwn(body, "runArgs")) {
+    mergedConfig.experimentArgs = String(body.runArgs || "").trim();
+  }
+  const id = String(body.id || dashboardActionId(isBaseline ? "baseline" : "run")).trim();
+  const commandText = buildDashboardCommand(mergedConfig, isBaseline ? "baseline" : "experiment");
+  const metric = String(mergedConfig.metric || goalFields.metric || "val_loss").trim() || "val_loss";
+  const regex = hasOwn(body, "regex") ? String(body.regex || "").trim() : String(mergedConfig.regex || "").trim();
+  const timeout = hasOwn(body, "timeout") ? String(body.timeout || "").trim() : String(mergedConfig.timeout || "").trim();
+  const args = ["--id", id, "--metric", metric];
+  if (commandText) args.push("--command", commandText);
+  if (regex) args.push("--regex", regex);
+  if (timeout) args.push("--timeout", timeout);
+  if (mergedConfig.device) args.push("--device", String(mergedConfig.device));
+  if (mergedConfig.cudaVisibleDevices) {
+    args.push("--cuda-visible-devices", String(mergedConfig.cudaVisibleDevices));
+  }
+  if (body.tags) args.push("--tags", String(body.tags));
+  if (body.notes) args.push("--note", String(body.notes));
+  if (body.seeds && !isBaseline) args.push("--seeds", String(body.seeds));
+  if (body.allowUnsafe) args.push("--allow-unsafe");
+  return { id, args };
+}
+
+async function handleDashboardAction(req, res, getCwd, setCwd, hostIsLoopback, getSystemSnapshot = null) {
+  if (req.method !== "POST") {
+    sendDashboardJson(res, 405, { ok: false, error: "method not allowed" });
+    return;
+  }
+  if (!hostIsLoopback) {
+    sendDashboardJson(res, 403, {
+      ok: false,
+      error: "dashboard actions are only available on loopback hosts",
+    });
+    return;
+  }
+
+  let body;
+  try {
+    body = await readDashboardJson(req);
+  } catch (err) {
+    sendDashboardJson(res, 400, { ok: false, error: err.message });
+    return;
+  }
+
+  try {
+    const url = new URL(req.url || "/", "http://127.0.0.1");
+    const action = url.pathname.replace(/^\/api\/action\/?/, "");
+    const cwd = getCwd();
+    const stateFor = (dir) => buildDashboardState(dir, getSystemSnapshot ? getSystemSnapshot() : null);
+    if (action === "switch-project") {
+      const requestedPath = expandUserPath(body.path || "");
+      if (!requestedPath) {
+        throw new Error("project folder is required");
+      }
+      const nextDir = path.resolve(requestedPath);
+      if (!fs.existsSync(nextDir) || !fs.statSync(nextDir).isDirectory()) {
+        throw new Error("project folder does not exist");
+      }
+      setCwd(nextDir);
+      sendDashboardJson(res, 200, { ok: true, action, cwd: nextDir, state: stateFor(nextDir) });
+      return;
+    }
+    if (action === "open-folder") {
+      const requestedPath = expandUserPath(body.path || "");
+      const folder = requestedPath ? path.resolve(requestedPath) : cwd;
+      if (!fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) {
+        throw new Error("project folder does not exist");
+      }
+      const opener = process.platform === "darwin" ? "open" : (process.platform === "win32" ? "explorer.exe" : "xdg-open");
+      const child = spawn(opener, [folder], { detached: true, stdio: "ignore" });
+      child.unref();
+      sendDashboardJson(res, 202, { ok: true, action, cwd: folder });
+      return;
+    }
+    if (action === "config") {
+      const config = writeDashboardConfig(cwd, normalizeDashboardConfig(body, true));
+      sendDashboardJson(res, 200, { ok: true, action, config, state: stateFor(cwd) });
+      return;
+    }
+    if (action === "metric-tiers") {
+      const metricTiers = writeMetricTierConfig(cwd, metricTierConfigFromDashboardBody(body));
+      const config = writeDashboardConfig(cwd, { metricProfile: metricTiers.profile });
+      sendDashboardJson(res, 200, { ok: true, action, metricTiers, config, state: stateFor(cwd) });
+      return;
+    }
+    if (action === "goal") {
+      const incomingConfig = normalizeDashboardConfig(body);
+      const config = Object.keys(incomingConfig).length
+        ? writeDashboardConfig(cwd, incomingConfig)
+        : readDashboardConfig(cwd);
+      const fields = { ...body };
+      if (!String(fields.baseline || "").trim()) {
+        fields.baseline = buildDashboardCommand(config, "baseline") || "unknown";
+      }
+      if (!String(fields.evaluation || "").trim()) {
+        fields.evaluation = buildDashboardCommand(config, "experiment") || "unknown";
+      }
+      const result = writeResearchGoal(cwd, fields);
+      sendDashboardJson(res, 200, { ok: true, action, ...result, state: stateFor(cwd) });
+      return;
+    }
+    if (action === "record") {
+      const row = appendDashboardRecord(cwd, body);
+      sendDashboardJson(res, 200, { ok: true, action, row, state: stateFor(cwd) });
+      return;
+    }
+    if (action === "clear-runs") {
+      const cleared = archiveAndClearDashboardRuns(cwd);
+      sendDashboardJson(res, 200, { ok: true, action, ...cleared, state: stateFor(cwd) });
+      return;
+    }
+    if (action === "inspect") {
+      const spawned = spawnDashboardCliAction(cwd, "inspect", [], "inspect");
+      sendDashboardJson(res, 202, { ok: true, action, ...spawned });
+      return;
+    }
+    if (action === "report") {
+      const incomingConfig = normalizeDashboardConfig(body);
+      if (Object.keys(incomingConfig).length) writeDashboardConfig(cwd, incomingConfig);
+      const outFile = String(body.out || ".researchloop/scratchpad/dashboard-report.md");
+      const args = ["--format", "markdown", "--out", outFile];
+      if (body.includePlots !== false) args.push("--include-plots");
+      const spawned = spawnDashboardCliAction(cwd, "report", args, "report");
+      sendDashboardJson(res, 202, { ok: true, action, out: outFile, ...spawned });
+      return;
+    }
+    if (action === "portfolio") {
+      const incomingConfig = normalizeDashboardConfig(body);
+      if (Object.keys(incomingConfig).length) writeDashboardConfig(cwd, incomingConfig);
+      const outFile = String(body.out || ".researchloop/scratchpad/portfolio-report.md");
+      const written = writePortfolioReport(cwd, {
+        out: outFile,
+        python: String(body.python || "python3"),
+        writeEnv: body.writeEnv !== false,
+      });
+      sendDashboardJson(res, 200, { ok: true, action, ...written, state: stateFor(cwd) });
+      return;
+    }
+    if (action === "perf-autoconfig") {
+      const detection = detectProjectEnvironment(cwd, getSystemSnapshot ? getSystemSnapshot() : null, true);
+      const detectionFile = writeEnvironmentDetection(cwd, detection);
+      const config = writeDashboardConfig(cwd, detection.recommendations || {});
+      sendDashboardJson(res, 200, {
+        ok: true,
+        action,
+        config,
+        detection,
+        detectionFile,
+        state: stateFor(cwd),
+      });
+      return;
+    }
+    if (action === "batch-autoconfig") {
+      const detection = detectProjectEnvironment(cwd, getSystemSnapshot ? getSystemSnapshot() : null, true);
+      const detectionFile = writeEnvironmentDetection(cwd, detection);
+      const rec = detection.recommendations || {};
+      const config = writeDashboardConfig(cwd, {
+        metric: rec.metric || body.metric || "latency_ms",
+        direction: rec.direction || body.direction || "lower",
+        benchmarkMode: rec.benchmarkMode || "generic",
+        benchmarkCommand: rec.benchmarkCommand || "",
+        profileTool: rec.profileTool || "time",
+        profileArgs: rec.profileArgs || "",
+        profileCommand: rec.profileCommand || rec.benchmarkCommand || "",
+        sweepName: rec.sweepName || "auto-perf-sweep",
+        sweepTemplate: rec.sweepTemplate || rec.batchCommandTemplate || "",
+        sweepGrid: rec.sweepGrid || "",
+        batchSweepSpec: rec.batchSweepSpec || "",
+        batchCommandTemplate: rec.batchCommandTemplate || rec.sweepTemplate || "",
+        batchParamGrid: rec.batchParamGrid || "",
+        batchMaxRuns: rec.batchMaxRuns || "",
+        batchMaxRetries: rec.batchMaxRetries || "",
+        allowLocalPerf: rec.allowLocalPerf || "true",
+      });
+      sendDashboardJson(res, 200, {
+        ok: true,
+        action,
+        config,
+        detection,
+        detectionFile,
+        state: stateFor(cwd),
+      });
+      return;
+    }
+    if (action === "open-ide") {
+      const ide = String(body.ide || "clion");
+      const opened = openLocalIde(cwd, ide);
+      sendDashboardJson(res, 202, { ok: true, action, ...opened });
+      return;
+    }
+    if (action === "perf-autodiagnose") {
+      const detection = detectProjectEnvironment(cwd, getSystemSnapshot ? getSystemSnapshot() : null, true);
+      const detectionFile = writeEnvironmentDetection(cwd, detection);
+      const config = writeDashboardConfig(cwd, {
+        ...(detection.recommendations || {}),
+        ...normalizeDashboardConfig(body),
+      });
+      const auto = buildAutoDiagnoseCommand(cwd, config, body);
+      const spawned = spawnDashboardShellAction(cwd, auto.command, "perf-auto", {
+        actionId: auto.actionId,
+        artifacts: { dir: path.relative(cwd, auto.logDir), detectionFile },
+      });
+      sendDashboardJson(res, 202, {
+        ok: true,
+        action,
+        detectionFile,
+        config,
+        ...spawned,
+      });
+      return;
+    }
+    if (action === "perf-build") {
+      const config = mergeDashboardPerfConfig(cwd, body);
+      const commandText = String(config.buildCommand || "").trim();
+      if (!commandText) throw new Error("请先填写构建命令，例如 cmake --build build -j");
+      const spawned = spawnDashboardShellAction(cwd, commandText, "perf-build");
+      sendDashboardJson(res, 202, { ok: true, action, ...spawned });
+      return;
+    }
+    if (action === "perf-benchmark") {
+      const config = mergeDashboardPerfConfig(cwd, body);
+      const id = String(body.id || dashboardActionId("bench")).trim();
+      const commandText = buildDashboardBenchmarkCommand(config);
+      if (!commandText) throw new Error("请先填写 benchmark 命令，或填写入口文件和参数");
+      const metric = String(config.metric || "latency_ms").trim() || "latency_ms";
+      const args = ["--id", id, "--metric", metric, "--command", commandText];
+      const regex = String(config.regex || "").trim();
+      const timeout = String(config.timeout || "").trim();
+      if (regex) args.push("--regex", regex);
+      if (timeout) args.push("--timeout", timeout);
+      if (config.device) args.push("--device", String(config.device));
+      if (config.cudaVisibleDevices) args.push("--cuda-visible-devices", String(config.cudaVisibleDevices));
+      args.push("--tags", ["performance", "benchmark", String(config.benchmarkMode || "generic")].filter(Boolean).join(","));
+      if (config.notes) args.push("--note", String(config.notes));
+      if (allowLocalPerf(body, config)) args.push("--allow-unsafe");
+      const spawned = spawnDashboardCliAction(cwd, "run", args, "perf-benchmark");
+      sendDashboardJson(res, 202, { ok: true, action, runId: id, command: commandText, ...spawned });
+      return;
+    }
+    if (action === "perf-profile") {
+      const config = mergeDashboardPerfConfig(cwd, body);
+      const actionId = dashboardActionId("perf-profile");
+      const profile = buildProfilerCommand(cwd, config, actionId);
+      const spawned = spawnDashboardShellAction(cwd, profile.command, "perf-profile", {
+        actionId,
+        artifacts: {
+          tool: profile.tool,
+          dir: path.relative(cwd, profile.artifactsDir),
+        },
+      });
+      sendDashboardJson(res, 202, { ok: true, action, profiler: profile.tool, ...spawned });
+      return;
+    }
+    if (action === "perf-compile") {
+      const config = mergeDashboardPerfConfig(cwd, body);
+      let commandText = String(config.compilerCommand || "").trim();
+      if (!commandText) throw new Error("请先填写编译器分析命令，例如 nvcc -Xptxas -v kernel.cu -o bench");
+      const flags = String(config.compilerFlags || "").trim();
+      if (flags) commandText = `${commandText} ${flags}`;
+      const spawned = spawnDashboardShellAction(cwd, commandText, "perf-compile");
+      sendDashboardJson(res, 202, { ok: true, action, ...spawned });
+      return;
+    }
+    if (action === "perf-sweep") {
+      const config = mergeDashboardPerfConfig(cwd, body);
+      const spec = buildDashboardSweepSpec(config);
+      const specDir = path.join(cwd, ".researchloop", "scratchpad", "dashboard-sweeps");
+      ensureDir(specDir);
+      const specFile = path.join(specDir, `${spec.name}-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
+      fs.writeFileSync(specFile, `${JSON.stringify(spec, null, 2)}\n`);
+      const args = ["--spec", specFile, "--metric", spec.metric, "--direction", spec.direction];
+      if (spec.timeout) args.push("--timeout", String(spec.timeout));
+      if (allowLocalPerf(body, config)) args.push("--allow-unsafe");
+      const spawned = spawnDashboardCliAction(cwd, "sweep", args, "perf-sweep");
+      sendDashboardJson(res, 202, { ok: true, action, spec: path.relative(cwd, specFile), ...spawned });
+      return;
+    }
+    if (action === "sweep-validate" || action === "sweep-preview") {
+      const spec = buildSweepSpecFromDashboardBody(body);
+      const validation = validateSweepSpec(spec, cwd, {
+        allowUnsafe: body.allowUnsafe === true || String(body.allowLocalPerf || "").toLowerCase() === "true",
+        maxRuns: body.maxRuns || body.batchMaxRuns || null,
+      });
+      sendDashboardJson(res, validation.ok ? 200 : 400, {
+        ok: validation.ok,
+        action,
+        validation,
+        preview: validation.variants.slice(0, 100),
+        state: stateFor(cwd),
+        error: validation.ok ? undefined : validation.errors.join("; "),
+      });
+      return;
+    }
+    if (action === "sweep-create") {
+      const spec = buildSweepSpecFromDashboardBody(body);
+      const configPatch = normalizeDashboardConfig({
+        batchSweepSpec: body.specText || body.batchSweepSpec || "",
+        batchCommandTemplate: body.commandTemplate || body.batchCommandTemplate || "",
+        batchMaxRuns: body.maxRuns || body.batchMaxRuns || "",
+        batchMaxRetries: body.maxRetries || body.batchMaxRetries || "",
+      });
+      if (Object.keys(configPatch).length) writeDashboardConfig(cwd, configPatch);
+      const created = createSweepQueue(cwd, spec, {
+        allowUnsafe: body.allowUnsafe === true || String(body.allowLocalPerf || "").toLowerCase() === "true",
+        queueId: body.queueId || body.batchQueueId || "",
+        maxRuns: body.maxRuns || body.batchMaxRuns || null,
+      });
+      writeDashboardConfig(cwd, { batchQueueId: created.queueId });
+      sendDashboardJson(res, 200, {
+        ok: true,
+        action,
+        queueId: created.queueId,
+        queue: created.state,
+        state: stateFor(cwd),
+      });
+      return;
+    }
+    if (action === "sweep-start") {
+      const queueId = String(body.queueId || body.batchQueueId || "").trim();
+      if (!queueId) throw new Error("queue id is required");
+      const argsList = ["start", "--id", queueId];
+      if (body.allowUnsafe === true || String(body.allowLocalPerf || "").toLowerCase() === "true") argsList.push("--allow-unsafe");
+      const spawned = spawnDashboardCliAction(cwd, "queue", argsList, "sweep-start");
+      sendDashboardJson(res, 202, { ok: true, action, queueId, ...spawned, state: stateFor(cwd) });
+      return;
+    }
+    if (action === "sweep-pause") {
+      const queueId = String(body.queueId || body.batchQueueId || "").trim();
+      if (!queueId) throw new Error("queue id is required");
+      const queue = setQueueStatus(cwd, queueId, "pausing", "queue_pause_requested");
+      sendDashboardJson(res, 200, { ok: true, action, queueId, queue, state: stateFor(cwd) });
+      return;
+    }
+    if (action === "sweep-resume") {
+      const queueId = String(body.queueId || body.batchQueueId || "").trim();
+      if (!queueId) throw new Error("queue id is required");
+      setQueueStatus(cwd, queueId, "pending", "queue_resume_requested");
+      const argsList = ["start", "--id", queueId];
+      if (body.allowUnsafe === true || String(body.allowLocalPerf || "").toLowerCase() === "true") argsList.push("--allow-unsafe");
+      const spawned = spawnDashboardCliAction(cwd, "queue", argsList, "sweep-resume");
+      sendDashboardJson(res, 202, { ok: true, action, queueId, ...spawned, state: stateFor(cwd) });
+      return;
+    }
+    if (action === "sweep-cancel") {
+      const queueId = String(body.queueId || body.batchQueueId || "").trim();
+      if (!queueId) throw new Error("queue id is required");
+      const queue = setQueueStatus(cwd, queueId, "cancelled", "queue_cancel_requested");
+      sendDashboardJson(res, 200, { ok: true, action, queueId, queue, state: stateFor(cwd) });
+      return;
+    }
+    if (action === "sweep-retry-failed") {
+      const queueId = String(body.queueId || body.batchQueueId || "").trim();
+      if (!queueId) throw new Error("queue id is required");
+      const retry = resetFailedTrialsForRetry(cwd, queueId);
+      sendDashboardJson(res, 200, { ok: true, action, queueId, changed: retry.changed, queue: retry.state, state: stateFor(cwd) });
+      return;
+    }
+    if (action === "sweep-status") {
+      const queueId = String(body.queueId || body.batchQueueId || "").trim();
+      if (!queueId) throw new Error("queue id is required");
+      const queue = readQueueState(cwd, queueId);
+      sendDashboardJson(res, 200, { ok: true, action, queueId, queue, state: stateFor(cwd) });
+      return;
+    }
+    if (action === "sweep-report") {
+      const queueId = String(body.queueId || body.batchQueueId || "").trim();
+      if (!queueId) throw new Error("queue id is required");
+      const written = writeSweepReport(cwd, queueId);
+      sendDashboardJson(res, 200, { ok: true, action, queueId, ...written, state: stateFor(cwd) });
+      return;
+    }
+    if (action === "perf-report") {
+      const config = mergeDashboardPerfConfig(cwd, body);
+      const report = writeDashboardPerformanceReport(cwd, config);
+      sendDashboardJson(res, 200, { ok: true, action, ...report, state: stateFor(cwd) });
+      return;
+    }
+    if (action === "baseline" || action === "run") {
+      const isBaseline = action === "baseline";
+      const { id, args } = dashboardRunArgs(cwd, body, isBaseline);
+      const spawned = spawnDashboardCliAction(cwd, isBaseline ? "baseline" : "run", args, action);
+      sendDashboardJson(res, 202, { ok: true, action, runId: id, ...spawned });
+      return;
+    }
+
+    sendDashboardJson(res, 404, { ok: false, error: "unknown dashboard action" });
+  } catch (err) {
+    sendDashboardJson(res, 400, { ok: false, error: err.message });
+  }
+}
+
 function cmdDashboard() {
   const cwd = targetDir();
+  let activeCwd = cwd;
   const host = String(option("--host", "127.0.0.1"));
   const port = Number(option("--port", 8787));
   const loopbackHosts = new Set(["127.0.0.1", "localhost", "::1"]);
-  if (!loopbackHosts.has(host)) {
+  const hostIsLoopback = loopbackHosts.has(host);
+  if (!hostIsLoopback) {
     console.error("");
     console.error(`WARNING: --host ${host} is not loopback.`);
     console.error("The dashboard has no auth. Anyone who can reach this address can read");
@@ -2473,6 +6107,12 @@ function cmdDashboard() {
   }
   const dashboardFile = path.join(templatesRoot, "dashboard", "index.html");
   const html = readTextIfExists(dashboardFile);
+  const dashboardAssetsRoot = path.join(packageRoot, "assets");
+  const systemSampler = startDashboardSystemSampler(() => activeCwd, 1000);
+  const setActiveCwd = (nextCwd) => {
+    activeCwd = nextCwd;
+    systemSampler.sampleNow();
+  };
 
   const server = http.createServer((req, res) => {
     const url = new URL(req.url || "/", `http://${req.headers.host || `${host}:${port}`}`);
@@ -2481,37 +6121,62 @@ function cmdDashboard() {
       res.end(html);
       return;
     }
+    if (url.pathname.startsWith("/assets/")) {
+      const rel = decodeURIComponent(url.pathname.slice("/assets/".length));
+      const file = path.resolve(dashboardAssetsRoot, rel);
+      if (!file.startsWith(`${dashboardAssetsRoot}${path.sep}`) || !fs.existsSync(file)) {
+        res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+        res.end("Not found");
+        return;
+      }
+      const ext = path.extname(file).toLowerCase();
+      const contentType = ext === ".png" ? "image/png"
+        : ext === ".jpg" || ext === ".jpeg" ? "image/jpeg"
+          : ext === ".webp" ? "image/webp"
+            : ext === ".svg" ? "image/svg+xml"
+              : "application/octet-stream";
+      res.writeHead(200, {
+        "content-type": contentType,
+        "cache-control": "public, max-age=3600",
+      });
+      fs.createReadStream(file).pipe(res);
+      return;
+    }
     if (url.pathname === "/api/state") {
       res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-      res.end(`${JSON.stringify(buildDashboardState(cwd), null, 2)}\n`);
+      res.end(`${JSON.stringify(buildDashboardState(activeCwd, systemSampler.getSnapshot()), null, 2)}\n`);
       return;
     }
     if (url.pathname === "/api/runs") {
       res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-      const state = buildDashboardState(cwd);
+      const state = buildDashboardState(activeCwd, systemSampler.getSnapshot());
       res.end(`${JSON.stringify(state.runs, null, 2)}\n`);
       return;
     }
     if (url.pathname === "/api/goal") {
       res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-      const state = buildDashboardState(cwd);
+      const state = buildDashboardState(activeCwd, systemSampler.getSnapshot());
       res.end(`${JSON.stringify(state.goal, null, 2)}\n`);
       return;
     }
     if (url.pathname === "/api/system") {
       res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-      res.end(`${JSON.stringify(readSystemMetrics(), null, 2)}\n`);
+      res.end(`${JSON.stringify(systemSampler.getSnapshot(), null, 2)}\n`);
       return;
     }
     if (url.pathname === "/api/thread") {
       res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-      res.end(`${JSON.stringify(readThreadTail(cwd, 50), null, 2)}\n`);
+      res.end(`${JSON.stringify(readThreadTail(activeCwd, 50), null, 2)}\n`);
       return;
     }
     if (url.pathname === "/api/log-tail") {
       res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-      const state = buildDashboardState(cwd);
+      const state = buildDashboardState(activeCwd, systemSampler.getSnapshot());
       res.end(`${JSON.stringify(state.logTail || null, null, 2)}\n`);
+      return;
+    }
+    if (url.pathname.startsWith("/api/action/")) {
+      handleDashboardAction(req, res, () => activeCwd, setActiveCwd, hostIsLoopback, () => systemSampler.getSnapshot());
       return;
     }
     res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
@@ -2526,6 +6191,7 @@ function cmdDashboard() {
     console.log("No auth. Localhost only.");
   });
 
+  server.on("close", () => systemSampler.stop());
   process.on("SIGINT", () => server.close(() => process.exit(0)));
   process.on("SIGTERM", () => server.close(() => process.exit(0)));
 }
@@ -2723,6 +6389,73 @@ function cmdCompare() {
     console.log(`gpu_hours_total: ${totalGpuHours.toFixed(4)}`);
     console.log(`gpu_memory_peak_mb: ${peakMem}`);
   }
+
+  const tierAnalysis = evaluateMetricTiers(rows, readMetricTierConfig(cwd));
+  if (tierAnalysis.comparable_runs > 0) {
+    console.log("metric_tiers:");
+    console.log(`  profile: ${tierAnalysis.profile}`);
+    console.log(`  baseline: ${tierAnalysis.baseline_id || "none"}`);
+    console.log(`  candidate: ${tierAnalysis.candidate_id || "none"}`);
+    console.log(`  recommendation: ${tierAnalysis.recommendation.label}`);
+    console.log(`  reason: ${tierAnalysis.recommendation.reason}`);
+    console.log(`  overall_score: ${formatReportNumber(tierAnalysis.overall_score)}`);
+    for (const level of tierAnalysis.levels) {
+      console.log(`  ${level.key}: available=${level.available}/${level.metrics.length} avg=${formatReportPercent(level.avg_improvement)} weighted=${formatReportNumber(level.weighted_score)}`);
+    }
+  }
+}
+
+function renderMetricTierText(analysis) {
+  const lines = [
+    `profile: ${analysis.profile} (${analysis.profile_label || "custom"})`,
+    `baseline: ${analysis.baseline_id || "none"}`,
+    `candidate: ${analysis.candidate_id || "none"}`,
+    `recommendation: ${analysis.recommendation.label}`,
+    `reason: ${analysis.recommendation.reason}`,
+    `overall_score: ${formatReportNumber(analysis.overall_score)}`,
+  ];
+  for (const level of analysis.levels) {
+    lines.push(`${level.key}: available=${level.available}/${level.metrics.length} avg=${formatReportPercent(level.avg_improvement)} weighted=${formatReportNumber(level.weighted_score)}`);
+    for (const metric of level.metrics) {
+      const delta = metric.improvement === null ? "—" : formatReportPercent(metric.improvement);
+      lines.push(`  - ${metric.name}: ${metric.direction} baseline=${metric.baseline ?? "—"} current=${metric.current ?? "—"} improvement=${delta}`);
+    }
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function cmdMetricTiers() {
+  const cwd = targetDir();
+  const sub = subcommandFor("metric-tiers", ["init", "show", "score"]) || "show";
+  const profile = String(option("--profile", "hpc_operator")).trim() || "hpc_operator";
+  const format = String(option("--format", "text")).toLowerCase();
+  if (sub === "init") {
+    const config = writeMetricTierConfig(cwd, buildDefaultMetricTierConfig(profile));
+    if (format === "json") {
+      console.log(JSON.stringify(config, null, 2));
+    } else {
+      console.log(`metric_tiers: ${config.file}`);
+      console.log(`profile: ${config.profile}`);
+    }
+    return;
+  }
+  const config = readMetricTierConfig(cwd, profile);
+  if (sub === "show") {
+    if (format === "json") {
+      console.log(JSON.stringify(config, null, 2));
+    } else {
+      process.stdout.write(metricTierConfigToYaml(config));
+    }
+    return;
+  }
+  const ledger = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
+  const rows = parseRunsLedger(ledger);
+  const analysis = evaluateMetricTiers(rows, config);
+  if (format === "json") {
+    console.log(JSON.stringify(analysis, null, 2));
+  } else {
+    process.stdout.write(renderMetricTierText(analysis));
+  }
 }
 
 function rowMetricValue(row, key) {
@@ -2773,6 +6506,102 @@ function cmdRecord() {
 function defaultMetricRegex(metricName) {
   const escaped = metricName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`["']?${escaped}["']?\\s*[:=]\\s*["']?(-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)`, "gi");
+}
+
+function knownMetricNamesForParsing(primaryMetric = "") {
+  const names = new Set(Object.keys(METRIC_DIRECTION_DEFAULTS));
+  for (const profile of Object.values(METRIC_TIER_PROFILES)) {
+    for (const level of METRIC_TIER_LEVELS) {
+      for (const metric of profile[level.key] || []) names.add(metric);
+    }
+  }
+  if (primaryMetric) names.add(String(primaryMetric));
+  return names;
+}
+
+function isMetricLikeKey(key, knownNames) {
+  const normalized = String(key || "").trim();
+  if (!normalized) return false;
+  if (knownNames.has(normalized)) return true;
+  return /(?:latency|throughput|tflops|speedup|bandwidth|util|memory|footprint|rate|tokens|samples|cost|time|overhead|occupancy|efficiency|_ms|_sec|_seconds|_pct)$/i.test(normalized);
+}
+
+function extractJsonMetrics(value, knownNames, out = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return out;
+  for (const [key, raw] of Object.entries(value)) {
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      extractJsonMetrics(raw, knownNames, out);
+      continue;
+    }
+    if (!isMetricLikeKey(key, knownNames)) continue;
+    const num = Number(raw);
+    if (Number.isFinite(num)) out[key] = num;
+  }
+  return out;
+}
+
+function extractMarkdownTableMetrics(output) {
+  const text = String(output || "");
+  const averageIndex = text.toLowerCase().lastIndexOf("average benchmark");
+  const scope = averageIndex >= 0 ? text.slice(averageIndex) : text;
+  const numericValues = [];
+  for (const rawLine of scope.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line.startsWith("|") || !line.endsWith("|")) continue;
+    if (/^\|[-:\s|]+\|$/.test(line)) continue;
+    const cells = line.split("|").slice(1, -1).map((cell) => cell.trim());
+    if (cells.length < 2 || /^operation$/i.test(cells[0])) continue;
+    for (const cell of cells.slice(1)) {
+      if (/%/.test(cell)) continue;
+      const match = cell.match(/[-+]?(\d+(?:\.\d+)?|\.\d+)(?:[eE][-+]?\d+)?/);
+      if (!match) continue;
+      const value = Number(match[0]);
+      if (Number.isFinite(value)) numericValues.push(value);
+    }
+  }
+  if (!numericValues.length) return {};
+  const sorted = numericValues.slice().sort((a, b) => a - b);
+  const mean = numericValues.reduce((sum, value) => sum + value, 0) / numericValues.length;
+  const median = sorted.length % 2
+    ? sorted[Math.floor(sorted.length / 2)]
+    : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
+  return {
+    latency_ms: Number(median.toFixed(6)),
+    mean_ms: Number(mean.toFixed(6)),
+    min_ms: Number(sorted[0].toFixed(6)),
+    max_ms: Number(sorted[sorted.length - 1].toFixed(6)),
+  };
+}
+
+function extractMetricsFromOutput(output, primaryMetric, customRegexSource) {
+  const knownNames = knownMetricNamesForParsing(primaryMetric);
+  const metrics = {};
+  for (const line of String(output || "").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) continue;
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        for (const entry of parsed) extractJsonMetrics(entry, knownNames, metrics);
+      } else {
+        extractJsonMetrics(parsed, knownNames, metrics);
+      }
+    } catch {
+      // Most logs are not JSON; skip non-JSON lines.
+    }
+  }
+  for (const metric of knownNames) {
+    const values = extractMetricSeriesFromText(output, metric, null);
+    if (values.length) metrics[metric] = values[values.length - 1];
+  }
+  if (primaryMetric && customRegexSource) {
+    const primary = parseMetricFromOutput(output, primaryMetric, customRegexSource);
+    if (primary !== null) metrics[primaryMetric] = primary;
+  }
+  for (const [key, value] of Object.entries(extractMarkdownTableMetrics(output))) {
+    if (!isNumericMetric(metrics[key])) metrics[key] = value;
+  }
+  return metrics;
 }
 
 function parseMetricFromOutput(output, metricName, customRegexSource) {
@@ -2856,9 +6685,400 @@ function probeGpuStats() {
   }
 }
 
-function startSystemSampler(runDir, intervalMs = 5000) {
+function probeGpuProcessStats(pids) {
+  const pidSet = new Set((pids || []).map((pid) => Number(pid)).filter((pid) => Number.isFinite(pid)));
+  if (!pidSet.size) return null;
+  try {
+    const out = execSync(
+      "nvidia-smi --query-compute-apps=pid,used_memory --format=csv,noheader,nounits",
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 2000 },
+    );
+    const rows = out
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [pidText, memoryText] = line.split(",").map((p) => p.trim());
+        const pid = Number(pidText);
+        const memoryMb = Number(memoryText);
+        return {
+          pid,
+          memory_mb: Number.isFinite(memoryMb) ? memoryMb : null,
+        };
+      })
+      .filter((row) => pidSet.has(row.pid));
+    if (!rows.length) return null;
+    const memoryMb = rows.reduce((sum, row) => sum + (Number(row.memory_mb) || 0), 0);
+    return {
+      source: "nvidia-smi compute-apps",
+      process_gpu_memory_mb: memoryMb,
+      processes: rows,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function parseCpuTimeSeconds(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  const daySplit = text.split("-");
+  let days = 0;
+  let timeText = text;
+  if (daySplit.length === 2) {
+    days = Number(daySplit[0]);
+    timeText = daySplit[1];
+  }
+  const parts = timeText.split(":").map((part) => Number(part));
+  if (parts.some((part) => !Number.isFinite(part))) return null;
+  let seconds = 0;
+  if (parts.length === 3) {
+    seconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
+  } else if (parts.length === 2) {
+    seconds = parts[0] * 60 + parts[1];
+  } else if (parts.length === 1) {
+    seconds = parts[0];
+  } else {
+    return null;
+  }
+  return days * 86400 + seconds;
+}
+
+function readUnixProcessTable() {
+  try {
+    const out = execSync("ps -axo pid=,ppid=,pcpu=,rss=,time=,command=", {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 1800,
+    });
+    const rows = out
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const match = line.match(/^(\d+)\s+(\d+)\s+([0-9.]+)\s+(\d+)\s+([0-9:.+-]+)\s*(.*)$/);
+        if (!match) return null;
+        const pid = Number(match[1]);
+        const ppid = Number(match[2]);
+        const pcpuPct = Number(match[3]);
+        const rssKb = Number(match[4]);
+        return {
+          pid,
+          ppid,
+          pcpuPct: Number.isFinite(pcpuPct) ? pcpuPct : 0,
+          rssBytes: Number.isFinite(rssKb) ? rssKb * 1024 : 0,
+          cpuTimeSeconds: parseCpuTimeSeconds(match[5]),
+          command: match[6] || "",
+        };
+      })
+      .filter((row) => row && Number.isFinite(row.pid) && Number.isFinite(row.ppid));
+    return { rows, source: "ps" };
+  } catch (err) {
+    return { rows: [], source: "ps", error: err.message };
+  }
+}
+
+function readWindowsProcessTable() {
+  try {
+    const script = [
+      "$ErrorActionPreference='SilentlyContinue';",
+      "Get-CimInstance Win32_Process |",
+      "Select-Object ProcessId,ParentProcessId,WorkingSetSize,UserModeTime,KernelModeTime,ReadTransferCount,WriteTransferCount,Name |",
+      "ConvertTo-Json -Compress",
+    ].join(" ");
+    const out = execSync(`powershell -NoProfile -Command ${JSON.stringify(script)}`, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 3000,
+    }).trim();
+    const parsed = out ? JSON.parse(out) : [];
+    const list = Array.isArray(parsed) ? parsed : [parsed];
+    const rows = list
+      .map((row) => {
+        const pid = Number(row.ProcessId);
+        const ppid = Number(row.ParentProcessId);
+        const user = Number(row.UserModeTime);
+        const kernel = Number(row.KernelModeTime);
+        return {
+          pid,
+          ppid,
+          pcpuPct: 0,
+          rssBytes: Number(row.WorkingSetSize) || 0,
+          cpuTimeSeconds: Number.isFinite(user) && Number.isFinite(kernel) ? (user + kernel) / 10_000_000 : null,
+          diskReadBytes: Number(row.ReadTransferCount),
+          diskWriteBytes: Number(row.WriteTransferCount),
+          command: row.Name || "",
+        };
+      })
+      .filter((row) => Number.isFinite(row.pid) && Number.isFinite(row.ppid));
+    return { rows, source: "powershell-cim" };
+  } catch (err) {
+    return { rows: [], source: "powershell-cim", error: err.message };
+  }
+}
+
+function readProcessTable() {
+  if (process.platform === "win32") return readWindowsProcessTable();
+  return readUnixProcessTable();
+}
+
+function collectProcessTreeRows(rows, rootPid) {
+  const root = Number(rootPid);
+  if (!Number.isFinite(root) || root <= 0) return [];
+  const byPid = new Map();
+  const children = new Map();
+  for (const row of rows || []) {
+    byPid.set(row.pid, row);
+    if (!children.has(row.ppid)) children.set(row.ppid, []);
+    children.get(row.ppid).push(row.pid);
+  }
+  const found = [];
+  const seen = new Set();
+  const stack = [root];
+  while (stack.length) {
+    const pid = stack.pop();
+    if (seen.has(pid)) continue;
+    seen.add(pid);
+    const row = byPid.get(pid);
+    if (row) found.push(row);
+    for (const child of children.get(pid) || []) {
+      stack.push(child);
+    }
+  }
+  return found;
+}
+
+function readLinuxProcessIo(pid) {
+  if (process.platform !== "linux") return null;
+  try {
+    const text = fs.readFileSync(`/proc/${pid}/io`, "utf8");
+    const readMatch = text.match(/^read_bytes:\s+(\d+)/m);
+    const writeMatch = text.match(/^write_bytes:\s+(\d+)/m);
+    return {
+      readBytes: readMatch ? Number(readMatch[1]) : null,
+      writeBytes: writeMatch ? Number(writeMatch[1]) : null,
+      source: "procfs",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function readProcessIoTotals(rows) {
+  let readBytes = 0;
+  let writeBytes = 0;
+  let count = 0;
+  let source = null;
+  for (const row of rows || []) {
+    let io = null;
+    if (Number.isFinite(row.diskReadBytes) || Number.isFinite(row.diskWriteBytes)) {
+      io = {
+        readBytes: Number(row.diskReadBytes),
+        writeBytes: Number(row.diskWriteBytes),
+        source: "powershell-cim",
+      };
+    } else {
+      io = readLinuxProcessIo(row.pid);
+    }
+    if (!io) continue;
+    if (Number.isFinite(io.readBytes)) readBytes += io.readBytes;
+    if (Number.isFinite(io.writeBytes)) writeBytes += io.writeBytes;
+    source = io.source;
+    count += 1;
+  }
+  if (!count) {
+    const unsupported = process.platform === "darwin" ? "unsupported-macos" : "unsupported";
+    return { readBytes: null, writeBytes: null, source: unsupported };
+  }
+  return { readBytes, writeBytes, source };
+}
+
+function readNetworkCounters() {
+  try {
+    if (process.platform === "linux") {
+      const text = fs.readFileSync("/proc/net/dev", "utf8");
+      let rxBytes = 0;
+      let txBytes = 0;
+      for (const line of text.split("\n").slice(2)) {
+        const [ifaceRaw, restRaw] = line.split(":");
+        if (!restRaw) continue;
+        const iface = ifaceRaw.trim();
+        if (!iface || iface === "lo") continue;
+        const parts = restRaw.trim().split(/\s+/).map((part) => Number(part));
+        if (Number.isFinite(parts[0])) rxBytes += parts[0];
+        if (Number.isFinite(parts[8])) txBytes += parts[8];
+      }
+      return { rxBytes, txBytes, source: "procfs" };
+    }
+    if (process.platform === "darwin") {
+      const out = execSync("netstat -ibn", {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 1800,
+      });
+      const byInterface = new Map();
+      for (const line of out.split("\n").slice(1)) {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length < 10) continue;
+        const iface = parts[0];
+        if (!iface || iface === "lo0") continue;
+        const rx = Number(parts[6]);
+        const tx = Number(parts[9]);
+        if (!Number.isFinite(rx) || !Number.isFinite(tx)) continue;
+        const prev = byInterface.get(iface) || { rxBytes: 0, txBytes: 0 };
+        byInterface.set(iface, {
+          rxBytes: Math.max(prev.rxBytes, rx),
+          txBytes: Math.max(prev.txBytes, tx),
+        });
+      }
+      let rxBytes = 0;
+      let txBytes = 0;
+      for (const row of byInterface.values()) {
+        rxBytes += row.rxBytes;
+        txBytes += row.txBytes;
+      }
+      return { rxBytes, txBytes, source: "netstat" };
+    }
+    if (process.platform === "win32") {
+      const script = [
+        "$ErrorActionPreference='SilentlyContinue';",
+        "Get-NetAdapterStatistics |",
+        "Select-Object ReceivedBytes,SentBytes |",
+        "ConvertTo-Json -Compress",
+      ].join(" ");
+      const out = execSync(`powershell -NoProfile -Command ${JSON.stringify(script)}`, {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 2500,
+      }).trim();
+      const parsed = out ? JSON.parse(out) : [];
+      const list = Array.isArray(parsed) ? parsed : [parsed];
+      return {
+        rxBytes: list.reduce((sum, row) => sum + (Number(row.ReceivedBytes) || 0), 0),
+        txBytes: list.reduce((sum, row) => sum + (Number(row.SentBytes) || 0), 0),
+        source: "powershell-netadapter",
+      };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function bytesToMiB(value) {
+  if (value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? Number((n / (1024 * 1024)).toFixed(2)) : null;
+}
+
+function buildProcessResourceSnapshot(rootPid, state = {}) {
+  const table = readProcessTable();
+  const nowMs = Date.now();
+  const rows = collectProcessTreeRows(table.rows, rootPid);
+  const cpuCount = os.cpus()?.length || 1;
+  const currentCpuTimes = new Map();
+  let cpuPct = 0;
+  let deltaCount = 0;
+  const elapsedSec = state.previousProcessSampleMs
+    ? Math.max(0, (nowMs - state.previousProcessSampleMs) / 1000)
+    : 0;
+
+  for (const row of rows) {
+    if (Number.isFinite(row.cpuTimeSeconds)) {
+      currentCpuTimes.set(row.pid, row.cpuTimeSeconds);
+      const prev = state.previousCpuTimes?.get(row.pid);
+      if (Number.isFinite(prev) && row.cpuTimeSeconds >= prev && elapsedSec > 0) {
+        cpuPct += ((row.cpuTimeSeconds - prev) / elapsedSec) * 100;
+        deltaCount += 1;
+      }
+    }
+  }
+  if (!deltaCount) {
+    cpuPct = rows.reduce((sum, row) => sum + (Number(row.pcpuPct) || 0), 0);
+  }
+
+  state.previousCpuTimes = currentCpuTimes;
+  state.previousProcessSampleMs = nowMs;
+
+  const rssBytes = rows.reduce((sum, row) => sum + (Number(row.rssBytes) || 0), 0);
+  const io = readProcessIoTotals(rows);
+  if (io.readBytes != null && state.diskReadStart == null) state.diskReadStart = io.readBytes;
+  if (io.writeBytes != null && state.diskWriteStart == null) state.diskWriteStart = io.writeBytes;
+  const diskReadDelta = io.readBytes != null && state.diskReadStart != null
+    ? Math.max(0, io.readBytes - state.diskReadStart)
+    : null;
+  const diskWriteDelta = io.writeBytes != null && state.diskWriteStart != null
+    ? Math.max(0, io.writeBytes - state.diskWriteStart)
+    : null;
+
+  if (!state.networkStart) state.networkStart = readNetworkCounters();
+  const networkNow = readNetworkCounters();
+  const networkRxDelta = state.networkStart && networkNow
+    ? Math.max(0, networkNow.rxBytes - state.networkStart.rxBytes)
+    : null;
+  const networkTxDelta = state.networkStart && networkNow
+    ? Math.max(0, networkNow.txBytes - state.networkStart.txBytes)
+    : null;
+
+  const pids = rows.map((row) => row.pid);
+  const gpuProcess = probeGpuProcessStats(pids);
+  const top = rows
+    .slice()
+    .sort((a, b) => (Number(b.rssBytes) || 0) - (Number(a.rssBytes) || 0))
+    .slice(0, 5)
+    .map((row) => ({
+      pid: row.pid,
+      cpu_pct: Number((Number(row.pcpuPct) || 0).toFixed(2)),
+      rss_bytes: row.rssBytes,
+      command: String(row.command || "").slice(0, 120),
+    }));
+
+  return {
+    root_pid: Number(rootPid) || null,
+    active: rows.length > 0,
+    pids,
+    process_count: rows.length,
+    cpu_pct: Number(Math.max(0, cpuPct).toFixed(2)),
+    cpu_total_pct: Number(Math.max(0, Math.min(100, cpuPct / cpuCount)).toFixed(2)),
+    rss_bytes: rssBytes,
+    rss_mb: bytesToMiB(rssBytes),
+    disk_read_bytes: diskReadDelta,
+    disk_write_bytes: diskWriteDelta,
+    network_rx_bytes: networkRxDelta,
+    network_tx_bytes: networkTxDelta,
+    gpu: gpuProcess,
+    top,
+    sources: {
+      process: table.source,
+      disk: io.source,
+      network: networkNow?.source ? `system_delta:${networkNow.source}` : "unsupported",
+      cpu: deltaCount ? "cpu_time_delta" : "ps_percent",
+      gpu_process: gpuProcess?.source || "unsupported",
+    },
+    error: table.error || null,
+  };
+}
+
+function startSystemSampler(runDir, intervalMs = 1000, options = {}) {
+  if (typeof intervalMs === "object" && intervalMs !== null) {
+    options = intervalMs;
+    intervalMs = Number(options.intervalMs) || 1000;
+  }
   const file = path.join(runDir, "system.jsonl");
   fs.writeFileSync(file, "");
+  const cwd = options.cwd || process.cwd();
+  let rootPid = Number(options.rootPid) || null;
+  let timer = null;
+  let stopped = false;
+  let seq = 0;
+  let missedSamples = 0;
+  let errorCount = 0;
+  let lastStartMs = 0;
+  const processState = {
+    previousCpuTimes: new Map(),
+    previousProcessSampleMs: 0,
+    networkStart: readNetworkCounters(),
+  };
   const agg = {
     samples: 0,
     gpu_present: false,
@@ -2868,58 +7088,209 @@ function startSystemSampler(runDir, intervalMs = 5000) {
     gpu_memory_peak_mb: 0,
     gpu_memory_total_mb: 0,
   };
+  const processAgg = {
+    samples: 0,
+    root_pid: rootPid,
+    process_count_peak: 0,
+    process_cpu_max_pct: null,
+    process_cpu_sum_pct: 0,
+    process_cpu_total_max_pct: null,
+    process_memory_peak_bytes: null,
+    process_memory_sum_bytes: 0,
+    process_disk_read_bytes: null,
+    process_disk_write_bytes: null,
+    process_gpu_memory_peak_mb: null,
+    system_network_rx_bytes: null,
+    system_network_tx_bytes: null,
+    sample_collect_max_ms: 0,
+    sample_drift_max_ms: 0,
+    source: "process-tree",
+    disk_source: null,
+    network_source: null,
+    process_source: null,
+    last_error: null,
+  };
   const sample = () => {
-    const load = os.loadavg();
-    const gpus = probeGpuStats();
-    const row = {
-      ts: new Date().toISOString(),
-      load_avg_1m: load[0],
-      load_avg_5m: load[1],
-      load_avg_15m: load[2],
-      mem_total_bytes: os.totalmem(),
-      mem_free_bytes: os.freemem(),
-      gpus: gpus || null,
-    };
-    if (gpus) {
-      agg.gpu_present = true;
-      agg.gpu_count = Math.max(agg.gpu_count, gpus.length);
-      let sampleMax = 0;
-      let sampleSum = 0;
-      let sampleMemPeak = 0;
-      let sampleMemTotal = 0;
-      for (const g of gpus) {
-        if (Number.isFinite(g.util_pct)) {
-          sampleMax = Math.max(sampleMax, g.util_pct);
-          sampleSum += g.util_pct;
-        }
-        if (Number.isFinite(g.mem_used_mb)) {
-          sampleMemPeak = Math.max(sampleMemPeak, g.mem_used_mb);
-        }
-        if (Number.isFinite(g.mem_total_mb)) {
-          sampleMemTotal = Math.max(sampleMemTotal, g.mem_total_mb);
-        }
+    const startedMs = Date.now();
+    let driftMs = 0;
+    if (lastStartMs > 0) {
+      driftMs = startedMs - lastStartMs - intervalMs;
+      if (driftMs > intervalMs * 0.8) {
+        missedSamples += Math.max(1, Math.floor(driftMs / intervalMs));
       }
-      agg.gpu_util_max_pct = Math.max(agg.gpu_util_max_pct, sampleMax);
-      agg.gpu_util_sum_pct += sampleSum / Math.max(1, gpus.length);
-      agg.gpu_memory_peak_mb = Math.max(agg.gpu_memory_peak_mb, sampleMemPeak);
-      agg.gpu_memory_total_mb = Math.max(agg.gpu_memory_total_mb, sampleMemTotal);
     }
-    agg.samples += 1;
+    lastStartMs = startedMs;
+    let row;
     try {
+      const load = os.loadavg();
+      const gpus = probeGpuStats();
+      const processSnapshot = rootPid ? buildProcessResourceSnapshot(rootPid, processState) : null;
+      const finishedMs = Date.now();
+      seq += 1;
+      row = {
+        ts: new Date(startedMs).toISOString(),
+        load_avg_1m: load[0],
+        load_avg_5m: load[1],
+        load_avg_15m: load[2],
+        mem_total_bytes: os.totalmem(),
+        mem_free_bytes: os.freemem(),
+        gpus: gpus || null,
+        process: processSnapshot,
+        sample: {
+          seq,
+          interval_ms: intervalMs,
+          collect_ms: finishedMs - startedMs,
+          drift_ms: Number(driftMs.toFixed(2)),
+          missed_samples: missedSamples,
+          error_count: errorCount,
+          cwd,
+        },
+      };
+      if (gpus) {
+        agg.gpu_present = true;
+        agg.gpu_count = Math.max(agg.gpu_count, gpus.length);
+        let sampleMax = 0;
+        let sampleSum = 0;
+        let sampleMemPeak = 0;
+        let sampleMemTotal = 0;
+        for (const g of gpus) {
+          if (Number.isFinite(g.util_pct)) {
+            sampleMax = Math.max(sampleMax, g.util_pct);
+            sampleSum += g.util_pct;
+          }
+          if (Number.isFinite(g.mem_used_mb)) {
+            sampleMemPeak = Math.max(sampleMemPeak, g.mem_used_mb);
+          }
+          if (Number.isFinite(g.mem_total_mb)) {
+            sampleMemTotal = Math.max(sampleMemTotal, g.mem_total_mb);
+          }
+        }
+        agg.gpu_util_max_pct = Math.max(agg.gpu_util_max_pct, sampleMax);
+        agg.gpu_util_sum_pct += sampleSum / Math.max(1, gpus.length);
+        agg.gpu_memory_peak_mb = Math.max(agg.gpu_memory_peak_mb, sampleMemPeak);
+        agg.gpu_memory_total_mb = Math.max(agg.gpu_memory_total_mb, sampleMemTotal);
+      }
+      agg.samples += 1;
+      if (processSnapshot?.active) {
+        processAgg.samples += 1;
+        processAgg.root_pid = rootPid;
+        processAgg.process_count_peak = Math.max(processAgg.process_count_peak, processSnapshot.process_count || 0);
+        processAgg.process_cpu_max_pct = Math.max(processAgg.process_cpu_max_pct ?? 0, processSnapshot.cpu_pct || 0);
+        processAgg.process_cpu_sum_pct += processSnapshot.cpu_pct || 0;
+        processAgg.process_cpu_total_max_pct = Math.max(processAgg.process_cpu_total_max_pct ?? 0, processSnapshot.cpu_total_pct || 0);
+        processAgg.process_memory_peak_bytes = Math.max(processAgg.process_memory_peak_bytes ?? 0, processSnapshot.rss_bytes || 0);
+        processAgg.process_memory_sum_bytes += processSnapshot.rss_bytes || 0;
+        if (processSnapshot.disk_read_bytes != null) {
+          processAgg.process_disk_read_bytes = Math.max(processAgg.process_disk_read_bytes ?? 0, processSnapshot.disk_read_bytes);
+        }
+        if (processSnapshot.disk_write_bytes != null) {
+          processAgg.process_disk_write_bytes = Math.max(processAgg.process_disk_write_bytes ?? 0, processSnapshot.disk_write_bytes);
+        }
+        if (processSnapshot.network_rx_bytes != null) {
+          processAgg.system_network_rx_bytes = Math.max(processAgg.system_network_rx_bytes ?? 0, processSnapshot.network_rx_bytes);
+        }
+        if (processSnapshot.network_tx_bytes != null) {
+          processAgg.system_network_tx_bytes = Math.max(processAgg.system_network_tx_bytes ?? 0, processSnapshot.network_tx_bytes);
+        }
+        if (processSnapshot.gpu?.process_gpu_memory_mb != null) {
+          processAgg.process_gpu_memory_peak_mb = Math.max(
+            processAgg.process_gpu_memory_peak_mb ?? 0,
+            processSnapshot.gpu.process_gpu_memory_mb,
+          );
+        }
+        processAgg.sample_collect_max_ms = Math.max(processAgg.sample_collect_max_ms, row.sample.collect_ms);
+        processAgg.sample_drift_max_ms = Math.max(processAgg.sample_drift_max_ms, Number(row.sample.drift_ms) || 0);
+        processAgg.disk_source = processSnapshot.sources?.disk || processAgg.disk_source;
+        processAgg.network_source = processSnapshot.sources?.network || processAgg.network_source;
+        processAgg.process_source = processSnapshot.sources?.process || processAgg.process_source;
+        processAgg.last_error = processSnapshot.error || null;
+      }
       fs.appendFileSync(file, `${JSON.stringify(row)}\n`);
-    } catch {
-      // run dir may have been removed mid-sample; ignore
+    } catch (err) {
+      errorCount += 1;
+      processAgg.last_error = err.message;
+      try {
+        fs.appendFileSync(file, `${JSON.stringify({
+          ts: new Date(startedMs).toISOString(),
+          process: rootPid ? { root_pid: rootPid, active: false, error: err.message } : null,
+          sample: {
+            seq: seq + 1,
+            interval_ms: intervalMs,
+            collect_ms: Date.now() - startedMs,
+            drift_ms: Number(driftMs.toFixed(2)),
+            missed_samples: missedSamples,
+            error_count: errorCount,
+            cwd,
+          },
+        })}\n`);
+        seq += 1;
+      } catch {
+        // run dir may have been removed mid-sample; ignore
+      }
     }
   };
+  const schedule = () => {
+    if (stopped) return;
+    timer = setTimeout(() => {
+      sample();
+      schedule();
+    }, intervalMs);
+    if (typeof timer.unref === "function") timer.unref();
+  };
   sample();
-  const timer = setInterval(sample, intervalMs);
+  schedule();
   const stop = () => {
-    clearInterval(timer);
+    stopped = true;
+    if (timer) clearTimeout(timer);
+  };
+  stop.bindPid = (pid) => {
+    const numeric = Number(pid);
+    if (!Number.isFinite(numeric) || numeric <= 0) return;
+    rootPid = numeric;
+    processAgg.root_pid = numeric;
+    sample();
   };
   stop.getAggregates = () => {
     const meanUtil = agg.samples > 0 && agg.gpu_present
       ? Number((agg.gpu_util_sum_pct / agg.samples).toFixed(2))
       : null;
+    const processCpuMean = processAgg.samples > 0
+      ? Number((processAgg.process_cpu_sum_pct / processAgg.samples).toFixed(2))
+      : null;
+    const processMemoryMeanBytes = processAgg.samples > 0
+      ? Math.round(processAgg.process_memory_sum_bytes / processAgg.samples)
+      : null;
+    const resourceProfile = {
+      source: processAgg.source,
+      samples: processAgg.samples,
+      sampler_interval_ms: intervalMs,
+      root_pid: processAgg.root_pid || null,
+      process_count_peak: processAgg.process_count_peak || null,
+      process_cpu_max_pct: processAgg.process_cpu_max_pct,
+      process_cpu_mean_pct: processCpuMean,
+      process_cpu_total_max_pct: processAgg.process_cpu_total_max_pct,
+      process_memory_peak_bytes: processAgg.process_memory_peak_bytes,
+      process_memory_peak_mb: bytesToMiB(processAgg.process_memory_peak_bytes),
+      process_memory_mean_bytes: processMemoryMeanBytes,
+      process_memory_mean_mb: bytesToMiB(processMemoryMeanBytes),
+      process_disk_read_bytes: processAgg.process_disk_read_bytes,
+      process_disk_write_bytes: processAgg.process_disk_write_bytes,
+      process_disk_read_mb: bytesToMiB(processAgg.process_disk_read_bytes),
+      process_disk_write_mb: bytesToMiB(processAgg.process_disk_write_bytes),
+      process_gpu_memory_peak_mb: processAgg.process_gpu_memory_peak_mb,
+      system_network_rx_bytes: processAgg.system_network_rx_bytes,
+      system_network_tx_bytes: processAgg.system_network_tx_bytes,
+      system_network_rx_mb: bytesToMiB(processAgg.system_network_rx_bytes),
+      system_network_tx_mb: bytesToMiB(processAgg.system_network_tx_bytes),
+      disk_source: processAgg.disk_source,
+      network_source: processAgg.network_source,
+      process_source: processAgg.process_source,
+      sample_collect_max_ms: processAgg.sample_collect_max_ms,
+      sample_drift_max_ms: processAgg.sample_drift_max_ms,
+      missed_samples: missedSamples,
+      error_count: errorCount,
+      last_error: processAgg.last_error,
+    };
     return {
       gpu_present: agg.gpu_present,
       gpu_count: agg.gpu_count || null,
@@ -2927,6 +7298,16 @@ function startSystemSampler(runDir, intervalMs = 5000) {
       gpu_util_mean_pct: meanUtil,
       gpu_memory_peak_mb: agg.gpu_present ? agg.gpu_memory_peak_mb : null,
       gpu_memory_total_mb: agg.gpu_present ? agg.gpu_memory_total_mb || null : null,
+      resource_profile: resourceProfile,
+      process_cpu_max_pct: resourceProfile.process_cpu_max_pct,
+      process_cpu_mean_pct: resourceProfile.process_cpu_mean_pct,
+      process_cpu_total_max_pct: resourceProfile.process_cpu_total_max_pct,
+      process_memory_peak_mb: resourceProfile.process_memory_peak_mb,
+      process_memory_mean_mb: resourceProfile.process_memory_mean_mb,
+      process_disk_read_mb: resourceProfile.process_disk_read_mb,
+      process_disk_write_mb: resourceProfile.process_disk_write_mb,
+      system_network_rx_mb: resourceProfile.system_network_rx_mb,
+      system_network_tx_mb: resourceProfile.system_network_tx_mb,
     };
   };
   return stop;
@@ -2966,9 +7347,16 @@ function writeArtifactManifest(runDir) {
   fs.writeFileSync(path.join(runDir, "MANIFEST.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
-function spawnCommand(commandText, cwd, timeoutMs, logFile, timeoutReason = "timeout", childEnv = process.env) {
+function spawnCommand(commandText, cwd, timeoutMs, logFile, timeoutReason = "timeout", childEnv = process.env, opts = {}) {
   return new Promise((resolve) => {
     const child = spawn(commandText, { cwd, shell: true, env: childEnv });
+    if (typeof opts.onSpawn === "function") {
+      try {
+        opts.onSpawn(child);
+      } catch {
+        // Sampler hooks are best-effort; command execution must continue.
+      }
+    }
     const chunks = [];
     let timedOut = false;
     const logStream = fs.createWriteStream(logFile);
@@ -3080,6 +7468,7 @@ async function executeRun(opts) {
     enableSystemSampling = true,
     quiet = false,
     tags = null,
+    notes = "",
     parentId = null,
   } = opts;
   if (!cmdText || cmdText.toLowerCase() === "unknown") {
@@ -3152,12 +7541,16 @@ async function executeRun(opts) {
     console.log("---");
   }
 
-  const stopSampler = enableSystemSampling ? startSystemSampler(runDir) : () => ({});
+  const stopSampler = enableSystemSampling ? startSystemSampler(runDir, 1000, { cwd }) : () => ({});
   const childEnv = { ...process.env, RESEARCHLOOP_RUN_DIR: runDir, ...(extraEnv || {}) };
   const startedAt = new Date().toISOString();
   let result;
   try {
-    result = await spawnCommand(cmdText, cwd, effectiveTimeoutMs, logFile, timeoutReason, childEnv);
+    result = await spawnCommand(cmdText, cwd, effectiveTimeoutMs, logFile, timeoutReason, childEnv, {
+      onSpawn(child) {
+        if (stopSampler.bindPid) stopSampler.bindPid(child.pid);
+      },
+    });
   } finally {
     stopSampler();
   }
@@ -3177,9 +7570,19 @@ async function executeRun(opts) {
     status = "complete";
   }
 
-  const metrics = {};
-  const metricValue = parseMetricFromOutput(result.output, metricName, regexSource);
+  let metricValue = parseMetricFromOutput(result.output, metricName, regexSource);
+  const metrics = extractMetricsFromOutput(result.output, metricName, regexSource);
   const metricSeries = extractMetricSeriesFromText(result.output, metricName, regexSource);
+  if (metricValue === null && isNumericMetric(metrics[metricName])) {
+    metricValue = Number(metrics[metricName]);
+  }
+  if (metricValue === null) {
+    const fallbackMetric = Object.entries(metrics).find(([, value]) => isNumericMetric(value));
+    if (fallbackMetric) {
+      metricValue = Number(fallbackMetric[1]);
+      metrics[metricName] = metricValue;
+    }
+  }
   if (metricValue !== null) {
     metrics[metricName] = metricValue;
   }
@@ -3214,7 +7617,7 @@ async function executeRun(opts) {
     log: path.relative(cwd, logFile),
     metrics,
     metric_history: metricSeries.length ? { [metricName]: metricSeries } : {},
-    notes: "",
+    notes: String(notes || ""),
     env,
     data_fingerprint: dataFingerprint,
     est_cost_usd: estCostUsd,
@@ -3225,7 +7628,28 @@ async function executeRun(opts) {
     gpu_memory_peak_mb: gpuAgg.gpu_memory_peak_mb ?? null,
     gpu_memory_total_mb: gpuAgg.gpu_memory_total_mb ?? null,
     gpu_hours: gpuHours,
+    resource_profile: gpuAgg.resource_profile || null,
+    process_cpu_max_pct: gpuAgg.process_cpu_max_pct ?? null,
+    process_cpu_mean_pct: gpuAgg.process_cpu_mean_pct ?? null,
+    process_cpu_total_max_pct: gpuAgg.process_cpu_total_max_pct ?? null,
+    process_memory_peak_mb: gpuAgg.process_memory_peak_mb ?? null,
+    process_memory_mean_mb: gpuAgg.process_memory_mean_mb ?? null,
+    process_disk_read_mb: gpuAgg.process_disk_read_mb ?? null,
+    process_disk_write_mb: gpuAgg.process_disk_write_mb ?? null,
+    system_network_rx_mb: gpuAgg.system_network_rx_mb ?? null,
+    system_network_tx_mb: gpuAgg.system_network_tx_mb ?? null,
   };
+  if (extraConfig?.sweep || extraConfig?.queue_id) {
+    row.sweep = {
+      queue_id: extraConfig.queue_id || parentId || null,
+      name: extraConfig.sweep || null,
+      index: extraConfig.sweep_index ?? null,
+      params: extraConfig.sweep_params || {},
+    };
+  }
+  if (extraConfig?.compute_device?.effective) {
+    row.compute_device = extraConfig.compute_device.effective;
+  }
   if (tags) row.tags = tags;
   if (parentId) row.parent_id = parentId;
   appendRunRow(cwd, row);
@@ -3291,6 +7715,15 @@ async function cmdRun(isBaseline) {
   const timeoutSec = Number(option("--timeout", 600));
   const seedsRaw = option("--seeds", null);
   const seeds = seedsRaw && typeof seedsRaw === "string" ? parseInt(seedsRaw, 10) : null;
+  const cudaVisibleDevicesRaw = option("--cuda-visible-devices", "");
+  const computeDevice = inferComputeDevice(String(option("--device", "auto")), null, {
+    cudaVisibleDevices: cudaVisibleDevicesRaw && typeof cudaVisibleDevicesRaw === "string"
+      ? cudaVisibleDevicesRaw
+      : "",
+  });
+  const tagsText = String(option("--tags", "") || "");
+  const tags = tagsText.split(",").map((tag) => tag.trim()).filter(Boolean);
+  const notes = String(option("--note", "") || "");
 
   const enableSystemSampling = !hasFlag("--no-system-sampling");
 
@@ -3300,6 +7733,7 @@ async function cmdRun(isBaseline) {
       idBase: option("--id", null),
       direction: String(option("--direction", goalFields.direction || "lower")).toLowerCase(),
       enableSystemSampling,
+      computeDevice,
     });
     return;
   }
@@ -3308,6 +7742,10 @@ async function cmdRun(isBaseline) {
     cwd, cmdText, metricName, regexSource, timeoutSec, allowUnsafe, isBaseline,
     idOverride: option("--id", null),
     enableSystemSampling,
+    extraConfig: { compute_device: computeDevice },
+    extraEnv: computeDevice.env,
+    tags: tags.length ? tags : null,
+    notes,
   });
 }
 
@@ -3318,7 +7756,7 @@ function applySeedToCommand(cmdText, seed) {
   return cmdText;
 }
 
-async function runWithSeeds({ cwd, cmdText, metricName, regexSource, timeoutSec, allowUnsafe, seeds, idBase, direction, enableSystemSampling = true }) {
+async function runWithSeeds({ cwd, cmdText, metricName, regexSource, timeoutSec, allowUnsafe, seeds, idBase, direction, enableSystemSampling = true, computeDevice = null }) {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const base = idBase && typeof idBase === "string" ? idBase : `run-${stamp}`;
   const seedList = Array.from({ length: seeds }, (_, i) => i);
@@ -3330,13 +7768,13 @@ async function runWithSeeds({ cwd, cmdText, metricName, regexSource, timeoutSec,
   for (const seed of seedList) {
     const seedId = `${base}-seed${seed}`;
     const seedCmd = applySeedToCommand(cmdText, seed);
-    const childEnv = { RESEARCHLOOP_SEED: String(seed) };
+    const childEnv = { ...(computeDevice?.env || {}), RESEARCHLOOP_SEED: String(seed) };
     console.log(`[seed ${seed}] ${seedCmd}`);
     const res = await executeRun({
       cwd, cmdText: seedCmd, metricName, regexSource, timeoutSec, allowUnsafe,
       isBaseline: false,
       idOverride: seedId,
-      extraConfig: { seed, parent_run: base },
+      extraConfig: { seed, parent_run: base, ...(computeDevice ? { compute_device: computeDevice } : {}) },
       extraEnv: childEnv,
       suppressExitCode: true,
       quiet: true,
@@ -5583,25 +10021,285 @@ function cmdRank() {
   }
 }
 
-function parseSweepSpec(text) {
-  const trimmed = text.trim();
-  let parsed;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch (err) {
-    throw new Error(`sweep spec must be valid JSON (parse error: ${err.message})`);
+function splitInlineList(text) {
+  const out = [];
+  let current = "";
+  let quote = "";
+  let depth = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (quote) {
+      current += ch;
+      if (ch === quote && text[i - 1] !== "\\") quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === "[" || ch === "{") depth += 1;
+    if (ch === "]" || ch === "}") depth -= 1;
+    if (ch === "," && depth === 0) {
+      out.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
   }
-  if (!parsed || typeof parsed !== "object") {
-    throw new Error("sweep spec must be a JSON object");
+  if (current.trim()) out.push(current.trim());
+  return out;
+}
+
+function parseYamlScalar(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return "";
+  if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
+    return text.slice(1, -1);
+  }
+  if (text.startsWith("[") && text.endsWith("]")) {
+    const inner = text.slice(1, -1).trim();
+    if (!inner) return [];
+    return splitInlineList(inner).map(parseYamlScalar);
+  }
+  if (text.startsWith("{") && text.endsWith("}")) {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
+  }
+  if (/^(true|false)$/i.test(text)) return text.toLowerCase() === "true";
+  if (/^(null|none)$/i.test(text)) return null;
+  if (/^-?\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(text)) return Number(text);
+  return text;
+}
+
+function stripYamlComment(line) {
+  let quote = "";
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (quote) {
+      if (ch === quote && line[i - 1] !== "\\") quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === "#") {
+      return line.slice(0, i);
+    }
+  }
+  return line;
+}
+
+function parseSimpleYaml(text) {
+  const lines = String(text || "")
+    .replace(/\t/g, "  ")
+    .split(/\r?\n/)
+    .map((line) => {
+      const stripped = stripYamlComment(line).replace(/\s+$/, "");
+      return {
+        indent: stripped.match(/^ */)?.[0].length || 0,
+        text: stripped.trim(),
+      };
+    })
+    .filter((line) => line.text);
+
+  function splitKeyValue(textValue) {
+    const idx = textValue.indexOf(":");
+    if (idx === -1) return [textValue.trim(), ""];
+    return [textValue.slice(0, idx).trim(), textValue.slice(idx + 1).trim()];
+  }
+
+  function parseBlock(start, indent) {
+    if (start >= lines.length) return [{}, start];
+    const asList = lines[start].indent === indent && lines[start].text.startsWith("- ");
+    if (asList) {
+      const arr = [];
+      let i = start;
+      while (i < lines.length && lines[i].indent === indent && lines[i].text.startsWith("- ")) {
+        const itemText = lines[i].text.slice(2).trim();
+        if (!itemText) {
+          const [child, next] = parseBlock(i + 1, indent + 2);
+          arr.push(child);
+          i = next;
+          continue;
+        }
+        if (itemText.includes(":") && !itemText.startsWith('"') && !itemText.startsWith("'")) {
+          const [key, value] = splitKeyValue(itemText);
+          const item = {};
+          item[key] = value ? parseYamlScalar(value) : {};
+          i += 1;
+          while (i < lines.length && lines[i].indent > indent) {
+            const [child, next] = parseBlock(i, lines[i].indent);
+            if (child && typeof child === "object" && !Array.isArray(child)) {
+              Object.assign(item, child);
+            }
+            i = next;
+          }
+          arr.push(item);
+        } else {
+          arr.push(parseYamlScalar(itemText));
+          i += 1;
+        }
+      }
+      return [arr, i];
+    }
+
+    const obj = {};
+    let i = start;
+    while (i < lines.length && lines[i].indent >= indent) {
+      if (lines[i].indent > indent) break;
+      if (lines[i].text.startsWith("- ")) break;
+      const [key, value] = splitKeyValue(lines[i].text);
+      if (!key) {
+        i += 1;
+        continue;
+      }
+      if (value) {
+        obj[key] = parseYamlScalar(value);
+        i += 1;
+      } else {
+        const [child, next] = parseBlock(i + 1, indent + 2);
+        obj[key] = child;
+        i = next;
+      }
+    }
+    return [obj, i];
+  }
+
+  const [parsed] = parseBlock(0, lines[0]?.indent || 0);
+  return parsed;
+}
+
+function parseCsvRows(text) {
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let quote = false;
+  const source = `${String(text || "").replace(/\r\n/g, "\n")}\n`;
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i];
+    if (quote) {
+      if (ch === '"' && source[i + 1] === '"') {
+        cell += '"';
+        i += 1;
+      } else if (ch === '"') {
+        quote = false;
+      } else {
+        cell += ch;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      quote = true;
+    } else if (ch === ",") {
+      row.push(cell);
+      cell = "";
+    } else if (ch === "\n") {
+      row.push(cell);
+      if (row.some((value) => String(value).trim())) rows.push(row);
+      row = [];
+      cell = "";
+    } else {
+      cell += ch;
+    }
+  }
+  return rows;
+}
+
+function coerceCsvValue(value) {
+  const text = String(value || "").trim();
+  if (/^(true|false)$/i.test(text)) return text.toLowerCase() === "true";
+  if (/^-?\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(text)) return Number(text);
+  return text;
+}
+
+function parseCsvSweepSpec(text, overrides = {}) {
+  const rows = parseCsvRows(text);
+  if (rows.length < 2) {
+    throw new Error("CSV sweep spec must include a header row and at least one data row");
+  }
+  const headers = rows[0].map((h) => String(h || "").trim()).filter(Boolean);
+  if (!headers.length) throw new Error("CSV sweep spec header is empty");
+  const variants = rows.slice(1).map((values, index) => {
+    const params = {};
+    let id = "";
+    headers.forEach((header, col) => {
+      const value = coerceCsvValue(values[col]);
+      if (header === "id") id = String(value || "").trim();
+      else params[header] = value;
+    });
+    return id ? { id, params } : { id: `row-${index + 1}`, params };
+  });
+  return {
+    version: 1,
+    name: overrides.name || "csv-sweep",
+    metric: overrides.metric || "val_loss",
+    direction: overrides.direction || "lower",
+    command_template: overrides.command_template || overrides.commandTemplate || "",
+    variants,
+  };
+}
+
+function parseSweepSpec(text, overrides = {}) {
+  const trimmed = String(text || "").trim();
+  if (!trimmed) {
+    throw new Error("sweep spec is empty");
+  }
+  let parsed;
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch (err) {
+      throw new Error(`sweep spec must be valid JSON (parse error: ${err.message})`);
+    }
+  } else if (/^[^\n,]+,[^\n]+(?:\n|$)/.test(trimmed) && !/^\s*(version|name|metric|grid|variants|command_template)\s*:/m.test(trimmed)) {
+    parsed = parseCsvSweepSpec(trimmed, overrides);
+  } else {
+    parsed = parseSimpleYaml(trimmed);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("sweep spec must be an object");
   }
   return parsed;
 }
 
+function sanitizeIdPart(value, fallback = "item") {
+  const cleaned = String(value || fallback).trim().replace(/[^A-Za-z0-9._-]/g, "-").replace(/-+/g, "-");
+  return cleaned || fallback;
+}
+
+function extractPlaceholders(template) {
+  const names = new Set();
+  const re = /\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+  let match;
+  while ((match = re.exec(String(template || ""))) !== null) {
+    names.add(match[1]);
+  }
+  return [...names];
+}
+
+function normalizeSweepVariant(raw, index) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { id: "", params: { value: raw }, index };
+  }
+  if (raw.params && typeof raw.params === "object" && !Array.isArray(raw.params)) {
+    return { id: raw.id ? sanitizeIdPart(raw.id) : "", params: { ...raw.params }, index };
+  }
+  const params = { ...raw };
+  const id = params.id ? sanitizeIdPart(params.id) : "";
+  delete params.id;
+  return { id, params, index };
+}
+
 function expandSweepVariants(spec) {
   if (Array.isArray(spec.variants) && spec.variants.length) {
-    return spec.variants.map((v, i) => ({ params: v, index: i }));
+    return spec.variants.map((v, i) => normalizeSweepVariant(v, i));
   }
-  if (spec.grid && typeof spec.grid === "object") {
+  if (spec.grid && typeof spec.grid === "object" && !Array.isArray(spec.grid)) {
     const axes = Object.entries(spec.grid);
     if (!axes.length) return [];
     let combos = [{}];
@@ -5617,25 +10315,784 @@ function expandSweepVariants(spec) {
       }
       combos = next;
     }
-    return combos.map((params, index) => ({ params, index }));
+    return combos.map((params, index) => ({ id: "", params, index }));
   }
   throw new Error("sweep spec must define either `variants` (list) or `grid` (object)");
 }
 
 function renderSweepCommand(template, params) {
-  let out = template;
-  for (const [key, value] of Object.entries(params)) {
+  let out = String(template || "");
+  for (const [key, value] of Object.entries(params || {})) {
     const re = new RegExp(`\\{${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\}`, "g");
     out = out.replace(re, String(value));
   }
   return out;
 }
 
+function sweepQueueRoot(cwd) {
+  return path.join(cwd, ".researchloop", "scratchpad", "queues");
+}
+
+function sweepQueueDir(cwd, queueId) {
+  return path.join(sweepQueueRoot(cwd), sanitizeIdPart(queueId, "queue"));
+}
+
+function sweepQueueStatePath(cwd, queueId) {
+  return path.join(sweepQueueDir(cwd, queueId), "state.json");
+}
+
+function appendQueueEvent(cwd, queueId, event, fields = {}) {
+  const dir = sweepQueueDir(cwd, queueId);
+  ensureDir(dir);
+  const row = { ts: new Date().toISOString(), event, queue_id: queueId, ...fields };
+  fs.appendFileSync(path.join(dir, "events.jsonl"), `${JSON.stringify(row)}\n`);
+  return row;
+}
+
+function terminalQueueTrialStatus(status) {
+  return ["complete", "complete_no_metric", "failed", "timeout", "skipped", "cancelled", "blocked", "spawn_error", "killed_by_safety", "no_command"].includes(String(status || ""));
+}
+
+function queueCounts(trials) {
+  const counts = {
+    total: Array.isArray(trials) ? trials.length : 0,
+    pending: 0,
+    running: 0,
+    complete: 0,
+    failed: 0,
+    timeout: 0,
+    skipped: 0,
+    cancelled: 0,
+    retrying: 0,
+    complete_no_metric: 0,
+  };
+  for (const trial of trials || []) {
+    const status = String(trial.status || "pending");
+    if (hasOwn(counts, status)) counts[status] += 1;
+    else if (status === "spawn_error" || status === "blocked" || status === "killed_by_safety" || status === "no_command") counts.failed += 1;
+  }
+  return counts;
+}
+
+function queueBest(trials, metric, direction) {
+  const preferHigher = String(direction || "").toLowerCase() === "higher";
+  const scored = (trials || [])
+    .filter((trial) => String(trial.status || "") === "complete" && isNumericMetric(trial.metrics?.[metric]))
+    .map((trial) => ({ run_id: trial.run_id, metric, value: Number(trial.metrics[metric]), params: trial.params || {} }))
+    .sort((a, b) => preferHigher ? b.value - a.value : a.value - b.value);
+  return scored[0] || null;
+}
+
+function refreshQueueStateShape(state) {
+  const trials = Array.isArray(state.trials) ? state.trials : [];
+  const next = {
+    ...state,
+    trials,
+    counts: queueCounts(trials),
+    best: queueBest(trials, state.metric, state.direction),
+    updated_at: new Date().toISOString(),
+  };
+  return next;
+}
+
+function writeQueueState(cwd, state) {
+  const queueId = sanitizeIdPart(state.queue_id, "queue");
+  const dir = sweepQueueDir(cwd, queueId);
+  ensureDir(dir);
+  const next = refreshQueueStateShape({ ...state, queue_id: queueId });
+  fs.writeFileSync(path.join(dir, "state.json"), `${JSON.stringify(next, null, 2)}\n`);
+  return next;
+}
+
+function readQueueState(cwd, queueId) {
+  const file = sweepQueueStatePath(cwd, queueId);
+  if (!fs.existsSync(file)) {
+    throw new Error(`queue not found: ${queueId}`);
+  }
+  return refreshQueueStateShape(JSON.parse(fs.readFileSync(file, "utf8")));
+}
+
+function listSweepQueues(cwd, limit = 10) {
+  const root = sweepQueueRoot(cwd);
+  if (!fs.existsSync(root)) return [];
+  return fs.readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => {
+      const file = path.join(root, entry.name, "state.json");
+      try {
+        const stat = fs.statSync(file);
+        return { state: refreshQueueStateShape(JSON.parse(fs.readFileSync(file, "utf8"))), mtimeMs: stat.mtimeMs };
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+    .slice(0, limit)
+    .map((entry) => entry.state);
+}
+
+function buildSweepSpecFromDashboardBody(body) {
+  const specText = String(body.specText || body.sweepSpec || "").trim();
+  const overrides = {
+    name: String(body.sweepName || body.name || "").trim(),
+    metric: String(body.metric || "").trim(),
+    direction: String(body.direction || "").trim(),
+    command_template: String(body.commandTemplate || body.sweepTemplate || "").trim(),
+  };
+  let spec = specText ? parseSweepSpec(specText, overrides) : {};
+  spec = { ...spec };
+  if (overrides.name) spec.name = overrides.name;
+  if (overrides.metric) spec.metric = overrides.metric;
+  if (overrides.direction) spec.direction = overrides.direction;
+  if (overrides.command_template) spec.command_template = overrides.command_template;
+  if (!specText && body.sweepGrid) {
+    const parsed = parseSweepSpec(JSON.stringify({ grid: JSON.parse(String(body.sweepGrid)) }), overrides);
+    spec = { ...spec, ...parsed };
+  }
+  if (!specText && body.paramGrid) {
+    let grid;
+    try {
+      grid = JSON.parse(String(body.paramGrid));
+    } catch (err) {
+      throw new Error(`参数网格 JSON 无法解析：${err.message}`);
+    }
+    const maxRuns = Math.max(1, Number(body.maxRuns || body.batchMaxRuns || 24) || 24);
+    const expanded = expandSweepVariants({ grid }).slice(0, maxRuns);
+    spec = {
+      ...spec,
+      variants: expanded.map((variant, index) => ({
+        id: variant.id || `v${String(index + 1).padStart(3, "0")}`,
+        params: variant.params,
+      })),
+    };
+  }
+  if (body.maxRuns) {
+    spec.budget = { ...(spec.budget || {}), max_runs: Number(body.maxRuns) };
+  }
+  if (body.maxRetries) {
+    spec.retry = { ...(spec.retry || {}), max_retries: Number(body.maxRetries) };
+  }
+  return spec;
+}
+
+function validateSweepSpec(spec, cwd, opts = {}) {
+  const errors = [];
+  const warnings = [];
+  const name = sanitizeIdPart(spec.name || opts.name || "sweep", "sweep");
+  const metric = String(spec.metric || opts.metric || "val_loss").trim();
+  const directionRaw = String(spec.direction || opts.direction || "lower").trim().toLowerCase();
+  const direction = directionRaw === "higher" || directionRaw === "max" || directionRaw === "maximize" ? "higher" : "lower";
+  const commandTemplate = String(spec.command_template || spec.command || opts.command_template || "").trim();
+  if (!name) errors.push("`name` is required");
+  if (!metric) errors.push("`metric` is required");
+  if (!["lower", "higher", "min", "max", "minimize", "maximize"].includes(directionRaw || "lower")) {
+    errors.push("`direction` must be lower or higher");
+  }
+  if (!commandTemplate) errors.push("`command_template` is required");
+
+  let variants = [];
+  try {
+    variants = expandSweepVariants(spec);
+  } catch (err) {
+    errors.push(err.message);
+  }
+  if (!variants.length) errors.push("sweep spec produced 0 variants");
+
+  const maxRuns = Number(spec.budget?.max_runs ?? spec.max_runs ?? opts.maxRuns ?? 500);
+  if (Number.isFinite(maxRuns) && variants.length > maxRuns) {
+    errors.push(`expanded variants ${variants.length} exceeds max_runs ${maxRuns}`);
+  }
+
+  const placeholders = extractPlaceholders(commandTemplate);
+  const duplicateIds = new Set();
+  const seenIds = new Set();
+  const preview = [];
+  const safetyPolicy = loadSafetyPolicy(cwd);
+  for (const variant of variants) {
+    const params = variant.params || {};
+    const missing = placeholders.filter((namePart) => !hasOwn(params, namePart));
+    if (missing.length) {
+      errors.push(`variant ${variant.index + 1} missing placeholder params: ${missing.join(", ")}`);
+    }
+    const runSuffix = variant.id || `v${String(variant.index + 1).padStart(3, "0")}`;
+    const runId = `${name}-${runSuffix}`;
+    if (seenIds.has(runId)) duplicateIds.add(runId);
+    seenIds.add(runId);
+    const commandText = renderSweepCommand(commandTemplate, params);
+    const safety = evaluateCommandSafety(commandText, safetyPolicy);
+    if (!opts.allowUnsafe && !safety.allowed) {
+      errors.push(`variant ${variant.index + 1} command blocked by safety rule ${safety.rule}: ${safety.message}`);
+    }
+    if (/[;&|`$<>]/.test(commandText)) {
+      warnings.push(`variant ${variant.index + 1} command contains shell metacharacters; review before running`);
+    }
+    preview.push({ index: variant.index, id: variant.id || "", run_id: runId, params, command: commandText, status: "pending" });
+  }
+  if (duplicateIds.size) {
+    errors.push(`duplicate run id(s): ${[...duplicateIds].join(", ")}`);
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings: [...new Set(warnings)],
+    spec: {
+      ...spec,
+      name,
+      metric,
+      direction,
+      command_template: commandTemplate,
+      max_parallel: Math.max(1, Number(spec.max_parallel || 1) || 1),
+      timeout_seconds: Number(spec.timeout_seconds || spec.timeout || opts.timeout || 600) || 600,
+    },
+    variants: preview,
+    count: preview.length,
+    placeholders,
+  };
+}
+
+function createSweepQueue(cwd, spec, opts = {}) {
+  const validation = validateSweepSpec(spec, cwd, opts);
+  if (!validation.ok) {
+    const err = new Error(validation.errors.join("; "));
+    err.validation = validation;
+    throw err;
+  }
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const queueId = sanitizeIdPart(opts.queueId || `${validation.spec.name}-${stamp}`, "queue");
+  const dir = sweepQueueDir(cwd, queueId);
+  ensureDir(dir);
+  const now = new Date().toISOString();
+  const trials = validation.variants.map((variant, idx) => ({
+    run_id: variant.run_id.replace(new RegExp(`^${validation.spec.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-`), `${queueId}-`),
+    queue_id: queueId,
+    index: idx + 1,
+    variant_id: variant.id || "",
+    status: "pending",
+    params: variant.params,
+    command: variant.command,
+    metrics: {},
+    log: null,
+    started_at: null,
+    finished_at: null,
+    retry_count: 0,
+  }));
+  const state = writeQueueState(cwd, {
+    queue_id: queueId,
+    name: validation.spec.name,
+    description: String(validation.spec.description || ""),
+    status: "pending",
+    metric: validation.spec.metric,
+    direction: validation.spec.direction,
+    command_template: validation.spec.command_template,
+    created_at: now,
+    updated_at: now,
+    max_parallel: validation.spec.max_parallel,
+    timeout_seconds: validation.spec.timeout_seconds,
+    retry: validation.spec.retry || { max_retries: 0 },
+    budget: validation.spec.budget || {},
+    runner: validation.spec.runner || null,
+    tags: Array.isArray(validation.spec.tags) ? validation.spec.tags : [],
+    spec: validation.spec,
+    warnings: validation.warnings,
+    trials,
+  });
+  fs.writeFileSync(path.join(dir, "queue.yaml"), `${JSON.stringify(validation.spec, null, 2)}\n`);
+  fs.writeFileSync(path.join(dir, "queue.json"), `${JSON.stringify(validation.spec, null, 2)}\n`);
+  appendQueueEvent(cwd, queueId, "queue_created", { total: trials.length });
+  writeQueueSummary(cwd, state);
+  return { queueId, dir, state, validation };
+}
+
+function updateQueueTrial(state, runId, patch) {
+  return {
+    ...state,
+    trials: (state.trials || []).map((trial) => trial.run_id === runId ? { ...trial, ...patch } : trial),
+  };
+}
+
+function retryableTrialStatus(status) {
+  return ["failed", "timeout", "spawn_error", "killed_by_safety", "blocked", "no_command", "complete_no_metric"].includes(String(status || ""));
+}
+
+function metricStats(values) {
+  const finite = values.map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+  if (!finite.length) return null;
+  const mean = finite.reduce((a, b) => a + b, 0) / finite.length;
+  const variance = finite.reduce((a, b) => a + (b - mean) ** 2, 0) / finite.length;
+  const mid = Math.floor(finite.length / 2);
+  const median = finite.length % 2 ? finite[mid] : (finite[mid - 1] + finite[mid]) / 2;
+  return {
+    min: finite[0],
+    max: finite[finite.length - 1],
+    mean: Number(mean.toFixed(6)),
+    median: Number(median.toFixed(6)),
+    std: Number(Math.sqrt(variance).toFixed(6)),
+  };
+}
+
+function paramsWithoutSeed(params) {
+  const out = {};
+  for (const [key, value] of Object.entries(params || {})) {
+    if (String(key).toLowerCase() !== "seed") out[key] = value;
+  }
+  return out;
+}
+
+function analyzeSeedGroups(trials, metric) {
+  const groups = new Map();
+  for (const trial of trials || []) {
+    if (!isNumericMetric(trial.metrics?.[metric])) continue;
+    const key = JSON.stringify(paramsWithoutSeed(trial.params || {}));
+    if (!groups.has(key)) groups.set(key, { params: paramsWithoutSeed(trial.params || {}), values: [], run_ids: [] });
+    const group = groups.get(key);
+    group.values.push(Number(trial.metrics[metric]));
+    group.run_ids.push(trial.run_id);
+  }
+  return [...groups.values()]
+    .filter((group) => group.values.length > 1)
+    .map((group) => ({ ...group, stats: metricStats(group.values) }));
+}
+
+function estimateParamImportance(trials, metric, direction) {
+  const preferHigher = String(direction || "").toLowerCase() === "higher";
+  const completed = (trials || []).filter((trial) => isNumericMetric(trial.metrics?.[metric]));
+  const keys = new Set(completed.flatMap((trial) => Object.keys(trial.params || {})));
+  const rows = [];
+  for (const key of keys) {
+    const buckets = new Map();
+    for (const trial of completed) {
+      const valueKey = JSON.stringify(trial.params?.[key]);
+      if (!buckets.has(valueKey)) buckets.set(valueKey, []);
+      buckets.get(valueKey).push(Number(trial.metrics[metric]));
+    }
+    if (buckets.size < 2) continue;
+    const bucketRows = [...buckets.entries()].map(([value, values]) => ({
+      value: JSON.parse(value),
+      mean: values.reduce((a, b) => a + b, 0) / values.length,
+      n: values.length,
+    }));
+    const means = bucketRows.map((row) => row.mean);
+    const spread = Math.max(...means) - Math.min(...means);
+    bucketRows.sort((a, b) => preferHigher ? b.mean - a.mean : a.mean - b.mean);
+    rows.push({
+      param: key,
+      spread: Number(spread.toFixed(6)),
+      best_value: bucketRows[0]?.value,
+      worst_value: bucketRows[bucketRows.length - 1]?.value,
+      buckets: bucketRows.map((row) => ({ ...row, mean: Number(row.mean.toFixed(6)) })),
+    });
+  }
+  return rows.sort((a, b) => b.spread - a.spread);
+}
+
+function analyzeSweepQueue(state) {
+  const metric = state.metric || "val_loss";
+  const preferHigher = String(state.direction || "").toLowerCase() === "higher";
+  const scored = (state.trials || [])
+    .filter((trial) => isNumericMetric(trial.metrics?.[metric]))
+    .map((trial) => ({ run_id: trial.run_id, status: trial.status, value: Number(trial.metrics[metric]), params: trial.params || {}, wall_seconds: Number(trial.wall_seconds || 0) }))
+    .sort((a, b) => preferHigher ? b.value - a.value : a.value - b.value);
+  const failures = (state.trials || []).filter((trial) => retryableTrialStatus(trial.status) || trial.status === "complete_no_metric");
+  const failureCounts = {};
+  for (const trial of failures) {
+    const key = String(trial.status || "failed");
+    failureCounts[key] = (failureCounts[key] || 0) + 1;
+  }
+  const wallSeconds = (state.trials || []).reduce((sum, trial) => sum + (Number(trial.wall_seconds) || 0), 0);
+  const failedWallSeconds = failures.reduce((sum, trial) => sum + (Number(trial.wall_seconds) || 0), 0);
+  return {
+    queue_id: state.queue_id,
+    name: state.name,
+    metric,
+    direction: preferHigher ? "higher" : "lower",
+    counts: state.counts,
+    best: scored[0] || null,
+    top: scored.slice(0, 5),
+    metric_stats: metricStats(scored.map((row) => row.value)),
+    failures,
+    failure_counts: failureCounts,
+    seed_groups: analyzeSeedGroups(state.trials, metric),
+    param_importance: estimateParamImportance(state.trials, metric, state.direction),
+    budget: {
+      wall_seconds: wallSeconds,
+      avg_wall_seconds: state.trials?.length ? Number((wallSeconds / state.trials.length).toFixed(3)) : 0,
+      failed_wall_seconds: failedWallSeconds,
+    },
+  };
+}
+
+function csvEscape(value) {
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  if (/[",\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+  return text;
+}
+
+function writeSweepReport(cwd, queueId) {
+  const state = readQueueState(cwd, queueId);
+  const analysis = analyzeSweepQueue(state);
+  const sweepDir = path.join(cwd, ".researchloop", "scratchpad", "sweeps", state.queue_id);
+  ensureDir(sweepDir);
+  const summaryPath = path.join(sweepDir, "summary.json");
+  const csvPath = path.join(sweepDir, "results.csv");
+  const reportPath = path.join(sweepDir, "sweep-report.md");
+
+  fs.writeFileSync(summaryPath, `${JSON.stringify({ ...analysis, state }, null, 2)}\n`);
+  const csvHeaders = ["run_id", "status", state.metric, "wall_seconds", "retry_count", "params", "command", "log"];
+  const csvRows = [csvHeaders.join(",")];
+  for (const trial of state.trials || []) {
+    csvRows.push([
+      trial.run_id,
+      trial.status,
+      trial.metrics?.[state.metric] ?? "",
+      trial.wall_seconds ?? "",
+      trial.retry_count ?? 0,
+      trial.params || {},
+      trial.command || "",
+      trial.log || "",
+    ].map(csvEscape).join(","));
+  }
+  fs.writeFileSync(csvPath, `${csvRows.join("\n")}\n`);
+
+  const lines = [
+    "# Sweep Report",
+    "",
+    `Generated: ${new Date().toISOString()}`,
+    `Queue: \`${state.queue_id}\``,
+    `Metric: \`${state.metric}\` (${analysis.direction === "higher" ? "higher is better" : "lower is better"})`,
+    "",
+    "## 1. 实验目标",
+    "",
+    state.description || `Run ${state.name} across ${state.counts.total} trial(s).`,
+    "",
+    "## 2. Sweep 配置",
+    "",
+    `- Command template: \`${state.command_template}\``,
+    `- Max parallel: ${state.max_parallel || 1}`,
+    `- Timeout seconds: ${state.timeout_seconds || "default"}`,
+    `- Tags: ${(state.tags || []).join(", ") || "none"}`,
+    "",
+    "## 3. 实验矩阵",
+    "",
+    `Total variants: ${state.counts.total}`,
+    "",
+    "## 4. 执行摘要",
+    "",
+    markdownTable(["Status", "Count"], Object.entries(state.counts || {}).map(([key, value]) => [key, value])),
+    "",
+    "## 5. 最佳结果",
+    "",
+    analysis.best ? `Best run: \`${analysis.best.run_id}\` ${state.metric}=${analysis.best.value} params=\`${JSON.stringify(analysis.best.params)}\`` : "No scored run yet.",
+    "",
+    "## 6. Top K",
+    "",
+    analysis.top.length
+      ? markdownTable(["Run", state.metric, "Status", "Params"], analysis.top.map((row) => [row.run_id, row.value, row.status, `\`${JSON.stringify(row.params)}\``]))
+      : "No scored runs yet.",
+    "",
+    "## 7. 参数影响分析",
+    "",
+    analysis.param_importance.length
+      ? markdownTable(["Param", "Spread", "Best value", "Worst value"], analysis.param_importance.slice(0, 10).map((row) => [row.param, row.spread, JSON.stringify(row.best_value), JSON.stringify(row.worst_value)]))
+      : "Not enough completed numeric results for parameter importance.",
+    "",
+    "## 8. 失败和异常",
+    "",
+    analysis.failures.length
+      ? markdownTable(["Run", "Status", "Retries", "Log"], analysis.failures.map((trial) => [trial.run_id, trial.status, trial.retry_count || 0, trial.log || ""]))
+      : "No failed trials recorded.",
+    "",
+    "## 9. 结论",
+    "",
+    analysis.best
+      ? `Current best configuration is \`${JSON.stringify(analysis.best.params)}\`.`
+      : "Run the queue or fix metric parsing before drawing a conclusion.",
+    "",
+    "## 10. 下一步建议",
+    "",
+    analysis.failures.length
+      ? "- Inspect failed logs, then use retry-failed after fixing the command or environment."
+      : "- Narrow the next sweep around the best parameter region and keep the same metric contract.",
+    analysis.seed_groups.length ? "- Seed groups are available; compare mean and std before promoting a setting." : "- Add a `seed` axis when variance matters.",
+    "",
+  ];
+  fs.writeFileSync(reportPath, `${lines.join("\n")}\n`);
+  return {
+    report: path.relative(cwd, reportPath),
+    summary: path.relative(cwd, summaryPath),
+    results: path.relative(cwd, csvPath),
+    analysis,
+  };
+}
+
+function writeQueueSummary(cwd, state) {
+  const dir = sweepQueueDir(cwd, state.queue_id);
+  ensureDir(dir);
+  const analysis = analyzeSweepQueue(state);
+  const lines = [
+    `# Queue ${state.queue_id}`,
+    "",
+    `Status: ${state.status}`,
+    `Metric: ${state.metric} (${state.direction})`,
+    `Total: ${state.counts.total}`,
+    `Complete: ${state.counts.complete}`,
+    `Failed: ${state.counts.failed}`,
+    `Pending: ${state.counts.pending}`,
+    "",
+    analysis.best ? `Best: ${analysis.best.run_id} ${state.metric}=${analysis.best.value}` : "Best: not available yet",
+    "",
+  ];
+  fs.writeFileSync(path.join(dir, "summary.md"), `${lines.join("\n")}\n`);
+}
+
+function resetFailedTrialsForRetry(cwd, queueId) {
+  let state = readQueueState(cwd, queueId);
+  let changed = 0;
+  state = {
+    ...state,
+    status: "pending",
+    trials: (state.trials || []).map((trial) => {
+      if (!retryableTrialStatus(trial.status)) return trial;
+      changed += 1;
+      return {
+        ...trial,
+        status: "pending",
+        metrics: {},
+        started_at: null,
+        finished_at: null,
+        exit_code: null,
+        wall_seconds: null,
+      };
+    }),
+  };
+  state = writeQueueState(cwd, state);
+  appendQueueEvent(cwd, queueId, "queue_retry_failed", { changed });
+  writeQueueSummary(cwd, state);
+  return { changed, state };
+}
+
+function setQueueStatus(cwd, queueId, status, event) {
+  const state = writeQueueState(cwd, { ...readQueueState(cwd, queueId), status });
+  appendQueueEvent(cwd, queueId, event || `queue_${status}`);
+  writeQueueSummary(cwd, state);
+  return state;
+}
+
+async function startSweepQueue(cwd, queueId, opts = {}) {
+  let state = readQueueState(cwd, queueId);
+  if (state.status === "cancelled") return state;
+  state = writeQueueState(cwd, { ...state, status: "running", started_at: state.started_at || new Date().toISOString() });
+  appendQueueEvent(cwd, queueId, "queue_started");
+  const metricName = state.metric || "val_loss";
+  const timeoutSec = Number(state.timeout_seconds || 600) || 600;
+  const allowUnsafe = opts.allowUnsafe || hasFlag("--allow-unsafe");
+  const regexSource = state.spec?.regex || null;
+  const maxRetries = Math.max(0, Number(state.retry?.max_retries ?? 0) || 0);
+
+  for (const originalTrial of state.trials || []) {
+    state = readQueueState(cwd, queueId);
+    if (state.status === "cancelled") break;
+    if (state.status === "pausing" || state.status === "paused") {
+      state = writeQueueState(cwd, { ...state, status: "paused" });
+      appendQueueEvent(cwd, queueId, "queue_paused");
+      break;
+    }
+    const current = (state.trials || []).find((trial) => trial.run_id === originalTrial.run_id);
+    if (!current || current.status !== "pending") continue;
+
+    let trial = { ...current };
+    let attemptDone = false;
+    while (!attemptDone) {
+      const startedAt = new Date().toISOString();
+      state = writeQueueState(cwd, updateQueueTrial({ ...state, status: "running" }, trial.run_id, {
+        status: trial.retry_count > 0 ? "retrying" : "running",
+        started_at: startedAt,
+      }));
+      appendQueueEvent(cwd, queueId, "trial_started", { run_id: trial.run_id, retry_count: trial.retry_count || 0 });
+      const res = await executeRun({
+        cwd,
+        cmdText: trial.command,
+        metricName,
+        regexSource,
+        timeoutSec,
+        allowUnsafe,
+        isBaseline: false,
+        idOverride: trial.run_id,
+        extraConfig: {
+          sweep: state.name,
+          sweep_index: trial.index,
+          sweep_params: trial.params,
+          queue_id: state.queue_id,
+        },
+        suppressExitCode: true,
+        quiet: true,
+        tags: ["sweep", `sweep:${state.name}`, ...(state.tags || [])],
+        parentId: state.queue_id,
+      });
+      const finalStatus = res.status || "failed";
+      const patch = {
+        status: finalStatus,
+        metrics: res.row?.metrics || {},
+        log: res.row?.log || null,
+        exit_code: res.row?.exit_code ?? null,
+        wall_seconds: res.row?.wall_seconds ?? null,
+        started_at: res.row?.started_at || startedAt,
+        finished_at: res.row?.ended_at || new Date().toISOString(),
+      };
+      state = writeQueueState(cwd, updateQueueTrial(readQueueState(cwd, queueId), trial.run_id, patch));
+      appendQueueEvent(cwd, queueId, finalStatus === "complete" ? "trial_completed" : "trial_finished", {
+        run_id: trial.run_id,
+        status: finalStatus,
+        [metricName]: res.metricValue,
+      });
+      const shouldRetry = retryableTrialStatus(finalStatus) && (trial.retry_count || 0) < maxRetries;
+      if (shouldRetry) {
+        trial = {
+          ...trial,
+          retry_count: (trial.retry_count || 0) + 1,
+        };
+        state = writeQueueState(cwd, updateQueueTrial(readQueueState(cwd, queueId), trial.run_id, {
+          status: "pending",
+          retry_count: trial.retry_count,
+        }));
+        appendQueueEvent(cwd, queueId, "trial_retry_scheduled", { run_id: trial.run_id, retry_count: trial.retry_count });
+      } else {
+        attemptDone = true;
+      }
+    }
+  }
+
+  state = readQueueState(cwd, queueId);
+  const remaining = (state.trials || []).some((trial) => trial.status === "pending" || trial.status === "running" || trial.status === "retrying");
+  let finalQueueStatus = state.status;
+  if (state.status === "running") {
+    finalQueueStatus = remaining ? "paused" : "complete";
+  }
+  state = writeQueueState(cwd, { ...state, status: finalQueueStatus, finished_at: remaining ? state.finished_at : new Date().toISOString() });
+  appendQueueEvent(cwd, queueId, finalQueueStatus === "complete" ? "queue_completed" : `queue_${finalQueueStatus}`);
+  writeQueueSummary(cwd, state);
+  if (finalQueueStatus === "complete") {
+    writeSweepReport(cwd, queueId);
+  }
+  return state;
+}
+
 async function cmdSweep() {
   const cwd = targetDir();
+  const subcommand = subcommandFor("sweep", ["validate", "preview", "create", "report"]);
+  if (["validate", "preview", "create", "report"].includes(subcommand)) {
+    if (subcommand === "report") {
+      const queueId = String(option("--id", option("--queue-id", ""))).trim();
+      if (!queueId) {
+        console.error("autoresearch sweep report requires --id <queue-id>");
+        process.exitCode = 1;
+        return;
+      }
+      try {
+        const written = writeSweepReport(cwd, queueId);
+        if (String(option("--format", "text")) === "json") {
+          console.log(JSON.stringify(written, null, 2));
+        } else {
+          console.log(`report: ${written.report}`);
+          console.log(`summary: ${written.summary}`);
+          console.log(`results: ${written.results}`);
+        }
+      } catch (err) {
+        console.error(`sweep report error: ${err.message}`);
+        process.exitCode = 1;
+      }
+      return;
+    }
+    const specPathForSub = option("--spec", null);
+    if (!specPathForSub || typeof specPathForSub !== "string") {
+      console.error(`autoresearch sweep ${subcommand} requires --spec <file.json|yaml|csv>`);
+      process.exitCode = 1;
+      return;
+    }
+    const absForSub = path.isAbsolute(specPathForSub) ? specPathForSub : path.join(cwd, specPathForSub);
+    if (!fs.existsSync(absForSub)) {
+      console.error(`sweep spec not found: ${absForSub}`);
+      process.exitCode = 1;
+      return;
+    }
+    let parsedForSub;
+    try {
+      parsedForSub = parseSweepSpec(fs.readFileSync(absForSub, "utf8"), {
+        name: option("--name", ""),
+        metric: option("--metric", ""),
+        direction: option("--direction", ""),
+        command_template: option("--command-template", ""),
+      });
+      if (option("--name", "")) parsedForSub.name = option("--name", "");
+      if (option("--metric", "")) parsedForSub.metric = option("--metric", "");
+      if (option("--direction", "")) parsedForSub.direction = option("--direction", "");
+      if (option("--command-template", "")) parsedForSub.command_template = option("--command-template", "");
+    } catch (err) {
+      console.error(`sweep spec error: ${err.message}`);
+      process.exitCode = 1;
+      return;
+    }
+    const validation = validateSweepSpec(parsedForSub, cwd, {
+      allowUnsafe: hasFlag("--allow-unsafe"),
+      maxRuns: option("--max-runs", null),
+      timeout: option("--timeout", null),
+    });
+    if (subcommand === "validate") {
+      if (String(option("--format", "text")) === "json") {
+        console.log(JSON.stringify(validation, null, 2));
+      } else {
+        console.log(`ok: ${validation.ok}`);
+        console.log(`variants: ${validation.count}`);
+        for (const warning of validation.warnings) console.log(`warning: ${warning}`);
+        for (const error of validation.errors) console.log(`error: ${error}`);
+      }
+      if (!validation.ok) process.exitCode = 1;
+      return;
+    }
+    if (!validation.ok) {
+      console.error(`sweep spec error: ${validation.errors.join("; ")}`);
+      process.exitCode = 1;
+      return;
+    }
+    if (subcommand === "preview") {
+      if (String(option("--format", "text")) === "json") {
+        console.log(JSON.stringify(validation, null, 2));
+      } else {
+        console.log(`sweep preview: ${validation.spec.name}`);
+        console.log(`variants: ${validation.count}`);
+        for (const variant of validation.variants.slice(0, 20)) {
+          console.log(`[${variant.index + 1}] ${variant.run_id} ${JSON.stringify(variant.params)} -> ${variant.command}`);
+        }
+      }
+      return;
+    }
+    if (subcommand === "create") {
+      try {
+        const created = createSweepQueue(cwd, parsedForSub, {
+          allowUnsafe: hasFlag("--allow-unsafe"),
+          queueId: option("--id", option("--queue-id", "")),
+          maxRuns: option("--max-runs", null),
+          timeout: option("--timeout", null),
+        });
+        if (String(option("--format", "text")) === "json") {
+          console.log(JSON.stringify(created.state, null, 2));
+        } else {
+          console.log(`queue: ${created.queueId}`);
+          console.log(`state: ${path.relative(cwd, sweepQueueStatePath(cwd, created.queueId))}`);
+          console.log(`variants: ${created.state.counts.total}`);
+        }
+      } catch (err) {
+        console.error(`sweep create error: ${err.message}`);
+        process.exitCode = 1;
+      }
+      return;
+    }
+  }
+
   const specPath = option("--spec", null);
   if (!specPath || typeof specPath !== "string") {
-    console.error("autoresearch sweep requires --spec <file.json>");
+    console.error("autoresearch sweep requires --spec <file.json|yaml|csv>");
     process.exitCode = 1;
     return;
   }
@@ -5647,7 +11104,12 @@ async function cmdSweep() {
   }
   let spec;
   try {
-    spec = parseSweepSpec(fs.readFileSync(abs, "utf8"));
+    spec = parseSweepSpec(fs.readFileSync(abs, "utf8"), {
+      name: option("--name", ""),
+      metric: option("--metric", ""),
+      direction: option("--direction", ""),
+      command_template: option("--command-template", ""),
+    });
   } catch (err) {
     console.error(`sweep spec error: ${err.message}`);
     process.exitCode = 1;
@@ -5676,7 +11138,7 @@ async function cmdSweep() {
   const goalFields = readGoalFields(cwd);
   const metricName = String(option("--metric", spec.metric || goalFields.metric || "val_loss")).trim();
   const regexSource = option("--regex", spec.regex || null);
-  const timeoutSec = Number(option("--timeout", spec.timeout || 600));
+  const timeoutSec = Number(option("--timeout", spec.timeout_seconds || spec.timeout || 600));
   const allowUnsafe = hasFlag("--allow-unsafe");
   const seedsRaw = option("--seeds", spec.seeds || null);
   const seeds = seedsRaw && typeof seedsRaw !== "boolean" ? parseInt(String(seedsRaw), 10) : null;
@@ -5684,6 +11146,16 @@ async function cmdSweep() {
   const direction = String(option("--direction", spec.direction || goalFields.direction || "lower")).toLowerCase();
   const preferHigher = direction === "higher" || direction === "max" || direction === "maximize";
   const sweepName = String(spec.name || option("--name", "sweep")).replace(/[^A-Za-z0-9._-]/g, "-");
+  const validation = validateSweepSpec({ ...spec, name: sweepName, metric: metricName, direction, command_template: template }, cwd, {
+    allowUnsafe,
+    maxRuns: option("--max-runs", null),
+    timeout: timeoutSec,
+  });
+  if (!validation.ok) {
+    console.error(`sweep spec error: ${validation.errors.join("; ")}`);
+    process.exitCode = 1;
+    return;
+  }
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const sweepId = `${sweepName}-${stamp}`;
 
@@ -5773,6 +11245,100 @@ async function cmdSweep() {
     best: scored[0] || null,
   }, null, 2)}\n`);
   console.log(`summary: ${path.relative(cwd, path.join(sweepDir, "summary.json"))}`);
+}
+
+async function cmdQueue() {
+  const cwd = targetDir();
+  const subcommand = subcommandFor("queue", ["start", "pause", "resume", "cancel", "retry-failed", "report", "status"]) || "status";
+  const queueId = String(option("--id", option("--queue-id", ""))).trim();
+  if (!queueId) {
+    console.error(`autoresearch queue ${subcommand} requires --id <queue-id>`);
+    process.exitCode = 1;
+    return;
+  }
+  try {
+    if (subcommand === "start") {
+      const state = await startSweepQueue(cwd, queueId, { allowUnsafe: hasFlag("--allow-unsafe") });
+      if (String(option("--format", "text")) === "json") console.log(JSON.stringify(state, null, 2));
+      else {
+        console.log(`queue: ${state.queue_id}`);
+        console.log(`status: ${state.status}`);
+        console.log(`complete: ${state.counts.complete}/${state.counts.total}`);
+      }
+      return;
+    }
+    if (subcommand === "pause") {
+      const state = setQueueStatus(cwd, queueId, "pausing", "queue_pause_requested");
+      console.log(String(option("--format", "text")) === "json" ? JSON.stringify(state, null, 2) : `queue: ${state.queue_id} status=${state.status}`);
+      return;
+    }
+    if (subcommand === "resume") {
+      const state = setQueueStatus(cwd, queueId, "pending", "queue_resume_requested");
+      console.log(String(option("--format", "text")) === "json" ? JSON.stringify(state, null, 2) : `queue: ${state.queue_id} status=${state.status}`);
+      return;
+    }
+    if (subcommand === "cancel") {
+      const state = setQueueStatus(cwd, queueId, "cancelled", "queue_cancel_requested");
+      console.log(String(option("--format", "text")) === "json" ? JSON.stringify(state, null, 2) : `queue: ${state.queue_id} status=${state.status}`);
+      return;
+    }
+    if (subcommand === "retry-failed") {
+      const result = resetFailedTrialsForRetry(cwd, queueId);
+      console.log(String(option("--format", "text")) === "json" ? JSON.stringify(result.state, null, 2) : `queue: ${result.state.queue_id} retry_pending=${result.changed}`);
+      return;
+    }
+    if (subcommand === "report") {
+      const written = writeSweepReport(cwd, queueId);
+      if (String(option("--format", "text")) === "json") console.log(JSON.stringify(written, null, 2));
+      else {
+        console.log(`report: ${written.report}`);
+        console.log(`summary: ${written.summary}`);
+        console.log(`results: ${written.results}`);
+      }
+      return;
+    }
+    if (subcommand === "status") {
+      const state = readQueueState(cwd, queueId);
+      if (String(option("--format", "text")) === "json") console.log(JSON.stringify(state, null, 2));
+      else {
+        console.log(`queue: ${state.queue_id}`);
+        console.log(`status: ${state.status}`);
+        console.log(`total: ${state.counts.total}`);
+        console.log(`complete: ${state.counts.complete}`);
+        console.log(`failed: ${state.counts.failed}`);
+        console.log(`pending: ${state.counts.pending}`);
+        if (state.best) console.log(`best: ${state.best.run_id} ${state.metric}=${state.best.value}`);
+      }
+      return;
+    }
+    console.error(`Unknown queue command: ${subcommand}`);
+    process.exitCode = 1;
+  } catch (err) {
+    console.error(`queue ${subcommand} error: ${err.message}`);
+    process.exitCode = 1;
+  }
+}
+
+function cmdSweepReport() {
+  const cwd = targetDir();
+  const queueId = String(option("--id", option("--queue-id", ""))).trim();
+  if (!queueId) {
+    console.error("autoresearch sweep-report requires --id <queue-id>");
+    process.exitCode = 1;
+    return;
+  }
+  try {
+    const written = writeSweepReport(cwd, queueId);
+    if (String(option("--format", "text")) === "json") console.log(JSON.stringify(written, null, 2));
+    else {
+      console.log(`report: ${written.report}`);
+      console.log(`summary: ${written.summary}`);
+      console.log(`results: ${written.results}`);
+    }
+  } catch (err) {
+    console.error(`sweep-report error: ${err.message}`);
+    process.exitCode = 1;
+  }
 }
 
 function detectAnomalies(series, opts = {}) {
@@ -6033,11 +11599,16 @@ Usage:
   autoresearch rank [--input PATH] [--write] [--dir PATH] [--goal TEXT] [--write]
   autoresearch prompt [--goal TEXT] [--focus hyperparameters|architecture|attention|training-ladder] [--agent NAME]
   autoresearch doctor [--dir PATH] [--python PATH] [--repair-plan]
+  autoresearch infra-doctor [--dir PATH] [--python PATH] [--format text|json] [--write]
+  autoresearch scaffold [--template python-benchmark|cpp-benchmark|cuda-basic|triton-operator|llm-serving] [--out PATH] [--agent NAME] [--force]
   autoresearch replay [--dir PATH] [--id RUN_ID]
   autoresearch record [--dir PATH] [--id ID] [--status STATUS] [--metric key=value] [--note TEXT]    (manual escape hatch; prefer 'run')
-  autoresearch run [--dir PATH] [--id ID] [--command CMD] [--metric NAME] [--regex PATTERN] [--timeout SECONDS] [--seeds N] [--allow-unsafe]
-  autoresearch baseline [--dir PATH] [--id ID] [--command CMD] [--metric NAME] [--regex PATTERN] [--timeout SECONDS] [--allow-unsafe]
-  autoresearch sweep --spec FILE.json [--metric NAME] [--seeds N] [--direction lower|higher] [--dry-run] [--allow-unsafe] [--dir PATH]
+  autoresearch run [--dir PATH] [--id ID] [--command CMD] [--metric NAME] [--regex PATTERN] [--timeout SECONDS] [--device auto|cpu|cuda|mps|directml] [--cuda-visible-devices LIST] [--tags TEXT] [--note TEXT] [--seeds N] [--allow-unsafe]
+  autoresearch baseline [--dir PATH] [--id ID] [--command CMD] [--metric NAME] [--regex PATTERN] [--timeout SECONDS] [--device auto|cpu|cuda|mps|directml] [--cuda-visible-devices LIST] [--tags TEXT] [--note TEXT] [--allow-unsafe]
+  autoresearch sweep --spec FILE.json|yaml|csv [--metric NAME] [--seeds N] [--direction lower|higher] [--dry-run] [--allow-unsafe] [--dir PATH]
+  autoresearch sweep validate|preview|create --spec FILE.json|yaml|csv [--dir PATH] [--format text|json]
+  autoresearch queue start|pause|resume|cancel|retry-failed|status|report --id QUEUE_ID [--dir PATH] [--format text|json]
+  autoresearch sweep-report --id QUEUE_ID [--dir PATH] [--format text|json]
   autoresearch loop --command CMD [--iters N] [--metric NAME] [--direction lower|higher] [--patch-cmd CMD] [--revert-on-regression] [--commit-on-win] [--keep-if better|same] [--dir PATH]
   autoresearch anomalies [--id RUN_ID] [--format text|json] [--dir PATH]
   autoresearch verify --id <run-id> [--metric NAME] [--tolerance N] [--timeout SECONDS] [--allow-unsafe] [--dir PATH]
@@ -6045,9 +11616,11 @@ Usage:
   autoresearch resume [--id RUN_ID] [--command CMD] [--metric NAME] [--timeout SECONDS] [--allow-unsafe] [--dir PATH]
   autoresearch scan-papers [--dir PATH] [--query TEXT] [--limit N] [--since YYYY-MM] [--cache-dir PATH] [--offline]
   autoresearch compare [--dir PATH] [--metric NAME] [--direction lower|higher]
+  autoresearch metric-tiers init|show|score [--profile hpc_operator|model_inference|ai_infra_training] [--format text|json] [--dir PATH]
   autoresearch team [--dir PATH] [--workers N] [--goal TEXT] [--force]
   autoresearch dashboard [--dir PATH] [--host HOST] [--port PORT]
   autoresearch report [--dir PATH] [--format text|markdown] [--out report.md] [--include-plots]
+  autoresearch portfolio [--dir PATH] [--out FILE.md] [--python PATH] [--no-env]
   autoresearch audit <file.md> [--tolerance N] [--dir PATH]
   autoresearch baseline-status [--dir PATH]
   autoresearch baseline --lock [--dir PATH]
@@ -6093,6 +11666,10 @@ async function main() {
     cmdPrompt();
   } else if (command === "doctor") {
     cmdDoctor();
+  } else if (command === "infra-doctor" || command === "infra") {
+    cmdInfraDoctor();
+  } else if (command === "scaffold") {
+    cmdScaffold();
   } else if (command === "replay") {
     cmdReplay();
   } else if (command === "record") {
@@ -6116,12 +11693,16 @@ async function main() {
     await cmdScanPapers();
   } else if (command === "compare") {
     cmdCompare();
+  } else if (command === "metric-tiers") {
+    cmdMetricTiers();
   } else if (command === "team") {
     cmdTeam();
   } else if (command === "dashboard") {
     cmdDashboard();
   } else if (command === "report") {
     cmdReport();
+  } else if (command === "portfolio") {
+    cmdPortfolio();
   } else if (command === "audit") {
     cmdAudit();
   } else if (command === "baseline-status") {
@@ -6152,6 +11733,10 @@ async function main() {
     cmdApprovals();
   } else if (command === "sweep") {
     await cmdSweep();
+  } else if (command === "queue") {
+    await cmdQueue();
+  } else if (command === "sweep-report") {
+    cmdSweepReport();
   } else if (command === "loop") {
     await cmdLoop();
   } else if (command === "anomalies" || command === "anomaly") {
