@@ -13,6 +13,7 @@
     "assets",
     "templates",
     "skills",
+    "启动AutoResearch面板.command",
     "start-macos-dashboard.command",
     "start-windows-dashboard.cmd",
     "README.md",

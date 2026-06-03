@@ -27,6 +27,7 @@ http://127.0.0.1:8792/
 仓库内也保留了同等逻辑的脚本：
 
 ```bash
+./启动AutoResearch面板.command
 ./start-macos-dashboard.command
 ```
 

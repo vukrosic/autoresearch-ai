@@ -67,7 +67,13 @@ autoresearch doctor
 
 ## 科研面板一键启动
 
-macOS 可以双击仓库内的启动脚本：
+macOS 可以双击仓库内的中文启动脚本：
+
+```bash
+./启动AutoResearch面板.command
+```
+
+也可以使用英文脚本名：
 
 ```bash
 ./start-macos-dashboard.command
