@@ -8,7 +8,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-cli="node $repo_root/bin/researchloop.js"
+cli=(node "$repo_root/bin/researchloop.js")
 
 git init -q "$tmpdir"
 git -C "$tmpdir" config user.email "codex@example.com"
@@ -17,12 +17,12 @@ printf 'seed\n' >"$tmpdir/model.py"
 git -C "$tmpdir" add model.py
 git -C "$tmpdir" commit -q -m "seed"
 
-$cli init --agent codex --dir "$tmpdir" >/tmp/researchloop-artifact-init.log
+"${cli[@]}" init --agent codex --dir "$tmpdir" >/tmp/researchloop-artifact-init.log
 git -C "$tmpdir" add -A
 git -C "$tmpdir" commit -q -m "add researchloop harness"
 
 # 1. Clean run with metric — should produce full artifact bundle.
-$cli run --dir "$tmpdir" --id clean-run \
+"${cli[@]}" run --dir "$tmpdir" --id clean-run \
   --command "printf 'step 1 val_loss=0.50\nstep 2 val_loss=0.42\n'" \
   --metric val_loss --no-system-sampling \
   >/tmp/researchloop-artifact-clean.log
@@ -111,7 +111,7 @@ NODE
 
 # 2. Dirty tree run — code.diff should be non-empty.
 printf 'dirty\n' >>"$tmpdir/model.py"
-$cli run --dir "$tmpdir" --id dirty-run \
+"${cli[@]}" run --dir "$tmpdir" --id dirty-run \
   --command "printf 'val_loss=0.99\n'" \
   --metric val_loss --no-system-sampling \
   >/tmp/researchloop-artifact-dirty.log
@@ -131,7 +131,7 @@ NODE
 
 # 3. System sampler default-on — system.jsonl should exist and contain at least the initial sample.
 git -C "$tmpdir" checkout -- model.py
-$cli run --dir "$tmpdir" --id sampled-run \
+"${cli[@]}" run --dir "$tmpdir" --id sampled-run \
   --command "true" --metric val_loss \
   >/tmp/researchloop-artifact-sampled.log
 
@@ -160,7 +160,7 @@ if (!names.includes("system.jsonl")) throw new Error("manifest should include sy
 NODE
 
 # 4. RESEARCHLOOP_RUN_DIR is exported to the child process.
-$cli run --dir "$tmpdir" --id envvar-run \
+"${cli[@]}" run --dir "$tmpdir" --id envvar-run \
   --command 'bash -c "printenv RESEARCHLOOP_RUN_DIR > .researchloop/scratchpad/runs/envvar-run/child-saw-rundir.txt"' \
   --metric val_loss --no-system-sampling \
   >/tmp/researchloop-artifact-envvar.log

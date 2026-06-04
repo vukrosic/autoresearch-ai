@@ -5,13 +5,13 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
-cli="node $repo_root/bin/researchloop.js"
+cli=(node "$repo_root/bin/researchloop.js")
 
-$cli init --agent codex --dir "$tmpdir" >/tmp/autoresearch-resume-init.log
+"${cli[@]}" init --agent codex --dir "$tmpdir" >/tmp/autoresearch-resume-init.log
 
 # Run that fails (exit code 1).
 set +e
-$cli run --dir "$tmpdir" --id crashed --command 'echo "training started"; false' --metric val_loss >/tmp/autoresearch-resume-crash.log
+"${cli[@]}" run --dir "$tmpdir" --id crashed --command 'echo "training started"; false' --metric val_loss >/tmp/autoresearch-resume-crash.log
 crash_exit=$?
 set -e
 if [ "$crash_exit" -eq 0 ]; then
@@ -21,7 +21,7 @@ fi
 grep -q "status: failed" /tmp/autoresearch-resume-crash.log
 
 # Resume by --id. Use a command that reads RESEARCHLOOP_RESUME and emits a value.
-$cli resume --dir "$tmpdir" --id crashed \
+"${cli[@]}" resume --dir "$tmpdir" --id crashed \
   --command 'printf "resume=%s from=%s\nval_loss=0.3\n" "$RESEARCHLOOP_RESUME" "$RESEARCHLOOP_RESUME_FROM"' \
   --metric val_loss \
   >/tmp/autoresearch-resume-by-id.log
@@ -44,10 +44,10 @@ grep -qE '"parent_id":\s*"crashed"' "$ledger"
 
 # Auto-pick latest resumable when no --id given. First create another failure.
 set +e
-$cli run --dir "$tmpdir" --id crashed2 --command 'sleep 0.1; exit 2' --metric val_loss >/dev/null 2>&1
+"${cli[@]}" run --dir "$tmpdir" --id crashed2 --command 'sleep 0.1; exit 2' --metric val_loss >/dev/null 2>&1
 set -e
 
-$cli resume --dir "$tmpdir" \
+"${cli[@]}" resume --dir "$tmpdir" \
   --command 'printf "val_loss=0.5\n"' \
   --metric val_loss \
   >/tmp/autoresearch-resume-auto.log
@@ -57,9 +57,9 @@ grep -q "new val_loss: 0.5" /tmp/autoresearch-resume-auto.log
 
 # No resumable runs at all -> exit nonzero.
 empty_dir="$(mktemp -d)"
-$cli init --agent codex --dir "$empty_dir" >/dev/null
+"${cli[@]}" init --agent codex --dir "$empty_dir" >/dev/null
 set +e
-$cli resume --dir "$empty_dir" >/tmp/autoresearch-resume-empty.log 2>&1
+"${cli[@]}" resume --dir "$empty_dir" >/tmp/autoresearch-resume-empty.log 2>&1
 empty_exit=$?
 set -e
 rm -rf "$empty_dir"

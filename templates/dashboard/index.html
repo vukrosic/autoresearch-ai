@@ -1577,6 +1577,27 @@
 	                  <input id="uiBatchMaxRetries" type="number" min="0" placeholder="1" />
 	                </div>
 	                <div class="field">
+	                  <label for="uiBatchStabilityEnabled">完成后稳定复测</label>
+	                  <input id="uiBatchStabilityEnabled" type="checkbox" checked />
+	                </div>
+	                <div class="field">
+	                  <label for="uiBatchStabilityTopK">复测 Top K</label>
+	                  <input id="uiBatchStabilityTopK" type="number" min="1" max="50" placeholder="5" />
+	                </div>
+	                <div class="field">
+	                  <label for="uiBatchStabilityRepeats">每组复测次数</label>
+	                  <input id="uiBatchStabilityRepeats" type="number" min="1" max="25" placeholder="3" />
+	                </div>
+	                <div class="field">
+	                  <label for="uiBatchMaxParallel">并发进程数</label>
+	                  <input id="uiBatchMaxParallel" type="number" min="1" placeholder="自动推荐" />
+                    <div id="batchParallelHint" style="color:var(--muted); font-size:11.5px; margin-top:4px">等待本机资源识别</div>
+	                </div>
+	                <div class="field">
+	                  <label for="uiBatchDevicePool">GPU 设备池</label>
+	                  <input id="uiBatchDevicePool" type="text" placeholder="0,1,2,3（可选）" />
+	                </div>
+	                <div class="field">
 	                  <label for="uiBatchParamPreset">参数场景</label>
 	                  <select id="uiBatchParamPreset">
 	                    <option value="auto">自动</option>
@@ -1631,6 +1652,7 @@ grid:
                 <button class="action-button" id="sweepResumeBtn" type="button">继续队列</button>
                 <button class="action-button" id="sweepRetryBtn" type="button">重试失败</button>
                 <button class="action-button" id="sweepReportBtn" type="button">生成批量报告</button>
+                <button class="action-button is-danger" id="sweepDeleteBtn" type="button">删除当前队列</button>
               </div>
               <div style="overflow:auto; margin-top:12px">
                 <table class="runs-table">
@@ -2711,12 +2733,14 @@ grid:
         const env = state.projectEnvironment || {};
         const project = env.project || {};
         const rec = env.recommendations || {};
+        const parallelRec = batchParallelRecommendation(state);
         const mount = $("envDetectSummary");
         if (mount) {
           const chips = [
             ["项目类型", project.buildSystem || "unknown", "manual"],
             ["语言", (project.languages || []).join(", ") || "未识别", "manual"],
             ["计算设备", rec.device || state.system?.compute?.effective || "auto", "ok"],
+            ["批量并发", parallelRec.value ? `${parallelRec.value} 进程` : "待识别", parallelRec.value ? "ok" : "manual"],
             ["Profiler", rec.profileTool || "auto", rec.profileTool === "time" ? "manual" : "ok"],
             ["Benchmark", rec.benchmarkCommand ? "已推荐" : "需填写", rec.benchmarkCommand ? "ok" : "miss"],
             ["CLion", env.tools?.clion?.present ? "可用" : "未检测", env.tools?.clion?.present ? "ok" : "miss"],
@@ -2732,6 +2756,50 @@ grid:
           const markers = Array.isArray(project.markers) && project.markers.length ? project.markers.join(" / ") : "未发现关键配置文件";
           text.textContent = `已扫描 ${project.filesScanned || 0} 个文件 · ${markers}${warnings}`;
         }
+      }
+      function batchParallelRecommendation(state = latestState) {
+        const env = state?.projectEnvironment || {};
+        const rec = env.recommendations || {};
+        const detail = env.hardware?.queueParallelism || {};
+        const rawValue = Number(rec.batchMaxParallel || detail.max_parallel || 0);
+        const value = Number.isFinite(rawValue) && rawValue > 0 ? Math.max(1, rawValue) : 0;
+        return {
+          value: value || 0,
+          mode: detail.mode || "",
+          reason: rec.batchMaxParallelReason || detail.reason || "",
+          cpuSlots: detail.cpu_slots || "",
+          memorySlots: detail.memory_slots || "",
+          gpuSlots: detail.gpu_slots || "",
+        };
+      }
+      function renderBatchParallelHint(state = latestState) {
+        const hint = $("batchParallelHint");
+        const input = $("uiBatchMaxParallel");
+        if (!hint || !input) return;
+        const rec = batchParallelRecommendation(state);
+        if (!rec.value) {
+          hint.textContent = "未得到推荐值，可手动填写";
+          return;
+        }
+        input.placeholder = `自动推荐 ${rec.value}`;
+        const source = input.dataset.auto === "true" ? "自动推荐" : "手动设置";
+        const caps = [
+          rec.cpuSlots ? `CPU ${rec.cpuSlots}` : "",
+          rec.memorySlots ? `内存 ${rec.memorySlots}` : "",
+          rec.gpuSlots ? `GPU ${rec.gpuSlots}` : "",
+        ].filter(Boolean).join(" / ");
+        hint.textContent = `${source}：${input.value || rec.value} 进程${caps ? ` · ${caps}` : ""}${rec.reason ? ` · ${rec.reason}` : ""}`;
+      }
+      function batchMaxParallelValue() {
+        const input = $("uiBatchMaxParallel");
+        const rec = batchParallelRecommendation();
+        const value = Math.max(1, Number(input?.value || rec.value || 1) || 1);
+        if (input && !input.value.trim()) {
+          input.value = String(value);
+          input.dataset.auto = "true";
+          renderBatchParallelHint(latestState);
+        }
+        return value;
       }
       function quoteArg(value) {
         const text = String(value || "").trim();
@@ -2810,6 +2878,7 @@ grid:
 	        if (s === "complete_no_metric") return "is-other";
 	        if (s === "failed" || s === "error" || s === "spawn_error") return "is-failed";
 	        if (s === "running" || s === "in_progress") return "is-running";
+	        if (s === "stabilizing") return "is-running";
 	        return "is-other";
       }
       function statusLabel(status) {
@@ -2819,6 +2888,7 @@ grid:
         if (s === "failed" || s === "error") return "失败";
         if (s === "spawn_error") return "启动失败";
         if (s === "running" || s === "in_progress") return "运行中";
+        if (s === "stabilizing") return "稳定复测中";
         if (s === "timeout") return "超时";
         if (s === "recorded") return "手动记录";
         if (!s) return "—";
@@ -3053,6 +3123,7 @@ grid:
 	        const commandTemplate = inferBatchCommandTemplate(grid);
 	        if (!commandTemplate) throw new Error("请先填写或自动识别命令模板");
 	        $("uiBatchCommandTemplate").value = commandTemplate;
+	        const maxParallel = batchMaxParallelValue();
 	        const spec = {
 	          version: 1,
 	          name: ($("uiSweepName").value.trim() || `dashboard-${$("uiBatchParamPreset").value || "batch"}-sweep`).replace(/[^A-Za-z0-9._-]/g, "-"),
@@ -3060,10 +3131,19 @@ grid:
 	          direction: $("uiDirection").value || "lower",
 	          command_template: commandTemplate,
 	          timeout_seconds: Number($("uiTimeout").value || 600) || 600,
+	          max_parallel: maxParallel,
 	          retry: { max_retries: Math.max(0, Number($("uiBatchMaxRetries").value || 0) || 0) },
 	          budget: { max_runs: maxRuns },
+	          stability: {
+	            enabled: $("uiBatchStabilityEnabled").checked,
+	            top_k: Math.max(1, Number($("uiBatchStabilityTopK").value || 5) || 5),
+	            repeats: Math.max(1, Number($("uiBatchStabilityRepeats").value || 3) || 3),
+	            aggregate: "median",
+	          },
 	          variants,
 	        };
+	        const devicePool = $("uiBatchDevicePool").value.trim() || $("uiCudaVisibleDevices").value.trim();
+	        if (devicePool) spec.cuda_visible_devices = devicePool;
 	        return JSON.stringify(spec, null, 2);
 	      }
 
@@ -3105,12 +3185,23 @@ grid:
         $("tierProfilePill").textContent = profile.profile_label || analysis.profile_label || profile.profile || "—";
         const rec = analysis.recommendation || {};
         const tone = rec.code === "recommended" ? "is-accent" : rec.code === "not_recommended" ? "is-danger" : "is-warning";
-        $("tierMeta").innerHTML = [
+        const meta = [
           `<span class="pill ${tone}">结论：<strong>${escapeHtml(rec.label || "需要复测")}</strong></span>`,
+          `<span class="pill">评分对象：<strong>${escapeHtml(analysis.selection_label || "单次/最新实验")}</strong></span>`,
           `<span class="pill">Baseline：<strong>${escapeHtml(analysis.baseline_id || "—")}</strong></span>`,
           `<span class="pill">候选：<strong>${escapeHtml(analysis.candidate_id || "—")}</strong></span>`,
           `<span class="pill">总分：<strong>${escapeHtml(Number.isFinite(Number(analysis.overall_score)) ? Number(analysis.overall_score).toFixed(4) : "—")}</strong></span>`,
-        ].join("");
+        ];
+        if (analysis.batch_queue_id) {
+          meta.push(`<span class="pill">队列：<strong>${escapeHtml(analysis.batch_queue_status || "—")}</strong></span>`);
+          if (analysis.batch_best_run_id) {
+            const bestMetric = analysis.batch_queue_metric
+              ? `${analysis.batch_queue_metric}=${Number.isFinite(Number(analysis.batch_best_value)) ? Number(analysis.batch_best_value).toFixed(4) : "—"}`
+              : "最佳指标";
+            meta.push(`<span class="pill">批量最佳：<strong>${escapeHtml(bestMetric)}</strong></span>`);
+          }
+        }
+        $("tierMeta").innerHTML = meta.join("");
         $("tierSummary").innerHTML = (analysis.levels || []).map((level) => `
           <div class="tier-card">
             <div class="name">${escapeHtml(level.label || level.key)}</div>
@@ -3270,6 +3361,16 @@ grid:
 	        $("uiBatchParamGrid").value = cfg.batchParamGrid || "";
 	        $("uiBatchMaxRuns").value = cfg.batchMaxRuns || "";
 	        $("uiBatchMaxRetries").value = cfg.batchMaxRetries || "";
+	        $("uiBatchStabilityEnabled").checked = cfg.batchStabilityEnabled !== "false";
+	        $("uiBatchStabilityTopK").value = cfg.batchStabilityTopK || "5";
+	        $("uiBatchStabilityRepeats").value = cfg.batchStabilityRepeats || "3";
+	        {
+	          const parallelRec = batchParallelRecommendation(state);
+	          $("uiBatchMaxParallel").value = cfg.batchMaxParallel || (parallelRec.value ? String(parallelRec.value) : "");
+	          $("uiBatchMaxParallel").dataset.auto = cfg.batchMaxParallelSource === "hardware_auto" || (!cfg.batchMaxParallel && parallelRec.value) ? "true" : "false";
+	          renderBatchParallelHint(state);
+	        }
+	        $("uiBatchDevicePool").value = cfg.batchDevicePool || "";
 	        $("uiBatchQueueId").value = cfg.batchQueueId || "";
         $("uiRunArgs").value = "";
         $("uiAdvancedCommand").value = "";
@@ -3343,7 +3444,14 @@ grid:
 	          batchCommandTemplate: $("uiBatchCommandTemplate").value.trim(),
 	          batchParamGrid: $("uiBatchParamGrid").value.trim(),
 	          batchMaxRuns: $("uiBatchMaxRuns").value.trim(),
+	          batchMaxParallel: $("uiBatchMaxParallel").value.trim() || String(batchParallelRecommendation().value || ""),
+	          batchMaxParallelSource: $("uiBatchMaxParallel").dataset.auto === "true" ? "hardware_auto" : "manual",
+	          batchMaxParallelReason: batchParallelRecommendation().reason || "",
+	          batchDevicePool: $("uiBatchDevicePool").value.trim(),
 	          batchMaxRetries: $("uiBatchMaxRetries").value.trim(),
+	          batchStabilityEnabled: $("uiBatchStabilityEnabled").checked ? "true" : "false",
+	          batchStabilityTopK: $("uiBatchStabilityTopK").value.trim(),
+	          batchStabilityRepeats: $("uiBatchStabilityRepeats").value.trim(),
 	          batchQueueId: $("uiBatchQueueId").value.trim(),
         };
       }
@@ -3364,37 +3472,245 @@ grid:
 	          commandTemplate: $("uiBatchCommandTemplate").value.trim(),
 	          paramGrid: $("uiBatchParamGrid").value.trim(),
 	          maxRuns: $("uiBatchMaxRuns").value.trim(),
+          maxParallel: $("uiBatchMaxParallel").value.trim() || String(batchParallelRecommendation().value || ""),
+          autoMaxParallel: $("uiBatchMaxParallel").dataset.auto === "true" ? "true" : "false",
+          devicePool: $("uiBatchDevicePool").value.trim(),
           maxRetries: $("uiBatchMaxRetries").value.trim(),
+          stabilityEnabled: $("uiBatchStabilityEnabled").checked ? "true" : "false",
+          stabilityTopK: $("uiBatchStabilityTopK").value.trim(),
+          stabilityRepeats: $("uiBatchStabilityRepeats").value.trim(),
           queueId: $("uiBatchQueueId").value.trim(),
           allowUnsafe: $("uiAllowLocalPerf").checked,
         };
       }
 
       // ───── chart ─────
+      function compactSeries(points, maxPoints = 900) {
+        if (!Array.isArray(points) || points.length <= maxPoints) return points || [];
+        const bucket = Math.ceil(points.length / maxPoints);
+        const compact = [];
+        for (let start = 0; start < points.length; start += bucket) {
+          const part = points.slice(start, start + bucket);
+          let sum = 0;
+          let count = 0;
+          for (const point of part) {
+            const value = Number(point.value);
+            if (Number.isFinite(value)) {
+              sum += value;
+              count += 1;
+            }
+          }
+          if (!count) continue;
+          compact.push({
+            index: part[Math.floor(part.length / 2)].index,
+            value: sum / count,
+          });
+        }
+        return compact;
+      }
+
+      function niceNumber(value, round) {
+        const exponent = Math.floor(Math.log10(Math.max(Math.abs(value), 1e-12)));
+        const fraction = value / Math.pow(10, exponent);
+        let niceFraction;
+        if (round) {
+          if (fraction < 1.5) niceFraction = 1;
+          else if (fraction < 3) niceFraction = 2;
+          else if (fraction < 7) niceFraction = 5;
+          else niceFraction = 10;
+        } else {
+          if (fraction <= 1) niceFraction = 1;
+          else if (fraction <= 2) niceFraction = 2;
+          else if (fraction <= 5) niceFraction = 5;
+          else niceFraction = 10;
+        }
+        return niceFraction * Math.pow(10, exponent);
+      }
+
+      function axisTicks(minRaw, maxRaw, count = 5) {
+        let min = Number(minRaw);
+        let max = Number(maxRaw);
+        if (!Number.isFinite(min) || !Number.isFinite(max)) return [];
+        if (min === max) {
+          const spread = Math.max(Math.abs(min) * 0.1, 1);
+          min -= spread;
+          max += spread;
+        }
+        const range = niceNumber(max - min, false);
+        const step = niceNumber(range / Math.max(1, count - 1), true);
+        const niceMin = Math.floor(min / step) * step;
+        const niceMax = Math.ceil(max / step) * step;
+        const ticks = [];
+        for (let value = niceMin; value <= niceMax + step * 0.5; value += step) {
+          ticks.push(Number(value.toPrecision(12)));
+          if (ticks.length > 12) break;
+        }
+        return ticks;
+      }
+
+      function axisLabel(value) {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return "—";
+        const abs = Math.abs(n);
+        if (abs === 0) return "0";
+        if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
+        if (abs >= 10_000) return `${(n / 1_000).toFixed(abs >= 100_000 ? 0 : 1)}k`;
+        if (abs >= 100) return n.toFixed(0);
+        if (abs >= 10) return n.toFixed(1);
+        if (abs >= 1) return n.toFixed(2);
+        if (abs >= 0.01) return n.toFixed(3);
+        return n.toExponential(1);
+      }
+
+      function indexAxisTicks(minRaw, maxRaw, count = 6) {
+        const min = Math.floor(Number(minRaw));
+        const max = Math.ceil(Number(maxRaw));
+        if (!Number.isFinite(min) || !Number.isFinite(max)) return [];
+        if (min === max) return [min];
+        const span = Math.max(1, max - min);
+        const step = Math.max(1, Math.round(niceNumber(span / Math.max(1, count - 1), true)));
+        const ticks = [];
+        const add = (value) => {
+          if (!ticks.length || ticks[ticks.length - 1] !== value) ticks.push(value);
+        };
+        add(min);
+        for (let value = Math.ceil(min / step) * step; value <= max; value += step) add(value);
+        add(max);
+        return ticks.slice(0, 8);
+      }
+
+      function indexAxisLabel(index) {
+        const n = Number(index) + 1;
+        if (!Number.isFinite(n)) return "—";
+        if (Number.isInteger(n) && Math.abs(n) < 10_000) return String(n);
+        return axisLabel(n);
+      }
+
+      function tracePointCount(trace) {
+        return Array.isArray(trace?.values) ? trace.values.length : 0;
+      }
+
+      function denseTraceChart(traces, preferHigher) {
+        const entries = (traces || [])
+          .map((t, fallbackIndex) => ({
+            id: t.id,
+            index: Number.isFinite(Number(t.index)) ? Number(t.index) : fallbackIndex,
+            value: Number(t.final),
+          }))
+          .filter((entry) => Number.isFinite(entry.index) && Number.isFinite(entry.value))
+          .sort((a, b) => a.index - b.index);
+        if (!entries.length) return '<div class="empty">还没有数值指标数据。</div>';
+
+        const bestSeries = [];
+        let best = null;
+        for (const entry of entries) {
+          if (!best || (preferHigher ? entry.value > best.value : entry.value < best.value)) {
+            best = entry;
+          }
+          bestSeries.push({ index: entry.index, value: best.value });
+        }
+
+        const sampled = compactSeries(entries, 900);
+        const sampledBest = compactSeries(bestSeries, 900);
+        const values = entries.map((p) => Number(p.value)).filter(Number.isFinite);
+        let min = Math.min(...values);
+        let max = Math.max(...values);
+        if (min === max) {
+          min -= 1;
+          max += 1;
+        }
+
+        const W = 960, H = 280, padL = 66, padR = 24, padT = 28, padB = 52;
+        const minIndex = Math.min(...entries.map((entry) => entry.index));
+        const maxIndex = Math.max(...entries.map((entry) => entry.index));
+        const yTicks = axisTicks(min, max, 6);
+        const yMin = yTicks[0] ?? min;
+        const yMax = yTicks[yTicks.length - 1] ?? max;
+        const xTicks = indexAxisTicks(minIndex, maxIndex, 6);
+        const xMin = xTicks[0] ?? minIndex;
+        const xMax = xTicks[xTicks.length - 1] ?? maxIndex;
+        const range = yMax - yMin || 1;
+        const xRange = xMax - xMin || 1;
+        const xAt = (index) => xMax === xMin
+          ? padL + (W - padL - padR) / 2
+          : padL + ((W - padL - padR) * (index - xMin)) / xRange;
+        const yAt = (value) => H - padB - ((Number(value) - yMin) / range) * (H - padT - padB);
+        const pointsFor = (series) => series.map((p) => `${xAt(p.index).toFixed(1)},${yAt(p.value).toFixed(1)}`).join(" ");
+        const bestEntry = best;
+        const marker = preferHigher ? "best-so-far 越高越好" : "best-so-far 越低越好";
+
+        const grid = [];
+        for (const value of yTicks) {
+          const y = yAt(value);
+          grid.push(`
+            <line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="rgba(49,145,176,0.16)" />
+            <text x="${padL - 8}" y="${y + 3}" text-anchor="end" fill="rgba(18,52,71,0.66)" font-size="10">${axisLabel(value)}</text>
+          `);
+        }
+        for (const value of xTicks) {
+          const x = xAt(value);
+          grid.push(`
+            <line x1="${x}" y1="${padT}" x2="${x}" y2="${H - padB}" stroke="rgba(49,145,176,0.10)" />
+            <text x="${x}" y="${H - 29}" text-anchor="middle" fill="rgba(18,52,71,0.60)" font-size="10">${indexAxisLabel(value)}</text>
+          `);
+        }
+
+        return `
+          <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="海量实验指标趋势">
+            ${grid.join("")}
+            <polyline points="${pointsFor(sampled)}" fill="none" stroke="#71a7ff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" opacity="0.72" />
+            <polyline points="${pointsFor(sampledBest)}" fill="none" stroke="#26bd88" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />
+            <text x="${padL}" y="${padT - 10}" fill="rgba(18,52,71,0.66)" font-size="11">${marker} · 全量 ${entries.length} 个实验，抽样 ${sampled.length} 个点绘制</text>
+            <text x="${W - padR}" y="${padT - 10}" text-anchor="end" fill="rgba(18,52,71,0.60)" font-size="10">X：实验序号 / 参数组合顺序</text>
+            <text x="${padL}" y="${H - 9}" fill="rgba(18,52,71,0.64)" font-size="10">蓝线：全量最终值趋势 · 绿线：best-so-far · 当前最佳 ${escapeHtml(bestEntry.id)}=${bestEntry.value.toFixed(6)}</text>
+          </svg>
+        `;
+      }
+
       function multiTraceChart(traces, preferHigher) {
         const visible = (traces || []).filter((t) => !hiddenTraces.has(t.id));
         if (!visible.length) {
           return '<div class="empty">没有选中的实验。可在图例中切换曲线。</div>';
         }
-        const W = 960, H = 280, padL = 36, padR = 16, padT = 18, padB = 28;
+        const isManySinglePointRuns = visible.length > 50 && visible.every((trace) => tracePointCount(trace) <= 1);
+        if (visible.length > 600 || isManySinglePointRuns) return denseTraceChart(visible, preferHigher);
+        const W = 960, H = 280, padL = 66, padR = 24, padT = 28, padB = 52;
         const allVals = visible.flatMap((t) => (t.values || []).map((p) => Number(p.value)).filter(Number.isFinite));
         if (!allVals.length) return '<div class="empty">还没有数值指标数据。</div>';
-        const min = Math.min(...allVals), max = Math.max(...allVals);
-        const range = max - min || 1;
+        let min = Math.min(...allVals), max = Math.max(...allVals);
+        if (min === max) {
+          min -= Math.max(Math.abs(min) * 0.1, 1);
+          max += Math.max(Math.abs(max) * 0.1, 1);
+        }
         const maxLen = Math.max(...visible.map((t) => (t.values || []).length || 1));
+        const yTicks = axisTicks(min, max, 6);
+        const yMin = yTicks[0] ?? min;
+        const yMax = yTicks[yTicks.length - 1] ?? max;
+        const xTicks = indexAxisTicks(0, maxLen - 1, 6);
+        const xMin = xTicks[0] ?? 0;
+        const xMax = xTicks[xTicks.length - 1] ?? Math.max(0, maxLen - 1);
+        const range = yMax - yMin || 1;
         const marker = preferHigher ? "指标越高越好" : "指标越低越好";
 
-        const xAt = (i) => padL + ((W - padL - padR) * (maxLen === 1 ? 0.5 : i / (maxLen - 1)));
-        const yAt = (v) => H - padB - ((Number(v) - min) / range) * (H - padT - padB);
+        const xAt = (i) => xMax === xMin
+          ? padL + (W - padL - padR) / 2
+          : padL + ((W - padL - padR) * (i - xMin)) / (xMax - xMin);
+        const yAt = (v) => H - padB - ((Number(v) - yMin) / range) * (H - padT - padB);
 
         // gridlines
         const grid = [];
-        for (let g = 0; g <= 4; g++) {
-          const y = padT + ((H - padT - padB) * g) / 4;
-          const value = max - (range * g) / 4;
+        for (const value of yTicks) {
+          const y = yAt(value);
           grid.push(`
-            <line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="rgba(255,255,255,0.05)" />
-            <text x="${padL - 6}" y="${y + 3}" text-anchor="end" fill="rgba(255,255,255,0.45)" font-size="10">${value.toFixed(2)}</text>
+            <line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="rgba(49,145,176,0.16)" />
+            <text x="${padL - 8}" y="${y + 3}" text-anchor="end" fill="rgba(18,52,71,0.66)" font-size="10">${axisLabel(value)}</text>
+          `);
+        }
+        for (const value of xTicks) {
+          const x = xAt(value);
+          grid.push(`
+            <line x1="${x}" y1="${padT}" x2="${x}" y2="${H - padB}" stroke="rgba(49,145,176,0.10)" />
+            <text x="${x}" y="${H - 29}" text-anchor="middle" fill="rgba(18,52,71,0.60)" font-size="10">${indexAxisLabel(value)}</text>
           `);
         }
 
@@ -3418,8 +3734,8 @@ grid:
           <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="实验指标对比曲线">
             ${grid.join("")}
             ${lines}
-            <text x="${padL}" y="${padT - 4}" fill="rgba(255,255,255,0.55)" font-size="11">${marker}</text>
-            <text x="${W - padR}" y="${H - 6}" text-anchor="end" fill="rgba(255,255,255,0.45)" font-size="10">步数</text>
+            <text x="${padL}" y="${padT - 10}" fill="rgba(18,52,71,0.66)" font-size="11">${marker}</text>
+            <text x="${W - padR}" y="${padT - 10}" text-anchor="end" fill="rgba(18,52,71,0.60)" font-size="10">X：采样点 / step</text>
           </svg>
         `;
       }
@@ -3433,7 +3749,22 @@ grid:
         const bestId = state.comparison?.bestFinal?.trace?.id;
         const bestDeltaId = state.comparison?.bestImprovement?.trace?.id;
         const bestDeltaValue = Number(state.comparison?.bestImprovement?.delta);
-        return traces.map((t) => {
+        const renderedTraces = traces.length > 400
+          ? traces
+            .slice()
+            .sort((a, b) => {
+              const av = Number(a.final); const bv = Number(b.final);
+              if (!Number.isFinite(av) && !Number.isFinite(bv)) return 0;
+              if (!Number.isFinite(av)) return 1;
+              if (!Number.isFinite(bv)) return -1;
+              return state.preferHigher ? bv - av : av - bv;
+            })
+            .slice(0, 60)
+          : traces;
+        const notice = traces.length > renderedTraces.length
+          ? `<div class="empty">海量模式：图例只显示最佳 ${renderedTraces.length} 条，曲线仍使用 ${traces.length} 条实验的全量结果。</div>`
+          : "";
+        return notice + renderedTraces.map((t) => {
           const firstValue = t.values?.[0]?.value;
           const final = t.final;
           const delta = Number.isFinite(Number(firstValue)) && Number.isFinite(Number(final))
@@ -3495,14 +3826,17 @@ grid:
           sorted.reverse(); // recent first
         }
 
-        $("filterCount").textContent = `显示 ${sorted.length} 条 · 共 ${rows.length} 条`;
+        const tableRows = sorted.slice(0, 500);
+        $("filterCount").textContent = sorted.length > tableRows.length
+          ? `显示前 ${tableRows.length} 条 · 匹配 ${sorted.length} 条 · 共 ${rows.length} 条`
+          : `显示 ${sorted.length} 条 · 共 ${rows.length} 条`;
 
         if (!sorted.length) {
           $("runsTbody").innerHTML = `<tr><td colspan="7"><div class="empty">${rows.length ? "没有符合筛选条件的实验。" : "还没有实验记录。点击上方按钮运行实验或补录指标。"}</div></td></tr>`;
           return;
         }
 
-        $("runsTbody").innerHTML = sorted.map((r) => {
+        $("runsTbody").innerHTML = tableRows.map((r) => {
           const t = byId.get(r.id);
           const final = t ? t.final : r.metrics?.[metricKey];
           const first = t?.values?.[0]?.value;
@@ -3571,10 +3905,18 @@ grid:
 	        $("batchTotal").textContent = counts.total || 0;
 	        $("batchPending").textContent = `待运行 ${counts.pending || 0}`;
 	        $("batchDoneFailed").textContent = `${counts.complete || 0} / ${(counts.failed || 0) + (counts.timeout || 0) + (counts.complete_no_metric || 0)}`;
-        $("batchRunning").textContent = `运行中 ${(counts.running || 0) + (counts.retrying || 0)}`;
+        const stability = queue.stability || {};
+        const stabilityText = stability.status === "running"
+          ? ` · 复测 ${stability.candidates?.filter((row) => row.status === "complete").length || 0}/${stability.candidates?.length || 0}`
+          : stability.status === "complete"
+            ? ` · 稳定复测完成`
+            : "";
+        $("batchRunning").textContent = `运行中 ${(counts.running || 0) + (counts.retrying || 0)} / 并发 ${queue.max_parallel || 1}${stabilityText}`;
         if (queue.best) {
           $("batchBest").textContent = Number(queue.best.value).toFixed(4);
-          $("batchBestRun").textContent = queue.best.run_id || "—";
+          $("batchBestRun").textContent = queue.best.source === "stability_median"
+            ? `稳定中位数 · ${queue.best.run_id || "—"}`
+            : queue.best.run_id || "—";
         } else {
           $("batchBest").textContent = "—";
           $("batchBestRun").textContent = "等待数据";
@@ -4093,6 +4435,7 @@ grid:
         const queue = currentQueue(state);
         const counts = queue?.counts || {};
         const sys = state.system || {};
+        const parallelRec = batchParallelRecommendation(state);
         const alerts = [
           {
             name: "队列完成保护",
@@ -4108,7 +4451,7 @@ grid:
           },
           {
             name: "内存压力",
-            sub: `当前内存约 ${Math.round(sys.memory?.usagePct || 0)}%，小规模 MLX sweep 继续串行运行更稳。`,
+            sub: `当前内存约 ${Math.round(sys.memory?.usagePct || 0)}%，批量实验推荐并发 ${parallelRec.value || 1}。`,
             status: (sys.memory?.usagePct || 0) > 90 ? "偏高" : "正常",
             cls: (sys.memory?.usagePct || 0) > 90 ? "is-warning" : "is-accent",
           },
@@ -4336,6 +4679,7 @@ grid:
         renderResources(state);
         renderPerformanceTools(state);
         renderProjectEnvironment(state);
+        renderBatchParallelHint(state);
         renderSweepQueues(state);
         renderResearchArtifacts(state);
         renderThread(state);
@@ -4748,13 +5092,18 @@ grid:
 	        }
 	      });
 
+	      $("uiBatchMaxParallel").addEventListener("input", () => {
+	        $("uiBatchMaxParallel").dataset.auto = "false";
+	        renderBatchParallelHint(latestState);
+	      });
+
 	      $("batchAutoconfigBtn").addEventListener("click", async () => {
 	        try {
 	          actionFieldsHydrated = false;
 	          const result = await postAction("batch-autoconfig", actionBodyBase());
 	          actionFieldsHydrated = false;
 	          if (result.state) render(result.state);
-	          setActionMessage(`已识别批量入口：${result.config?.batchCommandTemplate || result.config?.benchmarkCommand || "需要手动确认"}`, "ok");
+	          setActionMessage(`已识别批量入口：${result.config?.batchCommandTemplate || result.config?.benchmarkCommand || "需要手动确认"}；并发 ${result.config?.batchMaxParallel || batchParallelRecommendation(result.state).value || 1}`, "ok");
 	        } catch (err) {
 	          actionFieldsHydrated = true;
 	          setActionMessage(`识别入口失败：${err.message}`, "error");
@@ -4856,6 +5205,22 @@ grid:
           setActionMessage(`已生成批量报告：${result.report}`, "ok");
         } catch (err) {
           setActionMessage(`批量报告失败：${err.message}`, "error");
+        }
+      });
+
+      $("sweepDeleteBtn").addEventListener("click", async () => {
+        try {
+          const body = batchActionBody();
+          if (!body.queueId) throw new Error("请先选择队列");
+          const ok = window.confirm(`删除当前批量队列 ${body.queueId}？队列和批量报告会移到归档目录，实验记录不会清空。`);
+          if (!ok) return;
+          const result = await postAction("sweep-delete", { ...body, clearCurrent: "true" });
+          $("uiBatchQueueId").value = "";
+          renderSweepQueues(result.state || latestState || {});
+          const suffix = result.archivedQueue ? `，已归档到 ${result.archivedQueue}` : "";
+          setActionMessage(`已删除队列：${result.queueId}${suffix}`, "ok");
+        } catch (err) {
+          setActionMessage(`删除队列失败：${err.message}`, "error");
         }
       });
 

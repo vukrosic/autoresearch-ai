@@ -5,7 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fixture="$(mktemp -d)"
 trap 'rm -rf "$fixture"' EXIT
 
-cli="node $repo_root/bin/researchloop.js"
+cli=(node "$repo_root/bin/researchloop.js")
 research_dir="$fixture/.researchloop"
 mkdir -p "$research_dir/scratchpad"
 
@@ -52,7 +52,7 @@ EOF
 
 echo "=== Test G20 markdown report ==="
 
-$cli report --dir "$fixture" --format markdown --out report.md --include-plots >/tmp/autoresearch-report.log
+"${cli[@]}" report --dir "$fixture" --format markdown --out report.md --include-plots >/tmp/autoresearch-report.log
 grep -q "report: report.md" /tmp/autoresearch-report.log
 
 report="$fixture/report.md"
@@ -110,10 +110,10 @@ for (const id of ids) {
 }
 NODE
 
-stdout_report="$($cli report --dir "$fixture" --format markdown)"
+stdout_report="$("${cli[@]}" report --dir "$fixture" --format markdown)"
 grep -q "# AutoResearch-AI Experiment Report" <<<"$stdout_report"
 
-text_report="$($cli report --dir "$fixture")"
+text_report="$("${cli[@]}" report --dir "$fixture")"
 grep -q "runs: 5" <<<"$text_report"
 grep -q "estimated_cost_usd:" <<<"$text_report"
 

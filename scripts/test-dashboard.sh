@@ -70,12 +70,17 @@ grep -q '一键性能诊断' <<<"$page"
 grep -q '性能分析 · 参数扫描 · Profiler' <<<"$page"
 grep -q '运行 Benchmark' <<<"$page"
 grep -q '批量实验 · 队列工作台' <<<"$page"
+grep -q 'id="batchParallelHint"' <<<"$page"
+grep -q 'id="uiBatchStabilityEnabled"' <<<"$page"
+grep -q 'id="sweepDeleteBtn"' <<<"$page"
+grep -q '删除当前队列' <<<"$page"
 grep -q '功能目录' <<<"$page"
 grep -q '导出作品集' <<<"$page"
 grep -q '"primaryMetric": "val_loss"' <<<"$state"
 grep -q '"performanceTools":' <<<"$state"
 grep -q '"projectEnvironment":' <<<"$state"
 grep -q '"recommendations":' <<<"$state"
+grep -q '"queueParallelism":' <<<"$state"
 grep -q '"google-benchmark":' <<<"$state"
 grep -q '"gpu":' <<<"$state"
 grep -q '"disk":' <<<"$state"
@@ -118,6 +123,8 @@ grep -q '"ok": true' <<<"$batch_autoconfig_resp"
 grep -q '"action": "batch-autoconfig"' <<<"$batch_autoconfig_resp"
 grep -q '"batchCommandTemplate":' <<<"$batch_autoconfig_resp"
 grep -q '"batchParamGrid":' <<<"$batch_autoconfig_resp"
+grep -q '"batchMaxParallelSource": "hardware_auto"' <<<"$batch_autoconfig_resp"
+node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const j=JSON.parse(s);const rec=Number(j.config?.batchMaxParallel);const hw=Number(j.detection?.hardware?.queueParallelism?.max_parallel);if(!Number.isFinite(rec)||rec<1||rec!==hw) process.exit(1);});' <<<"$batch_autoconfig_resp"
 
 config_resp="$(curl -s -X POST "$url/api/action/config" \
   -H 'content-type: application/json' \
@@ -176,6 +183,33 @@ test -n "$archive_rel"
 test -f "$tmpdir/$archive_rel"
 state_cleared="$(curl -s "$url/api/state")"
 node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const j=JSON.parse(s); if (j.summary?.totalRuns !== 0) process.exit(1); if ((j.runs || []).length !== 0) process.exit(1); if ((j.traces || []).length !== 0) process.exit(1);});' <<<"$state_cleared"
+
+node - "$tmpdir" <<'NODE'
+const fs = require("fs");
+const path = require("path");
+const cwd = process.argv[2];
+const ledger = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
+const rows = [];
+for (let i = 0; i < 1005; i += 1) {
+  const value = 3 - i * 0.001;
+  rows.push(JSON.stringify({
+    id: `dense-${String(i).padStart(4, "0")}`,
+    timestamp: new Date(1_700_000_000_000 + i).toISOString(),
+    status: "complete",
+    metrics: { val_loss: Number(value.toFixed(4)) },
+    metric_history: { val_loss: [value + 0.1, value] },
+  }));
+}
+fs.writeFileSync(ledger, `${rows.join("\n")}\n`);
+NODE
+dense_state="$(curl -s "$url/api/state")"
+node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const j=JSON.parse(s); if (!j.payloadInfo?.dense) process.exit(1); if (j.payloadInfo.totalRuns !== 1005) process.exit(1); if ((j.runs || []).length > 500) process.exit(1); if ((j.traces || []).length !== 1005) process.exit(1);});' <<<"$dense_state"
+grep -q 'denseTraceChart' <<<"$page"
+grep -q 'axisTicks' <<<"$page"
+grep -q 'indexAxisTicks' <<<"$page"
+grep -q 'indexAxisLabel' <<<"$page"
+grep -q 'X：实验序号' <<<"$page"
+curl -s -X POST "$url/api/action/clear-runs" -H 'content-type: application/json' --data '{}' >/dev/null
 
 perf_build_payload="$(cat <<'JSON'
 {"buildCommand":"printf 'build_ok=1\n'","metric":"latency_ms","direction":"lower"}
@@ -254,8 +288,19 @@ batch_create_resp="$(curl -s -X POST "$url/api/action/sweep-create" \
   --data "$batch_payload")"
 grep -q '"ok": true' <<<"$batch_create_resp"
 grep -q '"action": "sweep-create"' <<<"$batch_create_resp"
+node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const j=JSON.parse(s);const mp=Number(j.queue?.max_parallel);if(!Number.isFinite(mp)||mp<1) process.exit(1);});' <<<"$batch_create_resp"
 queue_id="$(node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>console.log(JSON.parse(s).queueId));' <<<"$batch_create_resp")"
 test -n "$queue_id"
+batch_wait_state="$(curl -s "$url/api/state")"
+STATE_JSON="$batch_wait_state" node - "$queue_id" <<'NODE'
+const queueId = process.argv[2];
+const state = JSON.parse(process.env.STATE_JSON || "{}");
+const analysis = state.metricTierAnalysis || {};
+if (analysis.batch_queue_id !== queueId) process.exit(1);
+if (analysis.selection_mode !== "batch_waiting") process.exit(1);
+if (analysis.recommendation?.code !== "waiting_batch") process.exit(1);
+if (analysis.candidate_id) process.exit(1);
+NODE
 
 batch_start_resp="$(curl -s -X POST "$url/api/action/sweep-start" \
   -H 'content-type: application/json' \
@@ -274,6 +319,79 @@ for _ in $(seq 1 80); do
   sleep 0.1
 done
 node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const j=JSON.parse(s);if(j.queue?.status!=="complete" || j.queue?.counts?.complete!==2) process.exit(1);});' <<<"$batch_status_resp"
+batch_complete_state="$(curl -s "$url/api/state")"
+STATE_JSON="$batch_complete_state" node - "$queue_id" <<'NODE'
+const queueId = process.argv[2];
+const state = JSON.parse(process.env.STATE_JSON || "{}");
+const queue = (state.sweepQueues || []).find((entry) => entry.queue_id === queueId);
+const analysis = state.metricTierAnalysis || {};
+if (!queue?.best?.run_id) process.exit(1);
+if (analysis.selection_mode !== "batch_best") process.exit(1);
+if (analysis.batch_queue_id !== queueId) process.exit(1);
+if (analysis.candidate_id !== queue.best.run_id) process.exit(1);
+NODE
+
+cat > "$tmpdir/parallel_metric.js" <<'JS'
+const delayMs = Number(process.argv[2] || 900);
+const loss = String(process.argv[3] || "0.5");
+setTimeout(() => {
+  console.log(`val_loss=${loss}`);
+  console.log(`cuda_visible_devices=${process.env.CUDA_VISIBLE_DEVICES || ""}`);
+}, delayMs);
+JS
+
+parallel_payload="$(cat <<'JSON'
+{"specText":"name: dashboard-parallel-queue\nmetric: val_loss\ndirection: lower\ncommand_template: \"node parallel_metric.js 900 {loss}\"\nmax_parallel: 2\ncuda_visible_devices: \"0,1\"\ngrid:\n  loss: [0.44, 0.33, 0.22, 0.11]\n","maxRuns":"4","maxParallel":"2","devicePool":"0,1","maxRetries":"0"}
+JSON
+)"
+parallel_create_resp="$(curl -s -X POST "$url/api/action/sweep-create" \
+  -H 'content-type: application/json' \
+  --data "$parallel_payload")"
+grep -q '"ok": true' <<<"$parallel_create_resp"
+parallel_queue_id="$(node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>console.log(JSON.parse(s).queueId));' <<<"$parallel_create_resp")"
+test -n "$parallel_queue_id"
+
+parallel_start_resp="$(curl -s -X POST "$url/api/action/sweep-start" \
+  -H 'content-type: application/json' \
+  --data "{\"queueId\":\"$parallel_queue_id\",\"maxParallel\":\"2\",\"devicePool\":\"0,1\"}")"
+grep -q '"ok": true' <<<"$parallel_start_resp"
+
+parallel_status_resp=""
+for _ in $(seq 1 120); do
+  parallel_status_resp="$(curl -s -X POST "$url/api/action/sweep-status" \
+    -H 'content-type: application/json' \
+    --data "{\"queueId\":\"$parallel_queue_id\"}")"
+  if node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const j=JSON.parse(s);process.exit(j.queue?.status==="complete" && j.queue?.counts?.complete===4 ? 0 : 1);});' <<<"$parallel_status_resp"; then
+    break
+  fi
+  sleep 0.1
+done
+node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const j=JSON.parse(s);const q=j.queue;if(q?.status!=="complete"||q?.counts?.complete!==4||q?.max_parallel!==2) process.exit(1);const devices=(q.trials||[]).map(t=>t.cuda_visible_devices).filter(Boolean);if(!devices.includes("0")||!devices.includes("1")) process.exit(1);});' <<<"$parallel_status_resp"
+node - "$tmpdir/.researchloop/scratchpad/queues/$parallel_queue_id/events.jsonl" <<'NODE'
+const fs = require("fs");
+const events = fs.readFileSync(process.argv[2], "utf8").trim().split(/\n/).map((line) => JSON.parse(line));
+const firstFinished = events.findIndex((event) => event.event === "trial_completed" || event.event === "trial_finished");
+const startsBeforeFirstFinish = events.slice(0, firstFinished < 0 ? events.length : firstFinished).filter((event) => event.event === "trial_started");
+if (startsBeforeFirstFinish.length < 2) process.exit(1);
+const startDevices = startsBeforeFirstFinish.map((event) => event.cuda_visible_devices).filter(Boolean);
+if (!startDevices.includes("0") || !startDevices.includes("1")) process.exit(1);
+NODE
+
+batch_delete_resp="$(curl -s -X POST "$url/api/action/sweep-delete" \
+  -H 'content-type: application/json' \
+  --data "{\"queueId\":\"$parallel_queue_id\",\"clearCurrent\":\"true\"}")"
+grep -q '"ok": true' <<<"$batch_delete_resp"
+grep -q '"action": "sweep-delete"' <<<"$batch_delete_resp"
+grep -q '"archivedQueue":' <<<"$batch_delete_resp"
+test ! -e "$tmpdir/.researchloop/scratchpad/queues/$parallel_queue_id/state.json"
+find "$tmpdir/.researchloop/scratchpad/queues-archive" -maxdepth 1 -type d -name "$parallel_queue_id-*" | grep -q "$parallel_queue_id"
+delete_state="$(curl -s "$url/api/state")"
+STATE_JSON="$delete_state" node - "$parallel_queue_id" <<'NODE'
+const queueId = process.argv[2];
+const state = JSON.parse(process.env.STATE_JSON || "{}");
+if ((state.sweepQueues || []).some((entry) => entry.queue_id === queueId)) process.exit(1);
+if (state.dashboardConfig?.batchQueueId) process.exit(1);
+NODE
 
 batch_report_resp="$(curl -s -X POST "$url/api/action/sweep-report" \
   -H 'content-type: application/json' \

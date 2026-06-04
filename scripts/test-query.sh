@@ -5,7 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fixture="$(mktemp -d)"
 trap 'rm -rf "$fixture"' EXIT
 
-cli="node $repo_root/bin/researchloop.js"
+cli=(node "$repo_root/bin/researchloop.js")
 ledger_dir="$fixture/.researchloop/scratchpad"
 mkdir -p "$ledger_dir"
 cp "$repo_root/examples/fixtures/runs/runs.jsonl" "$ledger_dir/runs.jsonl"
@@ -13,7 +13,7 @@ cp "$repo_root/examples/fixtures/runs/runs.jsonl" "$ledger_dir/runs.jsonl"
 echo "=== Test G13 query ==="
 
 echo "--- Test 1: jsonl query returns up to 3 valid rows sorted by metric ---"
-out_jsonl="$($cli query "where metrics.val_loss < 0.5 sort-by metrics.val_loss asc limit 3" --format jsonl --dir "$fixture")"
+out_jsonl="$("${cli[@]}" query "where metrics.val_loss < 0.5 sort-by metrics.val_loss asc limit 3" --format jsonl --dir "$fixture")"
 printf '%s\n' "$out_jsonl"
 node --input-type=module - "$out_jsonl" <<'NODE'
 const lines = process.argv[2].trim().split("\n").filter(Boolean);
@@ -27,7 +27,7 @@ for (const row of rows) {
 NODE
 
 echo "--- Test 2: table query supports nested params and contains ---"
-out_table="$($cli query "where status = completed and params.lr >= 0.01 sort-by params.lr desc limit 2" --dir "$fixture")"
+out_table="$("${cli[@]}" query "where status = completed and params.lr >= 0.01 sort-by params.lr desc limit 2" --dir "$fixture")"
 printf '%s\n' "$out_table"
 grep -q "| r5 | completed |" <<<"$out_table"
 grep -q "| r4 | completed |" <<<"$out_table"
@@ -37,20 +37,20 @@ if grep -q "| r2 | completed |" <<<"$out_table"; then
 fi
 
 echo "--- Test 3: between operator includes endpoints ---"
-out_between="$($cli query "where metrics.val_loss between 0.20..0.50" --dir "$fixture")"
+out_between="$("${cli[@]}" query "where metrics.val_loss between 0.20..0.50" --dir "$fixture")"
 printf '%s\n' "$out_between"
 grep -q "| r1 |" <<<"$out_between"
 grep -q "| r4 |" <<<"$out_between"
 
 echo "--- Test 4: jsonl empty result exits 0 with no output ---"
-out_empty_jsonl="$($cli query "where metrics.val_loss > 100" --format jsonl --dir "$fixture")"
+out_empty_jsonl="$("${cli[@]}" query "where metrics.val_loss > 100" --format jsonl --dir "$fixture")"
 if [[ -n "$out_empty_jsonl" ]]; then
   echo "expected empty jsonl output, got: $out_empty_jsonl"
   exit 1
 fi
 
 echo "--- Test 5: table empty result prints an empty header row ---"
-out_empty_table="$($cli query "where metrics.val_loss > 100" --dir "$fixture")"
+out_empty_table="$("${cli[@]}" query "where metrics.val_loss > 100" --dir "$fixture")"
 printf '%s\n' "$out_empty_table"
 grep -q "| id | status | timestamp | value | metrics.val_loss | params.lr |" <<<"$out_empty_table"
 if grep -q "| r[0-9] |" <<<"$out_empty_table"; then
@@ -60,7 +60,7 @@ fi
 
 echo "--- Test 6: invalid syntax exits non-zero with a clear error ---"
 set +e
-bad_out="$($cli query "whatever" --dir "$fixture" 2>&1)"
+bad_out="$("${cli[@]}" query "whatever" --dir "$fixture" 2>&1)"
 bad_status=$?
 set -e
 printf '%s\n' "$bad_out"

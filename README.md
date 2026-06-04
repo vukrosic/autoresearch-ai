@@ -85,7 +85,7 @@ Windows 可以双击：
 start-windows-dashboard.cmd
 ```
 
-两个脚本都会提示选择测试项目文件夹，并启动本地面板。面板第六个模块支持自动识别入口、参数库、参数组合队列和批量运行后的指标对比。完整中文操作说明见 [docs/dashboard-usage-zh.md](./docs/dashboard-usage-zh.md)。
+两个脚本都会提示选择测试项目文件夹，并启动本地面板。面板第六个模块支持自动识别入口、参数库、参数组合队列、按本机资源自动推荐 `max_parallel`、稳定复测 Top K 参数组合、多进程并发运行和批量运行后的指标对比；指标曲线区支持海量实验的连续趋势线和 best-so-far 折线。完整中文操作说明见 [docs/dashboard-usage-zh.md](./docs/dashboard-usage-zh.md)。
 
 ## 它会创建什么
 

@@ -5,18 +5,18 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
-cli="node $repo_root/bin/researchloop.js"
+cli=(node "$repo_root/bin/researchloop.js")
 
-$cli init --agent codex --dir "$tmpdir" >/tmp/autoresearch-preflight-init.log
+"${cli[@]}" init --agent codex --dir "$tmpdir" >/tmp/autoresearch-preflight-init.log
 
 # Set up a goal with metric + commands so preflight has something to check.
-$cli goal --dir "$tmpdir" "improve val loss" \
+"${cli[@]}" goal --dir "$tmpdir" "improve val loss" \
   --metric val_loss --direction lower \
   --baseline 'printf "val_loss=1.0\n"' \
   --evaluation 'printf "val_loss=0.9\n"' >/tmp/autoresearch-preflight-goal.log
 
 # Text format.
-$cli preflight --dir "$tmpdir" >/tmp/autoresearch-preflight-text.log
+"${cli[@]}" preflight --dir "$tmpdir" >/tmp/autoresearch-preflight-text.log
 grep -q "autoresearch preflight" /tmp/autoresearch-preflight-text.log
 grep -q "command: " /tmp/autoresearch-preflight-text.log
 grep -q "safety: " /tmp/autoresearch-preflight-text.log
@@ -25,13 +25,13 @@ grep -q "memory: " /tmp/autoresearch-preflight-text.log
 grep -q "preflight: OK" /tmp/autoresearch-preflight-text.log
 
 # JSON format.
-$cli preflight --dir "$tmpdir" --format json >/tmp/autoresearch-preflight-json.log
+"${cli[@]}" preflight --dir "$tmpdir" --format json >/tmp/autoresearch-preflight-json.log
 grep -qE '"name":\s*"command"' /tmp/autoresearch-preflight-json.log
 grep -qE '"ok":\s*true' /tmp/autoresearch-preflight-json.log
 
 # --require-gpu on a non-GPU host should fail.
 set +e
-$cli preflight --dir "$tmpdir" --require-gpu >/tmp/autoresearch-preflight-gpu.log
+"${cli[@]}" preflight --dir "$tmpdir" --require-gpu >/tmp/autoresearch-preflight-gpu.log
 gpu_exit=$?
 set -e
 if [ "$gpu_exit" -eq 0 ]; then
@@ -44,7 +44,7 @@ fi
 
 # Unreasonable disk requirement should fail.
 set +e
-$cli preflight --dir "$tmpdir" --min-disk-gb 999999 >/tmp/autoresearch-preflight-disk.log
+"${cli[@]}" preflight --dir "$tmpdir" --min-disk-gb 999999 >/tmp/autoresearch-preflight-disk.log
 disk_exit=$?
 set -e
 if [ "$disk_exit" -eq 0 ]; then

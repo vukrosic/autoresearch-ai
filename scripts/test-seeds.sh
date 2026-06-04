@@ -5,16 +5,16 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
-cli="node $repo_root/bin/researchloop.js"
+cli=(node "$repo_root/bin/researchloop.js")
 
-$cli init --agent codex --dir "$tmpdir" >/tmp/autoresearch-seeds-init.log
-$cli goal --dir "$tmpdir" "lower val loss" \
+"${cli[@]}" init --agent codex --dir "$tmpdir" >/tmp/autoresearch-seeds-init.log
+"${cli[@]}" goal --dir "$tmpdir" "lower val loss" \
   --metric val_loss --direction lower \
   --baseline "printf 'val_loss=1.0\n'" \
   --evaluation "printf 'val_loss=1.0\n'" >/tmp/autoresearch-seeds-goal.log
 
 # {seed} placeholder substitution: emits val_loss=1.0, 1.1, 1.2 across seeds 0/1/2.
-$cli run --dir "$tmpdir" --id mr --seeds 3 \
+"${cli[@]}" run --dir "$tmpdir" --id mr --seeds 3 \
   --command 'printf "val_loss=1.{seed}\n"' \
   >/tmp/autoresearch-seeds-run.log
 
@@ -37,7 +37,7 @@ grep -q '"val_loss_std":' "$ledger"
 grep -q '"val_loss":1.1,"val_loss_std":' "$ledger"
 
 # RESEARCHLOOP_SEED env var also exposed to the child shell — verify by using $RESEARCHLOOP_SEED.
-$cli run --dir "$tmpdir" --id env --seeds 2 \
+"${cli[@]}" run --dir "$tmpdir" --id env --seeds 2 \
   --command 'printf "val_loss=0.${RESEARCHLOOP_SEED}\n"' \
   >/tmp/autoresearch-seeds-env.log
 grep -q "runs: 2/2" /tmp/autoresearch-seeds-env.log

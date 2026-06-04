@@ -1366,6 +1366,13 @@ function renderMetricTierMarkdown(analysis) {
   lines.push("## Multi-Level Metric Score");
   lines.push("");
   lines.push(`- Profile: \`${analysis.profile}\` (${analysis.profile_label || "custom"})`);
+  lines.push(`- Scoring target: ${analysis.selection_label || "single/latest run"}`);
+  if (analysis.batch_queue_id) {
+    lines.push(`- Batch queue: \`${analysis.batch_queue_id}\` (${analysis.batch_queue_status || "unknown"})`);
+    if (analysis.batch_best_run_id) {
+      lines.push(`- Batch best: \`${analysis.batch_best_run_id}\`${analysis.batch_queue_metric ? ` ${analysis.batch_queue_metric}=${formatReportNumber(analysis.batch_best_value)}` : ""}`);
+    }
+  }
   lines.push(`- Baseline: ${analysis.baseline_id ? `\`${analysis.baseline_id}\`` : "not available"}`);
   lines.push(`- Candidate: ${analysis.candidate_id ? `\`${analysis.candidate_id}\`` : "not available"}`);
   lines.push(`- Recommendation: **${analysis.recommendation.label}** — ${analysis.recommendation.reason}`);
@@ -1438,6 +1445,7 @@ function renderOptimizerSchedulerMarkdown(config = {}) {
 
 function renderMarkdownReport(cwd, runs, goal, plan, opts = {}) {
   const cleanRuns = runs.filter((row) => row && !row.parse_error);
+  const dashboardConfig = readDashboardConfig(cwd);
   const primaryMetric = choosePrimaryMetric(goal, cleanRuns);
   const preferHigher = String(goal.direction || "").toLowerCase().includes("high");
   const entries = buildReportMetricEntries(cleanRuns, primaryMetric, preferHigher);
@@ -1454,8 +1462,9 @@ function renderMarkdownReport(cwd, runs, goal, plan, opts = {}) {
   const totalCost = cleanRuns.reduce((sum, row) => sum + (Number(row.est_cost_usd) || 0), 0);
   const totalGpuHours = cleanRuns.reduce((sum, row) => sum + (Number(row.gpu_hours) || 0), 0);
   const baselineRuns = cleanRuns.filter((row) => String(row.id || "").toLowerCase().includes("baseline") || String(row.agent || "").toLowerCase().includes("baseline"));
-  const metricTierAnalysis = evaluateMetricTiers(cleanRuns, readMetricTierConfig(cwd));
-  const dashboardConfig = readDashboardConfig(cwd);
+  const metricTierAnalysis = evaluateMetricTiers(cleanRuns, readMetricTierConfig(cwd), {
+    batchQueue: readSelectedMetricTierBatchQueue(cwd, dashboardConfig),
+  });
   const topRows = entries.slice(0, 5).map((entry, rank) => [
     rank + 1,
     `\`${entry.row.id}\``,
@@ -1668,7 +1677,9 @@ function renderPortfolioReport(cwd, runs, goal, plan, dashboardConfig, aiInfraRe
     return status.includes("fail") || status.includes("timeout") || status.includes("killed") || status.includes("no_metric");
   });
   const metricTierConfig = readMetricTierConfig(cwd, dashboardConfig.metricProfile || "hpc_operator");
-  const metricTierAnalysis = evaluateMetricTiers(cleanRuns, metricTierConfig);
+  const metricTierAnalysis = evaluateMetricTiers(cleanRuns, metricTierConfig, {
+    batchQueue: readSelectedMetricTierBatchQueue(cwd, dashboardConfig),
+  });
   const optimizerRows = optimizerSchedulerRowsFromConfig(dashboardConfig);
   const artifactRows = existingArtifactRows(cwd, envFiles);
   const topRows = entries.slice(0, 8).map((entry, index) => [
@@ -2743,13 +2754,123 @@ function isBaselineRow(row) {
   return text.includes("baseline");
 }
 
-function pickTierComparisonRows(runs, config) {
+function readSelectedMetricTierBatchQueue(cwd, dashboardConfig = {}) {
+  const queueId = String(dashboardConfig.batchQueueId || "").trim();
+  if (!queueId) return null;
+  try {
+    return readQueueState(cwd, queueId);
+  } catch {
+    return {
+      queue_id: queueId,
+      status: "missing",
+      counts: {},
+      best: null,
+    };
+  }
+}
+
+function isBatchQueueComplete(queue) {
+  return String(queue?.status || "").toLowerCase() === "complete";
+}
+
+function isBatchQueuePendingScore(queue) {
+  if (!queue) return false;
+  const status = String(queue.status || "").toLowerCase();
+  return ["pending", "running", "retrying", "pausing", "paused"].includes(status);
+}
+
+function queueBestForMetricTier(queue) {
+  if (!queue) return null;
+  if (queue.best?.run_id) return queue.best;
+  return queueBest(queue.trials || [], queue.metric, queue.direction);
+}
+
+function queueTrialAsRunRow(queue, runId) {
+  const trial = (queue?.trials || []).find((row) => String(row.run_id) === String(runId));
+  if (!trial) return null;
+  const stable = queue?.stability?.stable_best;
+  const metrics = { ...(trial.metrics || {}) };
+  if (stable?.run_id && String(stable.run_id) === String(runId) && stable.metric && isNumericMetric(stable.value)) {
+    metrics[stable.metric] = Number(stable.value);
+    metrics[`${stable.metric}_original_once`] = stable.original_value ?? metrics[stable.metric];
+    metrics[`${stable.metric}_stability_repeats`] = stable.repeats ?? null;
+  }
+  return {
+    id: trial.run_id,
+    status: trial.status,
+    command: trial.command,
+    metrics,
+    timestamp: trial.finished_at || trial.started_at || queue.updated_at || queue.created_at,
+    started_at: trial.started_at,
+    ended_at: trial.finished_at,
+    wall_seconds: trial.wall_seconds,
+    agent: "autoresearch sweep",
+    tags: ["sweep", `sweep:${queue.name || queue.queue_id}`],
+    parent_id: queue.queue_id,
+  };
+}
+
+function metricTierBatchContext(queue, mode, best = null) {
+  if (!queue) return null;
+  return {
+    mode,
+    queue_id: queue.queue_id || null,
+    queue_name: queue.name || null,
+    queue_status: queue.status || null,
+    queue_metric: queue.metric || null,
+    queue_direction: queue.direction || null,
+    queue_counts: queue.counts || {},
+    best_run_id: best?.run_id || null,
+    best_value: Number.isFinite(Number(best?.value)) ? Number(best.value) : null,
+  };
+}
+
+function pickTierComparisonRows(runs, config, opts = {}) {
   const cleanRuns = (runs || []).filter((row) => row && !row.parse_error && row.metrics && typeof row.metrics === "object");
   const metricNames = configuredMetricNames(config);
   const comparable = metricNames.length ? cleanRuns.filter((row) => rowHasAnyMetric(row, metricNames)) : cleanRuns;
   const baseline = comparable.find(isBaselineRow) || comparable[0] || null;
+  const batchQueue = opts.batchQueue || null;
+  if (batchQueue) {
+    if (isBatchQueuePendingScore(batchQueue)) {
+      return {
+        baseline,
+        candidate: null,
+        comparable,
+        batch: metricTierBatchContext(batchQueue, "waiting"),
+      };
+    }
+    if (isBatchQueueComplete(batchQueue)) {
+      const best = queueBestForMetricTier(batchQueue);
+      const candidate = best?.run_id
+        ? comparable.find((row) => String(row.id) === String(best.run_id))
+          || cleanRuns.find((row) => String(row.id) === String(best.run_id))
+          || queueTrialAsRunRow(batchQueue, best.run_id)
+        : null;
+      if (candidate) {
+        return {
+          baseline,
+          candidate,
+          comparable: comparable.some((row) => String(row.id) === String(candidate.id)) ? comparable : [...comparable, candidate],
+          batch: metricTierBatchContext(batchQueue, "best", best),
+        };
+      }
+      return {
+        baseline,
+        candidate: null,
+        comparable,
+        batch: metricTierBatchContext(batchQueue, "complete_no_best", best),
+      };
+    }
+    return {
+      baseline,
+      candidate: null,
+      comparable,
+      batch: metricTierBatchContext(batchQueue, "unavailable"),
+    };
+  }
   const candidate = [...comparable].reverse().find((row) => !baseline || String(row.id) !== String(baseline.id)) || comparable[comparable.length - 1] || null;
-  return { baseline, candidate, comparable };
+  return { baseline, candidate, comparable, batch: null };
 }
 
 function metricImprovement(baselineValue, currentValue, direction) {
@@ -2795,9 +2916,36 @@ function recommendationForTierAnalysis(levels, baseline, candidate) {
   return { code: "needs_retest", label: "需要复测", reason: "指标数量不足或改善不稳定。" };
 }
 
-function evaluateMetricTiers(runs, configInput) {
+function recommendationForBatchSelection(batch) {
+  if (!batch) return null;
+  if (batch.mode === "waiting") {
+    const counts = batch.queue_counts || {};
+    return {
+      code: "waiting_batch",
+      label: "等待批量完成",
+      reason: `批量队列 ${batch.queue_id || ""} 尚未完成：完成 ${counts.complete || 0}/${counts.total || 0}，评分会在队列完成后只使用最佳实验。`,
+    };
+  }
+  if (batch.mode === "complete_no_best") {
+    return {
+      code: "needs_retest",
+      label: "需要复测",
+      reason: "批量队列已完成，但没有找到带数值指标的最佳实验。",
+    };
+  }
+  if (batch.mode === "unavailable") {
+    return {
+      code: "needs_retest",
+      label: "需要复测",
+      reason: "当前批量队列不可用，无法选择最佳实验评分。",
+    };
+  }
+  return null;
+}
+
+function evaluateMetricTiers(runs, configInput, opts = {}) {
   const config = normalizeMetricTierConfig(configInput || {});
-  const { baseline, candidate, comparable } = pickTierComparisonRows(runs, config);
+  const { baseline, candidate, comparable, batch } = pickTierComparisonRows(runs, config, opts);
   const levels = METRIC_TIER_LEVELS.map((level) => {
     const tier = config.tiers[level.key];
     const metrics = (tier.metrics || []).map((metric) => {
@@ -2835,7 +2983,7 @@ function evaluateMetricTiers(runs, configInput) {
     .map((level) => level.weighted_score)
     .filter((value) => Number.isFinite(value))
     .reduce((sum, value) => sum + value, 0);
-  const recommendation = recommendationForTierAnalysis(levels, baseline, candidate);
+  const recommendation = recommendationForBatchSelection(batch) || recommendationForTierAnalysis(levels, baseline, candidate);
   return {
     profile: config.profile,
     profile_label: config.profile_label,
@@ -2844,6 +2992,16 @@ function evaluateMetricTiers(runs, configInput) {
     comparable_runs: comparable.length,
     overall_score: Number.isFinite(overall) ? overall : null,
     recommendation,
+    selection_mode: batch ? (batch.mode === "best" ? "batch_best" : "batch_waiting") : "latest_run",
+    selection_label: batch
+      ? (batch.mode === "best" ? "批量队列最佳实验" : "等待批量队列完成")
+      : "单次/最新实验",
+    batch_queue_id: batch?.queue_id || null,
+    batch_queue_status: batch?.queue_status || null,
+    batch_queue_metric: batch?.queue_metric || null,
+    batch_queue_direction: batch?.queue_direction || null,
+    batch_best_run_id: batch?.best_run_id || null,
+    batch_best_value: batch?.best_value ?? null,
     levels,
   };
 }
@@ -3895,7 +4053,14 @@ function normalizeDashboardConfig(body, includeDefaults = false) {
 	    "batchSelectedParams",
 	    "batchParamGrid",
 	    "batchMaxRuns",
+	    "batchMaxParallel",
+	    "batchMaxParallelSource",
+	    "batchMaxParallelReason",
+	    "batchDevicePool",
 	    "batchMaxRetries",
+	    "batchStabilityEnabled",
+	    "batchStabilityTopK",
+	    "batchStabilityRepeats",
 	    "batchQueueId",
     "allowLocalPerf",
     "direction",
@@ -4242,7 +4407,8 @@ function buildSweepDefaults(benchmarkCommand, languages) {
   };
 }
 
-function buildDashboardBatchSpecText({ name, metric, direction, commandTemplate, grid, maxRuns, maxRetries, timeoutSeconds }) {
+function buildDashboardBatchSpecText({ name, metric, direction, commandTemplate, grid, maxRuns, maxParallel, maxRetries, timeoutSeconds, cudaVisibleDevices, stability }) {
+  const stabilityConfig = normalizeQueueStabilityConfig(stability || {}, { defaultEnabled: true });
   const lines = [
     "version: 1",
     `name: ${sanitizeIdPart(name || "dashboard-batch-sweep", "dashboard-batch-sweep")}`,
@@ -4250,17 +4416,54 @@ function buildDashboardBatchSpecText({ name, metric, direction, commandTemplate,
     `direction: ${direction || "lower"}`,
     `command_template: ${JSON.stringify(commandTemplate || "")}`,
     `timeout_seconds: ${Number(timeoutSeconds || 600) || 600}`,
+    `max_parallel: ${Math.max(1, Number(maxParallel || 1) || 1)}`,
     "retry:",
     `  max_retries: ${Math.max(0, Number(maxRetries || 0) || 0)}`,
     "budget:",
     `  max_runs: ${Math.max(1, Number(maxRuns || 24) || 24)}`,
+    "stability:",
+    `  enabled: ${stabilityConfig.enabled ? "true" : "false"}`,
+    `  top_k: ${stabilityConfig.top_k}`,
+    `  repeats: ${stabilityConfig.repeats}`,
+    `  aggregate: ${stabilityConfig.aggregate}`,
     "grid:",
   ];
+  const deviceText = String(cudaVisibleDevices || "").trim();
+  if (deviceText) lines.splice(6, 0, `cuda_visible_devices: ${JSON.stringify(deviceText)}`);
   for (const [key, values] of Object.entries(grid || {})) {
     if (!Array.isArray(values) || !values.length) continue;
     lines.push(`  ${key}: ${JSON.stringify(values)}`);
   }
   return `${lines.join("\n")}\n`;
+}
+
+function upsertSweepSpecMaxParallel(text, maxParallel) {
+  const safeMax = normalizeQueueMaxParallel(maxParallel);
+  const raw = String(text || "").trim();
+  if (!raw) return raw;
+  try {
+    if (raw.startsWith("{") || raw.startsWith("[")) {
+      const spec = parseSweepSpec(raw);
+      return `${JSON.stringify({ ...spec, max_parallel: safeMax }, null, 2)}\n`;
+    }
+  } catch {
+    return raw;
+  }
+  if (/^\s*max_parallel\s*:/m.test(raw)) {
+    return `${raw.replace(/^\s*max_parallel\s*:.*$/m, `max_parallel: ${safeMax}`)}\n`;
+  }
+  if (/^\s*timeout_seconds\s*:/m.test(raw)) {
+    return `${raw.replace(/^(\s*timeout_seconds\s*:.*)$/m, `$1\nmax_parallel: ${safeMax}`)}\n`;
+  }
+  if (/^\s*direction\s*:/m.test(raw)) {
+    return `${raw.replace(/^(\s*direction\s*:.*)$/m, `$1\nmax_parallel: ${safeMax}`)}\n`;
+  }
+  try {
+    const spec = parseSweepSpec(raw);
+    return `${JSON.stringify({ ...spec, max_parallel: safeMax }, null, 2)}\n`;
+  } catch {
+    return raw;
+  }
 }
 
 function buildDefaultBatchGrid(languages, benchmarkCommand, files) {
@@ -4348,16 +4551,35 @@ function detectProjectEnvironment(cwd, systemSnapshot = null, force = false) {
   const batchMetric = sweepCandidate?.spec?.metric || metric;
   const batchDirection = sweepCandidate?.spec?.direction || "lower";
   const batchMaxRuns = sweepCandidate?.spec?.budget?.max_runs || sweepCandidate?.spec?.max_runs || 24;
+  const batchDevicePool = sweepCandidate?.spec?.cuda_visible_devices || sweepCandidate?.spec?.device_pool || "";
+  const batchParallelism = recommendedQueueParallelism(system, {
+    languages,
+    benchmarkCommand,
+    commandTemplate: batchCommandTemplate,
+    sweepName: sweepCandidate?.spec?.name || "auto-perf-sweep",
+    devicePool: batchDevicePool,
+    cudaVisibleDevices: batchDevicePool,
+  });
+  const batchMaxParallel = batchParallelism.max_parallel;
   const batchMaxRetries = sweepCandidate?.spec?.retry?.max_retries ?? 1;
-  const batchSweepSpec = sweepCandidate?.text || buildDashboardBatchSpecText({
+  const batchStability = normalizeQueueStabilityConfig(sweepCandidate?.spec?.stability || {}, {
+    defaultEnabled: true,
+    topK: 5,
+    repeats: 3,
+    aggregate: "median",
+  });
+  const batchSweepSpec = sweepCandidate?.text ? upsertSweepSpecMaxParallel(sweepCandidate.text, batchMaxParallel) : buildDashboardBatchSpecText({
     name: sweepCandidate?.spec?.name || "auto-perf-sweep",
     metric: batchMetric,
     direction: batchDirection,
     commandTemplate: batchCommandTemplate,
     grid: batchGrid,
     maxRuns: batchMaxRuns,
+    maxParallel: batchMaxParallel,
     maxRetries: batchMaxRetries,
     timeoutSeconds: sweepCandidate?.spec?.timeout_seconds || sweepCandidate?.spec?.timeout || 600,
+    cudaVisibleDevices: Array.isArray(batchDevicePool) ? batchDevicePool.join(",") : batchDevicePool,
+    stability: batchStability,
   });
   const device = languages.includes("cuda") && tools["nvidia-smi"]?.present
     ? "cuda"
@@ -4402,7 +4624,14 @@ function detectProjectEnvironment(cwd, systemSnapshot = null, force = false) {
     batchCommandTemplate,
     batchParamGrid: JSON.stringify(batchGrid),
     batchMaxRuns: String(batchMaxRuns || ""),
+    batchMaxParallel: String(batchMaxParallel || "1"),
+    batchMaxParallelSource: "hardware_auto",
+    batchMaxParallelReason: batchParallelism.reason,
+    batchDevicePool: Array.isArray(batchDevicePool) ? batchDevicePool.join(",") : String(batchDevicePool || ""),
     batchMaxRetries: String(batchMaxRetries ?? ""),
+    batchStabilityEnabled: batchStability.enabled ? "true" : "false",
+    batchStabilityTopK: String(batchStability.top_k),
+    batchStabilityRepeats: String(batchStability.repeats),
     perfMetrics: "latency_ms,throughput,tflops,gbps,real_time",
     allowLocalPerf: "true",
   };
@@ -4421,6 +4650,7 @@ function detectProjectEnvironment(cwd, systemSnapshot = null, force = false) {
       memory: system.memory,
       gpu: system.gpu,
       compute: system.compute,
+      queueParallelism: batchParallelism,
     },
     tools,
     recommendations: recommendedConfig,
@@ -5100,6 +5330,53 @@ function buildDashboardCommand(config, variant = "experiment") {
   return `${prefix}${shellQuote(entry)}${paramText ? ` ${paramText}` : ""}`.trim();
 }
 
+function compareDashboardRowsByMetric(a, b, primaryMetric, preferHigher) {
+  const av = runMetricValue(a, primaryMetric);
+  const bv = runMetricValue(b, primaryMetric);
+  if (!Number.isFinite(av) && !Number.isFinite(bv)) return 0;
+  if (!Number.isFinite(av)) return 1;
+  if (!Number.isFinite(bv)) return -1;
+  return preferHigher ? bv - av : av - bv;
+}
+
+function selectDashboardRunsForPayload(runs, primaryMetric, preferHigher, limit = 500) {
+  if (!Array.isArray(runs) || runs.length <= limit) return runs || [];
+  const selected = new Map();
+  const add = (row) => {
+    if (row && row.id && !selected.has(row.id)) selected.set(row.id, row);
+  };
+
+  runs
+    .filter((row) => row && !row.parse_error)
+    .filter((row) => String(row.id || "").toLowerCase().includes("baseline") || (row.tags || []).includes("baseline"))
+    .slice(0, 20)
+    .forEach(add);
+
+  runs
+    .filter((row) => row && !row.parse_error)
+    .slice()
+    .sort((a, b) => compareDashboardRowsByMetric(a, b, primaryMetric, preferHigher))
+    .slice(0, Math.floor(limit * 0.7))
+    .forEach(add);
+
+  [...runs].reverse().slice(0, limit - selected.size).forEach(add);
+  return [...selected.values()].slice(0, limit);
+}
+
+function compactDashboardTracePayload(traces, limit = 1000) {
+  if (!Array.isArray(traces) || traces.length <= limit) return traces || [];
+  return traces.map((trace) => ({
+    id: trace.id,
+    status: trace.status,
+    final: trace.final,
+    values: Number.isFinite(Number(trace.final)) ? [{ step: 1, value: Number(trace.final) }] : [],
+    color: trace.color,
+    isBest: trace.isBest,
+    isLatest: trace.isLatest,
+    index: trace.index,
+  }));
+}
+
 function buildDashboardState(cwd, systemSnapshot = null) {
   const goalPath = path.join(cwd, ".researchloop", "goal.md");
   const planPath = path.join(cwd, ".researchloop", "plan.md");
@@ -5128,11 +5405,21 @@ function buildDashboardState(cwd, systemSnapshot = null) {
   const activeRun = detectActiveRun(cwd, runs, logTail);
   const dashboardConfig = readDashboardConfig(cwd);
   const metricTiers = readMetricTierConfig(cwd, dashboardConfig.metricProfile || "hpc_operator");
-  const metricTierAnalysis = evaluateMetricTiers(runs, metricTiers);
+  const selectedBatchQueue = readSelectedMetricTierBatchQueue(cwd, dashboardConfig);
+  const metricTierAnalysis = evaluateMetricTiers(runs, metricTiers, {
+    batchQueue: selectedBatchQueue,
+  });
   const performanceTools = readPerformanceToolStatus();
   const projectEnvironment = detectProjectEnvironment(cwd, system);
   const sweepQueues = listSweepQueues(cwd, 8);
   const researchArtifacts = readResearchArtifacts(cwd);
+  const densePayload = runs.length > 1000 || traces.length > 1000;
+  const payloadRuns = densePayload
+    ? selectDashboardRunsForPayload(runs, primaryMetric, preferHigher, 500)
+    : runs;
+  const payloadTraces = densePayload
+    ? compactDashboardTracePayload(traces, 1000)
+    : traces;
 
   return {
     cwd,
@@ -5148,12 +5435,19 @@ function buildDashboardState(cwd, systemSnapshot = null) {
     goal,
     plan,
     repoProfile,
-    runs,
+    runs: payloadRuns,
     primaryMetric,
     preferHigher,
     summary,
-    traces,
+    traces: payloadTraces,
     comparison,
+    payloadInfo: {
+      dense: densePayload,
+      totalRuns: runs.length,
+      returnedRuns: payloadRuns.length,
+      totalTraces: traces.length,
+      returnedTraces: payloadTraces.length,
+    },
     system,
     thread,
     logTail,
@@ -5870,7 +6164,14 @@ async function handleDashboardAction(req, res, getCwd, setCwd, hostIsLoopback, g
         batchCommandTemplate: rec.batchCommandTemplate || rec.sweepTemplate || "",
         batchParamGrid: rec.batchParamGrid || "",
         batchMaxRuns: rec.batchMaxRuns || "",
+        batchMaxParallel: rec.batchMaxParallel || "1",
+        batchMaxParallelSource: rec.batchMaxParallelSource || "hardware_auto",
+        batchMaxParallelReason: rec.batchMaxParallelReason || "",
+        batchDevicePool: rec.batchDevicePool || body.cudaVisibleDevices || "",
         batchMaxRetries: rec.batchMaxRetries || "",
+        batchStabilityEnabled: rec.batchStabilityEnabled || "true",
+        batchStabilityTopK: rec.batchStabilityTopK || "5",
+        batchStabilityRepeats: rec.batchStabilityRepeats || "3",
         allowLocalPerf: rec.allowLocalPerf || "true",
       });
       sendDashboardJson(res, 200, {
@@ -5977,7 +6278,7 @@ async function handleDashboardAction(req, res, getCwd, setCwd, hostIsLoopback, g
       return;
     }
     if (action === "sweep-validate" || action === "sweep-preview") {
-      const spec = buildSweepSpecFromDashboardBody(body);
+      const spec = buildSweepSpecFromDashboardBody(body, cwd);
       const validation = validateSweepSpec(spec, cwd, {
         allowUnsafe: body.allowUnsafe === true || String(body.allowLocalPerf || "").toLowerCase() === "true",
         maxRuns: body.maxRuns || body.batchMaxRuns || null,
@@ -5993,20 +6294,30 @@ async function handleDashboardAction(req, res, getCwd, setCwd, hostIsLoopback, g
       return;
     }
     if (action === "sweep-create") {
-      const spec = buildSweepSpecFromDashboardBody(body);
+      const spec = buildSweepSpecFromDashboardBody(body, cwd);
       const configPatch = normalizeDashboardConfig({
         batchSweepSpec: body.specText || body.batchSweepSpec || "",
         batchCommandTemplate: body.commandTemplate || body.batchCommandTemplate || "",
         batchMaxRuns: body.maxRuns || body.batchMaxRuns || "",
+        batchMaxParallel: body.maxParallel || body.batchMaxParallel || "",
+        batchDevicePool: body.devicePool || body.batchDevicePool || body.cudaVisibleDevices || "",
         batchMaxRetries: body.maxRetries || body.batchMaxRetries || "",
+        batchStabilityEnabled: body.stabilityEnabled || body.batchStabilityEnabled || "",
+        batchStabilityTopK: body.stabilityTopK || body.batchStabilityTopK || "",
+        batchStabilityRepeats: body.stabilityRepeats || body.batchStabilityRepeats || "",
       });
       if (Object.keys(configPatch).length) writeDashboardConfig(cwd, configPatch);
       const created = createSweepQueue(cwd, spec, {
         allowUnsafe: body.allowUnsafe === true || String(body.allowLocalPerf || "").toLowerCase() === "true",
         queueId: body.queueId || body.batchQueueId || "",
         maxRuns: body.maxRuns || body.batchMaxRuns || null,
+        maxParallel: body.maxParallel || body.batchMaxParallel || null,
+        cudaVisibleDevices: body.devicePool || body.batchDevicePool || body.cudaVisibleDevices || "",
       });
-      writeDashboardConfig(cwd, { batchQueueId: created.queueId });
+      writeDashboardConfig(cwd, {
+        batchQueueId: created.queueId,
+        batchMaxParallel: String(created.state.max_parallel || ""),
+      });
       sendDashboardJson(res, 200, {
         ok: true,
         action,
@@ -6020,6 +6331,10 @@ async function handleDashboardAction(req, res, getCwd, setCwd, hostIsLoopback, g
       const queueId = String(body.queueId || body.batchQueueId || "").trim();
       if (!queueId) throw new Error("queue id is required");
       const argsList = ["start", "--id", queueId];
+      const maxParallel = String(body.maxParallel || body.batchMaxParallel || "").trim();
+      const devicePool = String(body.devicePool || body.batchDevicePool || body.cudaVisibleDevices || "").trim();
+      if (maxParallel) argsList.push("--max-parallel", maxParallel);
+      if (devicePool) argsList.push("--cuda-visible-devices", devicePool);
       if (body.allowUnsafe === true || String(body.allowLocalPerf || "").toLowerCase() === "true") argsList.push("--allow-unsafe");
       const spawned = spawnDashboardCliAction(cwd, "queue", argsList, "sweep-start");
       sendDashboardJson(res, 202, { ok: true, action, queueId, ...spawned, state: stateFor(cwd) });
@@ -6037,6 +6352,10 @@ async function handleDashboardAction(req, res, getCwd, setCwd, hostIsLoopback, g
       if (!queueId) throw new Error("queue id is required");
       setQueueStatus(cwd, queueId, "pending", "queue_resume_requested");
       const argsList = ["start", "--id", queueId];
+      const maxParallel = String(body.maxParallel || body.batchMaxParallel || "").trim();
+      const devicePool = String(body.devicePool || body.batchDevicePool || body.cudaVisibleDevices || "").trim();
+      if (maxParallel) argsList.push("--max-parallel", maxParallel);
+      if (devicePool) argsList.push("--cuda-visible-devices", devicePool);
       if (body.allowUnsafe === true || String(body.allowLocalPerf || "").toLowerCase() === "true") argsList.push("--allow-unsafe");
       const spawned = spawnDashboardCliAction(cwd, "queue", argsList, "sweep-resume");
       sendDashboardJson(res, 202, { ok: true, action, queueId, ...spawned, state: stateFor(cwd) });
@@ -6068,6 +6387,17 @@ async function handleDashboardAction(req, res, getCwd, setCwd, hostIsLoopback, g
       if (!queueId) throw new Error("queue id is required");
       const written = writeSweepReport(cwd, queueId);
       sendDashboardJson(res, 200, { ok: true, action, queueId, ...written, state: stateFor(cwd) });
+      return;
+    }
+    if (action === "sweep-delete") {
+      const queueId = String(body.queueId || body.batchQueueId || "").trim();
+      if (!queueId) throw new Error("queue id is required");
+      const archived = archiveSweepQueue(cwd, queueId);
+      const config = readDashboardConfig(cwd);
+      if (String(config.batchQueueId || "") === archived.queueId || String(body.clearCurrent || "").toLowerCase() === "true") {
+        writeDashboardConfig(cwd, { batchQueueId: "" });
+      }
+      sendDashboardJson(res, 200, { ok: true, action, ...archived, state: stateFor(cwd) });
       return;
     }
     if (action === "perf-report") {
@@ -6505,7 +6835,7 @@ function cmdRecord() {
 
 function defaultMetricRegex(metricName) {
   const escaped = metricName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`["']?${escaped}["']?\\s*[:=]\\s*["']?(-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)`, "gi");
+  return new RegExp(`(?:^|[^A-Za-z0-9_])["']?${escaped}["']?\\s*[:=]\\s*["']?(-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)`, "gi");
 }
 
 function knownMetricNamesForParsing(primaryMetric = "") {
@@ -7359,6 +7689,7 @@ function spawnCommand(commandText, cwd, timeoutMs, logFile, timeoutReason = "tim
     }
     const chunks = [];
     let timedOut = false;
+    const streamOutput = opts.streamOutput !== false;
     const logStream = fs.createWriteStream(logFile);
     const timer = setTimeout(() => {
       timedOut = true;
@@ -7370,12 +7701,12 @@ function spawnCommand(commandText, cwd, timeoutMs, logFile, timeoutReason = "tim
     }, timeoutMs);
     child.stdout.on("data", (data) => {
       chunks.push(data);
-      process.stdout.write(data);
+      if (streamOutput) process.stdout.write(data);
       logStream.write(data);
     });
     child.stderr.on("data", (data) => {
       chunks.push(data);
-      process.stderr.write(data);
+      if (streamOutput) process.stderr.write(data);
       logStream.write(data);
     });
     child.on("error", (err) => {
@@ -7550,6 +7881,7 @@ async function executeRun(opts) {
       onSpawn(child) {
         if (stopSampler.bindPid) stopSampler.bindPid(child.pid);
       },
+      streamOutput: !quiet,
     });
   } finally {
     stopSampler();
@@ -10329,8 +10661,137 @@ function renderSweepCommand(template, params) {
   return out;
 }
 
+function normalizeQueueMaxParallel(value, fallback = 1) {
+  const parsed = Math.floor(Number(value ?? fallback));
+  const safe = Number.isFinite(parsed) && parsed > 0 ? parsed : Math.floor(Number(fallback) || 1);
+  return Math.max(1, Math.min(256, safe));
+}
+
+function booleanFromInput(value, fallback = false) {
+  if (value === true || value === false) return value;
+  const text = String(value ?? "").trim().toLowerCase();
+  if (!text) return Boolean(fallback);
+  if (["1", "true", "yes", "y", "on", "enabled"].includes(text)) return true;
+  if (["0", "false", "no", "n", "off", "disabled"].includes(text)) return false;
+  return Boolean(fallback);
+}
+
+function normalizeQueueStabilityConfig(raw = {}, opts = {}) {
+  const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  const hasEnabled = hasOwn(source, "enabled") || hasOwn(source, "auto");
+  const enabled = booleanFromInput(
+    source.enabled ?? source.auto ?? opts.enabled,
+    Boolean(opts.defaultEnabled && (source.top_k || source.topK || source.repeats || opts.topK || opts.repeats))
+  );
+  const topK = Math.max(1, Math.min(50, Math.floor(Number(source.top_k ?? source.topK ?? opts.topK ?? 5) || 5)));
+  const repeats = Math.max(1, Math.min(25, Math.floor(Number(source.repeats ?? source.repeat ?? opts.repeats ?? 3) || 3)));
+  const aggregate = String(source.aggregate || opts.aggregate || "median").trim().toLowerCase();
+  const retestParallel = normalizeQueueMaxParallel(source.retest_parallel ?? source.retestParallel ?? opts.retestParallel ?? 1);
+  return {
+    enabled,
+    top_k: topK,
+    repeats,
+    aggregate: aggregate === "mean" ? "mean" : "median",
+    retest_parallel: retestParallel,
+  };
+}
+
+function bytesToGiB(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return n / (1024 ** 3);
+}
+
+function projectLooksLikeMlx(context = {}) {
+  const haystack = [
+    context.benchmarkCommand,
+    context.commandTemplate,
+    context.sweepName,
+    context.buildSystem,
+    ...(Array.isArray(context.languages) ? context.languages : []),
+    ...(Array.isArray(context.markers) ? context.markers : []),
+  ].filter(Boolean).join(" ").toLowerCase();
+  return /\bmlx\b|mps|apple gpu|run_m1_safe_ops|mlx[_-]?benchmark/.test(haystack);
+}
+
+function recommendedQueueParallelism(system = {}, context = {}) {
+  const cpuCount = Math.max(1, Math.floor(Number(system.cpu?.count) || os.cpus()?.length || 1));
+  const cpuUsagePct = clampPct(system.cpu?.usagePct ?? 0);
+  const totalMemGiB = bytesToGiB(system.memory?.totalBytes ?? os.totalmem());
+  const memUsagePct = clampPct(system.memory?.usagePct ?? 0);
+  const freeMemGiB = bytesToGiB(system.memory?.freeBytes ?? os.freemem());
+  const gpu = system.gpu || {};
+  const languages = Array.isArray(context.languages) ? context.languages.map((item) => String(item).toLowerCase()) : [];
+  const devicePool = normalizeQueueDevicePool(context.devicePool || context.cudaVisibleDevices || "");
+  const isCudaProject = languages.includes("cuda") || languages.includes("triton") || /\bcuda\b|triton/i.test(String(context.commandTemplate || context.benchmarkCommand || ""));
+  const isMlxProject = projectLooksLikeMlx(context) || (process.platform === "darwin" && gpu.present && String(system.compute?.effective || "") === "mps");
+
+  const cpuSlots = normalizeQueueMaxParallel(Math.max(1, Math.floor(cpuCount * 0.75) - (cpuCount >= 8 ? 1 : 0)));
+  let memorySlots = 1;
+  if (totalMemGiB >= 64) memorySlots = 16;
+  else if (totalMemGiB >= 32) memorySlots = 8;
+  else if (totalMemGiB >= 16) memorySlots = 4;
+  else if (totalMemGiB >= 8) memorySlots = 2;
+
+  const pressureHigh = cpuUsagePct >= 90 || memUsagePct >= 96 || (freeMemGiB > 0 && freeMemGiB < 0.5);
+  let maxParallel = 1;
+  let mode = "cpu";
+  let reason = "CPU and memory capacity";
+  let gpuSlots = 0;
+
+  if (gpu.present && gpu.source === "nvidia-smi") {
+    gpuSlots = Math.max(1, devicePool.length || Math.floor(Number(gpu.count) || 1));
+    maxParallel = gpuSlots;
+    mode = "nvidia_gpu";
+    reason = "one worker per visible NVIDIA GPU";
+  } else if (isMlxProject || (process.platform === "darwin" && gpu.present)) {
+    gpuSlots = 1;
+    maxParallel = Math.max(1, Math.min(cpuSlots, memorySlots));
+    mode = "apple_unified";
+    reason = "Apple unified-memory GPU shares CPU and RAM capacity";
+  } else if (isCudaProject && !gpu.present) {
+    maxParallel = 1;
+    mode = "cuda_unavailable";
+    reason = "CUDA-like project but no local NVIDIA GPU was detected";
+  } else {
+    maxParallel = Math.max(1, Math.min(cpuSlots, memorySlots, 8));
+  }
+
+  if (pressureHigh && maxParallel > 1) {
+    maxParallel = Math.max(1, Math.floor(maxParallel / 2));
+    reason = `${reason}; reduced because current CPU or memory pressure is high`;
+  }
+
+  return {
+    max_parallel: normalizeQueueMaxParallel(maxParallel),
+    mode,
+    reason,
+    cpu_slots: cpuSlots,
+    memory_slots: memorySlots,
+    gpu_slots: gpuSlots,
+    cpu_count: cpuCount,
+    cpu_usage_pct: cpuUsagePct,
+    memory_total_gib: Number(totalMemGiB.toFixed(1)),
+    memory_free_gib: Number(freeMemGiB.toFixed(1)),
+    memory_usage_pct: memUsagePct,
+  };
+}
+
+function normalizeQueueDevicePool(raw) {
+  if (Array.isArray(raw)) {
+    return raw.map((item) => String(item).trim()).filter(Boolean);
+  }
+  const text = String(raw || "").trim();
+  if (!text) return [];
+  return text.split(/[,\s;]+/).map((item) => item.trim()).filter(Boolean);
+}
+
 function sweepQueueRoot(cwd) {
   return path.join(cwd, ".researchloop", "scratchpad", "queues");
+}
+
+function sweepQueueArchiveRoot(cwd) {
+  return path.join(cwd, ".researchloop", "scratchpad", "queues-archive");
 }
 
 function sweepQueueDir(cwd, queueId) {
@@ -10339,6 +10800,34 @@ function sweepQueueDir(cwd, queueId) {
 
 function sweepQueueStatePath(cwd, queueId) {
   return path.join(sweepQueueDir(cwd, queueId), "state.json");
+}
+
+function sweepReportDir(cwd, queueId) {
+  return path.join(cwd, ".researchloop", "scratchpad", "sweeps", sanitizeIdPart(queueId, "queue"));
+}
+
+function sweepReportArchiveRoot(cwd) {
+  return path.join(cwd, ".researchloop", "scratchpad", "sweeps-archive");
+}
+
+function uniqueArchivePath(root, queueId) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const base = `${sanitizeIdPart(queueId, "queue")}-${stamp}`;
+  let candidate = path.join(root, base);
+  let suffix = 1;
+  while (fs.existsSync(candidate)) {
+    suffix += 1;
+    candidate = path.join(root, `${base}-${suffix}`);
+  }
+  return candidate;
+}
+
+function archiveDirectoryIfExists(cwd, sourceDir, archiveRoot, queueId) {
+  if (!fs.existsSync(sourceDir)) return null;
+  ensureDir(archiveRoot);
+  const archivedDir = uniqueArchivePath(archiveRoot, queueId);
+  fs.renameSync(sourceDir, archivedDir);
+  return path.relative(cwd, archivedDir);
 }
 
 function appendQueueEvent(cwd, queueId, event, fields = {}) {
@@ -10383,16 +10872,48 @@ function queueBest(trials, metric, direction) {
   return scored[0] || null;
 }
 
+function stableBestFromState(state) {
+  const stable = state?.stability?.stable_best;
+  if (!stable?.run_id || !isNumericMetric(stable.value)) return null;
+  return {
+    run_id: stable.run_id,
+    metric: stable.metric || state.metric,
+    value: Number(stable.value),
+    params: stable.params || {},
+    source: "stability_median",
+    original_value: stable.original_value ?? null,
+    repeats: stable.repeats ?? null,
+    retest_run_ids: stable.retest_run_ids || [],
+  };
+}
+
 function refreshQueueStateShape(state) {
   const trials = Array.isArray(state.trials) ? state.trials : [];
+  const reportedCounts = state.reported_counts && typeof state.reported_counts === "object" && !Array.isArray(state.reported_counts)
+    ? state.reported_counts
+    : null;
+  const reportedBest = state.reported_best && typeof state.reported_best === "object" && !Array.isArray(state.reported_best)
+    ? state.reported_best
+    : null;
   const next = {
     ...state,
     trials,
-    counts: queueCounts(trials),
-    best: queueBest(trials, state.metric, state.direction),
+    counts: reportedCounts || queueCounts(trials),
+    best: reportedBest || stableBestFromState(state) || queueBest(trials, state.metric, state.direction),
     updated_at: new Date().toISOString(),
   };
   return next;
+}
+
+function compactQueueForDashboard(state, limit = 20) {
+  const trials = Array.isArray(state?.trials) ? state.trials : [];
+  if (trials.length <= limit) return state;
+  return {
+    ...state,
+    trials: trials.slice(0, limit),
+    preview_count: limit,
+    total_trials: state.counts?.total || trials.length,
+  };
 }
 
 function writeQueueState(cwd, state) {
@@ -10429,10 +10950,40 @@ function listSweepQueues(cwd, limit = 10) {
     .filter(Boolean)
     .sort((a, b) => b.mtimeMs - a.mtimeMs)
     .slice(0, limit)
-    .map((entry) => entry.state);
+    .map((entry) => compactQueueForDashboard(entry.state));
 }
 
-function buildSweepSpecFromDashboardBody(body) {
+function archiveSweepQueue(cwd, queueId) {
+  const safeQueueId = sanitizeIdPart(queueId, "queue");
+  const activeDir = sweepQueueDir(cwd, safeQueueId);
+  const stateFile = path.join(activeDir, "state.json");
+  if (!fs.existsSync(stateFile)) {
+    throw new Error(`queue not found: ${queueId}`);
+  }
+
+  let cancelledState = null;
+  try {
+    cancelledState = writeQueueState(cwd, { ...readQueueState(cwd, safeQueueId), status: "cancelled" });
+    appendQueueEvent(cwd, safeQueueId, "queue_delete_requested");
+    writeQueueSummary(cwd, cancelledState);
+  } catch {
+    appendQueueEvent(cwd, safeQueueId, "queue_delete_requested");
+  }
+
+  const archivedQueue = archiveDirectoryIfExists(cwd, activeDir, sweepQueueArchiveRoot(cwd), safeQueueId);
+  const archivedReport = archiveDirectoryIfExists(cwd, sweepReportDir(cwd, safeQueueId), sweepReportArchiveRoot(cwd), safeQueueId);
+  const thread = path.join(cwd, ".researchloop", "scratchpad", "THREAD.md");
+  ensureDir(path.dirname(thread));
+  fs.appendFileSync(thread, `- ${new Date().toISOString()} archived sweep queue ${safeQueueId}${archivedQueue ? ` queue=${archivedQueue}` : ""}${archivedReport ? ` report=${archivedReport}` : ""}\n`);
+  return {
+    queueId: safeQueueId,
+    archivedQueue,
+    archivedReport,
+    queue: cancelledState,
+  };
+}
+
+function buildSweepSpecFromDashboardBody(body, cwd = process.cwd()) {
   const specText = String(body.specText || body.sweepSpec || "").trim();
   const overrides = {
     name: String(body.sweepName || body.name || "").trim(),
@@ -10470,8 +11021,41 @@ function buildSweepSpecFromDashboardBody(body) {
   if (body.maxRuns) {
     spec.budget = { ...(spec.budget || {}), max_runs: Number(body.maxRuns) };
   }
+  const maxParallel = body.maxParallel || body.batchMaxParallel || "";
+  if (maxParallel) {
+    spec.max_parallel = Number(maxParallel);
+  }
+  const devicePool = String(body.devicePool || body.batchDevicePool || body.cudaVisibleDevices || spec.cuda_visible_devices || "").trim();
+  if (devicePool) {
+    spec.cuda_visible_devices = devicePool;
+  }
+  const wantsAutoMaxParallel = String(body.autoMaxParallel || body.batchAutoMaxParallel || "").toLowerCase() === "true";
+  const hasSpecMaxParallel = spec.max_parallel != null || spec.maxParallel != null;
+  if (!maxParallel && (!hasSpecMaxParallel || wantsAutoMaxParallel)) {
+    const system = readSystemMetrics(cwd);
+    const parallelism = recommendedQueueParallelism(system, {
+      commandTemplate: spec.command_template || spec.command || overrides.command_template,
+      sweepName: spec.name || overrides.name,
+      devicePool,
+      cudaVisibleDevices: devicePool,
+    });
+    spec.max_parallel = parallelism.max_parallel;
+  }
   if (body.maxRetries) {
     spec.retry = { ...(spec.retry || {}), max_retries: Number(body.maxRetries) };
+  }
+  const stabilityEnabledInput = body.stabilityEnabled ?? body.batchStabilityEnabled ?? body.retestEnabled ?? body.batchRetestEnabled;
+  const stabilityTopKInput = body.stabilityTopK ?? body.batchStabilityTopK ?? body.retestTopK ?? body.batchRetestTopK;
+  const stabilityRepeatsInput = body.stabilityRepeats ?? body.batchStabilityRepeats ?? body.retestRepeats ?? body.batchRetestRepeats;
+  const hasStabilityBody = stabilityEnabledInput != null || stabilityTopKInput != null || stabilityRepeatsInput != null;
+  if (hasStabilityBody || spec.stability) {
+    spec.stability = normalizeQueueStabilityConfig(spec.stability || {}, {
+      enabled: stabilityEnabledInput,
+      topK: stabilityTopKInput,
+      repeats: stabilityRepeatsInput,
+      aggregate: body.stabilityAggregate || body.batchStabilityAggregate || "median",
+      defaultEnabled: hasStabilityBody,
+    });
   }
   return spec;
 }
@@ -10533,6 +11117,18 @@ function validateSweepSpec(spec, cwd, opts = {}) {
     errors.push(`duplicate run id(s): ${[...duplicateIds].join(", ")}`);
   }
 
+  const maxParallel = normalizeQueueMaxParallel(spec.max_parallel ?? spec.maxParallel ?? opts.maxParallel ?? 1);
+  const devicePool = normalizeQueueDevicePool(
+    spec.cuda_visible_devices ?? spec.device_pool ?? spec.gpu_devices ?? spec.devices ?? opts.cudaVisibleDevices ?? opts.devicePool ?? ""
+  );
+  const stability = normalizeQueueStabilityConfig(spec.stability || {}, {
+    enabled: opts.stabilityEnabled,
+    topK: opts.stabilityTopK,
+    repeats: opts.stabilityRepeats,
+    aggregate: opts.stabilityAggregate || "median",
+    defaultEnabled: false,
+  });
+
   return {
     ok: errors.length === 0,
     errors,
@@ -10543,8 +11139,10 @@ function validateSweepSpec(spec, cwd, opts = {}) {
       metric,
       direction,
       command_template: commandTemplate,
-      max_parallel: Math.max(1, Number(spec.max_parallel || 1) || 1),
+      max_parallel: maxParallel,
+      ...(devicePool.length ? { cuda_visible_devices: devicePool.join(","), device_pool: devicePool } : {}),
       timeout_seconds: Number(spec.timeout_seconds || spec.timeout || opts.timeout || 600) || 600,
+      stability,
     },
     variants: preview,
     count: preview.length,
@@ -10589,8 +11187,16 @@ function createSweepQueue(cwd, spec, opts = {}) {
     created_at: now,
     updated_at: now,
     max_parallel: validation.spec.max_parallel,
+    cuda_visible_devices: validation.spec.cuda_visible_devices || "",
+    device_pool: validation.spec.device_pool || [],
     timeout_seconds: validation.spec.timeout_seconds,
     retry: validation.spec.retry || { max_retries: 0 },
+    stability: {
+      ...(validation.spec.stability || normalizeQueueStabilityConfig()),
+      status: validation.spec.stability?.enabled ? "pending" : "disabled",
+      candidates: [],
+      stable_best: null,
+    },
     budget: validation.spec.budget || {},
     runner: validation.spec.runner || null,
     tags: Array.isArray(validation.spec.tags) ? validation.spec.tags : [],
@@ -10708,7 +11314,9 @@ function analyzeSweepQueue(state) {
     metric,
     direction: preferHigher ? "higher" : "lower",
     counts: state.counts,
-    best: scored[0] || null,
+    best: stableBestFromState(state) || scored[0] || null,
+    single_run_best: scored[0] || null,
+    stability: state.stability || null,
     top: scored.slice(0, 5),
     metric_stats: metricStats(scored.map((row) => row.value)),
     failures,
@@ -10770,6 +11378,7 @@ function writeSweepReport(cwd, queueId) {
     "",
     `- Command template: \`${state.command_template}\``,
     `- Max parallel: ${state.max_parallel || 1}`,
+    `- Device pool: ${(state.device_pool || []).join(", ") || state.cuda_visible_devices || "not pinned"}`,
     `- Timeout seconds: ${state.timeout_seconds || "default"}`,
     `- Tags: ${(state.tags || []).join(", ") || "none"}`,
     "",
@@ -10783,33 +11392,50 @@ function writeSweepReport(cwd, queueId) {
     "",
     "## 5. 最佳结果",
     "",
-    analysis.best ? `Best run: \`${analysis.best.run_id}\` ${state.metric}=${analysis.best.value} params=\`${JSON.stringify(analysis.best.params)}\`` : "No scored run yet.",
+    analysis.best ? `Best run: \`${analysis.best.run_id}\` ${state.metric}=${analysis.best.value} params=\`${JSON.stringify(analysis.best.params)}\`${analysis.best.source === "stability_median" ? " (stable median)" : ""}` : "No scored run yet.",
     "",
-    "## 6. Top K",
+    "## 6. 稳定复测",
+    "",
+    analysis.stability?.status === "complete" && Array.isArray(analysis.stability.candidates) && analysis.stability.candidates.length
+      ? markdownTable(
+        ["Source run", "Original", "Median", "Mean", "Std", "Repeats", "Retest runs"],
+        analysis.stability.candidates.map((row) => [
+          row.source_run_id,
+          row.source_value,
+          row.stats?.median ?? row.aggregate_value ?? "",
+          row.stats?.mean ?? "",
+          row.stats?.std ?? "",
+          row.repeats || row.values?.length || 0,
+          (row.retest_run_ids || []).join(" "),
+        ])
+      )
+      : (analysis.stability?.enabled ? `Stability retest status: ${analysis.stability.status || "pending"}` : "Stability retest disabled."),
+    "",
+    "## 7. Top K",
     "",
     analysis.top.length
       ? markdownTable(["Run", state.metric, "Status", "Params"], analysis.top.map((row) => [row.run_id, row.value, row.status, `\`${JSON.stringify(row.params)}\``]))
       : "No scored runs yet.",
     "",
-    "## 7. 参数影响分析",
+    "## 8. 参数影响分析",
     "",
     analysis.param_importance.length
       ? markdownTable(["Param", "Spread", "Best value", "Worst value"], analysis.param_importance.slice(0, 10).map((row) => [row.param, row.spread, JSON.stringify(row.best_value), JSON.stringify(row.worst_value)]))
       : "Not enough completed numeric results for parameter importance.",
     "",
-    "## 8. 失败和异常",
+    "## 9. 失败和异常",
     "",
     analysis.failures.length
       ? markdownTable(["Run", "Status", "Retries", "Log"], analysis.failures.map((trial) => [trial.run_id, trial.status, trial.retry_count || 0, trial.log || ""]))
       : "No failed trials recorded.",
     "",
-    "## 9. 结论",
+    "## 10. 结论",
     "",
     analysis.best
-      ? `Current best configuration is \`${JSON.stringify(analysis.best.params)}\`.`
+      ? `Current best configuration is \`${JSON.stringify(analysis.best.params)}\`${analysis.best.source === "stability_median" ? " based on stability retest median." : "."}`
       : "Run the queue or fix metric parsing before drawing a conclusion.",
     "",
-    "## 10. 下一步建议",
+    "## 11. 下一步建议",
     "",
     analysis.failures.length
       ? "- Inspect failed logs, then use retry-failed after fixing the command or environment."
@@ -10840,7 +11466,7 @@ function writeQueueSummary(cwd, state) {
     `Failed: ${state.counts.failed}`,
     `Pending: ${state.counts.pending}`,
     "",
-    analysis.best ? `Best: ${analysis.best.run_id} ${state.metric}=${analysis.best.value}` : "Best: not available yet",
+    analysis.best ? `Best: ${analysis.best.run_id} ${state.metric}=${analysis.best.value}${analysis.best.source === "stability_median" ? " (stable median)" : ""}` : "Best: not available yet",
     "",
   ];
   fs.writeFileSync(path.join(dir, "summary.md"), `${lines.join("\n")}\n`);
@@ -10879,103 +11505,558 @@ function setQueueStatus(cwd, queueId, status, event) {
   return state;
 }
 
-async function startSweepQueue(cwd, queueId, opts = {}) {
+function queueSchedulerLockPath(cwd, queueId) {
+  return path.join(sweepQueueDir(cwd, queueId), "scheduler.lock");
+}
+
+function isProcessAlive(pid) {
+  const parsed = Number(pid);
+  if (!Number.isFinite(parsed) || parsed <= 0) return false;
+  try {
+    process.kill(parsed, 0);
+    return true;
+  } catch (err) {
+    return err?.code === "EPERM";
+  }
+}
+
+function acquireQueueSchedulerLock(cwd, queueId) {
+  const lockFile = queueSchedulerLockPath(cwd, queueId);
+  ensureDir(path.dirname(lockFile));
+  const token = `${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const fd = fs.openSync(lockFile, "wx");
+      try {
+        fs.writeSync(fd, `${JSON.stringify({ pid: process.pid, token, started_at: new Date().toISOString() })}\n`);
+      } finally {
+        fs.closeSync(fd);
+      }
+      return {
+        acquired: true,
+        release() {
+          try {
+            const current = JSON.parse(fs.readFileSync(lockFile, "utf8"));
+            if (current.token === token) fs.unlinkSync(lockFile);
+          } catch {
+            // Best effort cleanup. A stale lock is handled on the next start.
+          }
+        },
+      };
+    } catch (err) {
+      if (err?.code !== "EEXIST") throw err;
+      let current = null;
+      try {
+        current = JSON.parse(fs.readFileSync(lockFile, "utf8"));
+      } catch {
+        current = null;
+      }
+      if (current?.pid && isProcessAlive(current.pid)) {
+        return { acquired: false, lock: current, release() {} };
+      }
+      try {
+        fs.unlinkSync(lockFile);
+      } catch {
+        // Another starter may have removed it.
+      }
+    }
+  }
+  return { acquired: false, lock: null, release() {} };
+}
+
+function queueDevicePool(state, opts = {}) {
+  return normalizeQueueDevicePool(
+    opts.cudaVisibleDevices ?? opts.devicePool ?? state.cuda_visible_devices ?? state.device_pool ?? state.spec?.cuda_visible_devices ?? state.spec?.device_pool ?? state.spec?.gpu_devices ?? state.spec?.devices ?? ""
+  );
+}
+
+function queueWorkerEnv(workerId, workerSlot, cudaVisibleDevices) {
+  const env = {
+    RESEARCHLOOP_QUEUE_WORKER: String(workerId),
+    RESEARCHLOOP_QUEUE_SLOT: String(workerSlot),
+  };
+  if (cudaVisibleDevices) {
+    env.CUDA_VISIBLE_DEVICES = String(cudaVisibleDevices);
+    env.RESEARCHLOOP_CUDA_VISIBLE_DEVICES = String(cudaVisibleDevices);
+    env.RESEARCHLOOP_DEVICE = "cuda";
+    env.RESEARCHLOOP_ACCELERATOR = "cuda";
+  }
+  return env;
+}
+
+function queueStabilityEnv(candidateRank, repeatIndex, cudaVisibleDevices) {
+  return {
+    ...queueWorkerEnv("stability", 1, cudaVisibleDevices),
+    RESEARCHLOOP_QUEUE_STABILITY: "1",
+    RESEARCHLOOP_STABILITY_CANDIDATE_RANK: String(candidateRank),
+    RESEARCHLOOP_STABILITY_REPEAT: String(repeatIndex),
+  };
+}
+
+function sortQueueTrialsByMetric(trials, metric, direction) {
+  const preferHigher = String(direction || "").toLowerCase() === "higher";
+  return (trials || [])
+    .filter((trial) => String(trial.status || "") === "complete" && isNumericMetric(trial.metrics?.[metric]))
+    .map((trial) => ({ trial, value: Number(trial.metrics[metric]) }))
+    .sort((a, b) => preferHigher ? b.value - a.value : a.value - b.value);
+}
+
+function queueStabilityCandidates(state, topK) {
+  const seen = new Set();
+  const candidates = [];
+  for (const entry of sortQueueTrialsByMetric(state.trials || [], state.metric, state.direction)) {
+    const key = JSON.stringify(entry.trial.params || {});
+    if (seen.has(key)) continue;
+    seen.add(key);
+    candidates.push({
+      source_run_id: entry.trial.run_id,
+      source_value: entry.value,
+      params: entry.trial.params || {},
+      command: entry.trial.command,
+      cuda_visible_devices: entry.trial.cuda_visible_devices || null,
+    });
+    if (candidates.length >= topK) break;
+  }
+  return candidates;
+}
+
+function shouldRunQueueStability(state) {
+  const stability = normalizeQueueStabilityConfig(state.stability || state.spec?.stability || {});
+  if (!stability.enabled) return false;
+  if (state.stability?.status === "complete") return false;
+  if (state.stability?.status === "disabled") return false;
+  if (state.status === "cancelled") return false;
+  return Boolean(queueStabilityCandidates(state, stability.top_k).length);
+}
+
+function stableBestFromCandidates(state, candidates) {
+  const metric = state.metric || "val_loss";
+  const preferHigher = String(state.direction || "").toLowerCase() === "higher";
+  const scored = (candidates || [])
+    .filter((candidate) => isNumericMetric(candidate.aggregate_value))
+    .map((candidate) => ({
+      run_id: candidate.source_run_id,
+      metric,
+      value: Number(candidate.aggregate_value),
+      params: candidate.params || {},
+      source: "stability_median",
+      original_value: candidate.source_value,
+      repeats: candidate.repeats || 0,
+      retest_run_ids: candidate.retest_run_ids || [],
+      stats: candidate.stats || null,
+    }))
+    .sort((a, b) => preferHigher ? b.value - a.value : a.value - b.value);
+  return scored[0] || null;
+}
+
+async function runQueueStabilityRetests(cwd, queueId, opts = {}) {
   let state = readQueueState(cwd, queueId);
-  if (state.status === "cancelled") return state;
-  state = writeQueueState(cwd, { ...state, status: "running", started_at: state.started_at || new Date().toISOString() });
-  appendQueueEvent(cwd, queueId, "queue_started");
+  const stabilityConfig = normalizeQueueStabilityConfig(state.stability || state.spec?.stability || {});
+  if (!stabilityConfig.enabled) {
+    return writeQueueState(cwd, {
+      ...state,
+      stability: { ...stabilityConfig, status: "disabled", candidates: [], stable_best: null },
+    });
+  }
+  const candidates = queueStabilityCandidates(state, stabilityConfig.top_k);
+  if (!candidates.length) {
+    return writeQueueState(cwd, {
+      ...state,
+      stability: { ...stabilityConfig, status: "skipped", reason: "no_numeric_top_candidates", candidates: [], stable_best: null },
+    });
+  }
+
   const metricName = state.metric || "val_loss";
   const timeoutSec = Number(state.timeout_seconds || 600) || 600;
   const allowUnsafe = opts.allowUnsafe || hasFlag("--allow-unsafe");
   const regexSource = state.spec?.regex || null;
-  const maxRetries = Math.max(0, Number(state.retry?.max_retries ?? 0) || 0);
+  const devices = queueDevicePool(state, opts);
+  const startedAt = new Date().toISOString();
+  state = writeQueueState(cwd, {
+    ...state,
+    status: "stabilizing",
+    stability: {
+      ...stabilityConfig,
+      status: "running",
+      started_at: startedAt,
+      candidates: candidates.map((candidate, index) => ({
+        rank: index + 1,
+        source_run_id: candidate.source_run_id,
+        source_value: candidate.source_value,
+        params: candidate.params,
+        retest_run_ids: [],
+        values: [],
+        status: "pending",
+      })),
+      stable_best: null,
+    },
+  });
+  appendQueueEvent(cwd, queueId, "stability_started", {
+    top_k: stabilityConfig.top_k,
+    repeats: stabilityConfig.repeats,
+    aggregate: stabilityConfig.aggregate,
+  });
 
-  for (const originalTrial of state.trials || []) {
-    state = readQueueState(cwd, queueId);
-    if (state.status === "cancelled") break;
-    if (state.status === "pausing" || state.status === "paused") {
-      state = writeQueueState(cwd, { ...state, status: "paused" });
-      appendQueueEvent(cwd, queueId, "queue_paused");
-      break;
-    }
-    const current = (state.trials || []).find((trial) => trial.run_id === originalTrial.run_id);
-    if (!current || current.status !== "pending") continue;
-
-    let trial = { ...current };
-    let attemptDone = false;
-    while (!attemptDone) {
-      const startedAt = new Date().toISOString();
-      state = writeQueueState(cwd, updateQueueTrial({ ...state, status: "running" }, trial.run_id, {
-        status: trial.retry_count > 0 ? "retrying" : "running",
-        started_at: startedAt,
-      }));
-      appendQueueEvent(cwd, queueId, "trial_started", { run_id: trial.run_id, retry_count: trial.retry_count || 0 });
-      const res = await executeRun({
-        cwd,
-        cmdText: trial.command,
-        metricName,
-        regexSource,
-        timeoutSec,
-        allowUnsafe,
-        isBaseline: false,
-        idOverride: trial.run_id,
-        extraConfig: {
-          sweep: state.name,
-          sweep_index: trial.index,
-          sweep_params: trial.params,
-          queue_id: state.queue_id,
-        },
-        suppressExitCode: true,
-        quiet: true,
-        tags: ["sweep", `sweep:${state.name}`, ...(state.tags || [])],
-        parentId: state.queue_id,
-      });
-      const finalStatus = res.status || "failed";
-      const patch = {
-        status: finalStatus,
-        metrics: res.row?.metrics || {},
-        log: res.row?.log || null,
-        exit_code: res.row?.exit_code ?? null,
-        wall_seconds: res.row?.wall_seconds ?? null,
-        started_at: res.row?.started_at || startedAt,
-        finished_at: res.row?.ended_at || new Date().toISOString(),
-      };
-      state = writeQueueState(cwd, updateQueueTrial(readQueueState(cwd, queueId), trial.run_id, patch));
-      appendQueueEvent(cwd, queueId, finalStatus === "complete" ? "trial_completed" : "trial_finished", {
-        run_id: trial.run_id,
-        status: finalStatus,
-        [metricName]: res.metricValue,
-      });
-      const shouldRetry = retryableTrialStatus(finalStatus) && (trial.retry_count || 0) < maxRetries;
-      if (shouldRetry) {
-        trial = {
-          ...trial,
-          retry_count: (trial.retry_count || 0) + 1,
-        };
-        state = writeQueueState(cwd, updateQueueTrial(readQueueState(cwd, queueId), trial.run_id, {
-          status: "pending",
-          retry_count: trial.retry_count,
-        }));
-        appendQueueEvent(cwd, queueId, "trial_retry_scheduled", { run_id: trial.run_id, retry_count: trial.retry_count });
-      } else {
-        attemptDone = true;
+  const completedCandidates = [];
+  for (let rankIndex = 0; rankIndex < candidates.length; rankIndex += 1) {
+    const candidate = candidates[rankIndex];
+    const rank = rankIndex + 1;
+    const retestRunIds = [];
+    const values = [];
+    let latestLog = null;
+    for (let repeat = 1; repeat <= stabilityConfig.repeats; repeat += 1) {
+      const current = readQueueState(cwd, queueId);
+      if (current.status === "cancelled") return current;
+      if (current.status === "pausing" || current.status === "paused") {
+        const paused = writeQueueState(cwd, { ...current, status: "paused", stability: { ...(current.stability || {}), status: "paused" } });
+        appendQueueEvent(cwd, queueId, "stability_paused", { rank, repeat });
+        return paused;
       }
+      const cudaVisibleDevices = candidate.cuda_visible_devices || (devices.length ? devices[(rankIndex + repeat - 1) % devices.length] : null);
+      const runId = `${queueId}-stable-${String(rank).padStart(2, "0")}-r${String(repeat).padStart(2, "0")}`;
+      appendQueueEvent(cwd, queueId, "stability_trial_started", {
+        run_id: runId,
+        source_run_id: candidate.source_run_id,
+        rank,
+        repeat,
+        cuda_visible_devices: cudaVisibleDevices || null,
+      });
+      let res;
+      try {
+        res = await executeRun({
+          cwd,
+          cmdText: candidate.command,
+          metricName,
+          regexSource,
+          timeoutSec,
+          allowUnsafe,
+          isBaseline: false,
+          idOverride: runId,
+          extraEnv: queueStabilityEnv(rank, repeat, cudaVisibleDevices),
+          extraConfig: {
+            sweep: state.name,
+            sweep_params: candidate.params,
+            queue_id: state.queue_id,
+            stability_retest: true,
+            stability_source_run_id: candidate.source_run_id,
+            stability_candidate_rank: rank,
+            stability_repeat: repeat,
+            cuda_visible_devices: cudaVisibleDevices || null,
+          },
+          suppressExitCode: true,
+          quiet: true,
+          tags: ["sweep", `sweep:${state.name}`, "stability-retest", ...(state.tags || [])],
+          parentId: state.queue_id,
+        });
+      } catch (err) {
+        res = {
+          status: "failed",
+          metricValue: null,
+          row: {
+            metrics: {},
+            log: `stability exception: ${err.message}`,
+            exit_code: null,
+            wall_seconds: null,
+            started_at: new Date().toISOString(),
+            ended_at: new Date().toISOString(),
+          },
+        };
+      }
+      retestRunIds.push(runId);
+      if (isNumericMetric(res.row?.metrics?.[metricName])) values.push(Number(res.row.metrics[metricName]));
+      else if (isNumericMetric(res.metricValue)) values.push(Number(res.metricValue));
+      latestLog = res.row?.log || latestLog;
+      state = readQueueState(cwd, queueId);
+      const nextCandidates = (state.stability?.candidates || []).map((row) => row.rank === rank
+        ? {
+          ...row,
+          status: "running",
+          retest_run_ids: [...retestRunIds],
+          values: [...values],
+          latest_log: latestLog,
+        }
+        : row);
+      state = writeQueueState(cwd, { ...state, stability: { ...(state.stability || stabilityConfig), status: "running", candidates: nextCandidates } });
+      appendQueueEvent(cwd, queueId, "stability_trial_finished", {
+        run_id: runId,
+        source_run_id: candidate.source_run_id,
+        rank,
+        repeat,
+        status: res.status || "failed",
+        [metricName]: isNumericMetric(values[values.length - 1]) ? values[values.length - 1] : null,
+      });
     }
+    const stats = metricStats(values);
+    const aggregateValue = stats
+      ? (stabilityConfig.aggregate === "mean" ? stats.mean : stats.median)
+      : null;
+    completedCandidates.push({
+      rank,
+      source_run_id: candidate.source_run_id,
+      source_value: candidate.source_value,
+      params: candidate.params,
+      retest_run_ids: retestRunIds,
+      values,
+      repeats: values.length,
+      status: values.length ? "complete" : "complete_no_metric",
+      stats,
+      aggregate_value: aggregateValue,
+      aggregate: stabilityConfig.aggregate,
+      latest_log: latestLog,
+    });
+    state = readQueueState(cwd, queueId);
+    state = writeQueueState(cwd, {
+      ...state,
+      stability: {
+        ...(state.stability || stabilityConfig),
+        status: "running",
+        candidates: (state.stability?.candidates || []).map((row) => row.rank === rank ? completedCandidates[completedCandidates.length - 1] : row),
+      },
+    });
   }
 
   state = readQueueState(cwd, queueId);
-  const remaining = (state.trials || []).some((trial) => trial.status === "pending" || trial.status === "running" || trial.status === "retrying");
-  let finalQueueStatus = state.status;
-  if (state.status === "running") {
-    finalQueueStatus = remaining ? "paused" : "complete";
-  }
-  state = writeQueueState(cwd, { ...state, status: finalQueueStatus, finished_at: remaining ? state.finished_at : new Date().toISOString() });
-  appendQueueEvent(cwd, queueId, finalQueueStatus === "complete" ? "queue_completed" : `queue_${finalQueueStatus}`);
-  writeQueueSummary(cwd, state);
-  if (finalQueueStatus === "complete") {
-    writeSweepReport(cwd, queueId);
-  }
+  const stableBest = stableBestFromCandidates(state, completedCandidates);
+  const finishedAt = new Date().toISOString();
+  state = writeQueueState(cwd, {
+    ...state,
+    status: "running",
+    reported_best: stableBest || null,
+    stability: {
+      ...stabilityConfig,
+      status: stableBest ? "complete" : "complete_no_metric",
+      started_at: startedAt,
+      finished_at: finishedAt,
+      candidates: completedCandidates,
+      stable_best: stableBest,
+    },
+  });
+  appendQueueEvent(cwd, queueId, "stability_completed", {
+    stable_best_run_id: stableBest?.run_id || null,
+    stable_best_value: stableBest?.value ?? null,
+    candidates: completedCandidates.length,
+  });
   return state;
+}
+
+function recoverInterruptedQueueTrials(state) {
+  let recovered = 0;
+  const trials = (state.trials || []).map((trial) => {
+    if (trial.status !== "running" && trial.status !== "retrying") return trial;
+    recovered += 1;
+    return {
+      ...trial,
+      status: "pending",
+      recovered_from_status: trial.status,
+      worker_id: null,
+      worker_slot: null,
+    };
+  });
+  return { state: { ...state, trials }, recovered };
+}
+
+function claimNextPendingTrial(cwd, queueId, workerId, workerSlot, cudaVisibleDevices) {
+  let state = readQueueState(cwd, queueId);
+  if (state.status === "cancelled") return { stop: true, reason: "cancelled" };
+  if (state.status === "pausing" || state.status === "paused") {
+    if (state.status === "pausing") {
+      state = writeQueueState(cwd, { ...state, status: "paused" });
+      appendQueueEvent(cwd, queueId, "queue_paused");
+    }
+    return { stop: true, reason: "paused" };
+  }
+  const trial = (state.trials || []).find((row) => row.status === "pending");
+  if (!trial) return { drained: true };
+  const startedAt = new Date().toISOString();
+  const runningStatus = Number(trial.retry_count || 0) > 0 ? "retrying" : "running";
+  const patch = {
+    status: runningStatus,
+    started_at: startedAt,
+    worker_id: workerId,
+    worker_slot: workerSlot,
+    cuda_visible_devices: cudaVisibleDevices || null,
+  };
+  state = writeQueueState(cwd, updateQueueTrial({ ...state, status: "running" }, trial.run_id, patch));
+  appendQueueEvent(cwd, queueId, "trial_started", {
+    run_id: trial.run_id,
+    retry_count: trial.retry_count || 0,
+    worker_id: workerId,
+    worker_slot: workerSlot,
+    cuda_visible_devices: cudaVisibleDevices || null,
+  });
+  return { trial: { ...trial, ...patch }, state };
+}
+
+async function startSweepQueue(cwd, queueId, opts = {}) {
+  let state = readQueueState(cwd, queueId);
+  if (state.status === "cancelled") return state;
+  const lock = acquireQueueSchedulerLock(cwd, queueId);
+  if (!lock.acquired) {
+    appendQueueEvent(cwd, queueId, "queue_start_ignored", {
+      reason: "scheduler_lock_active",
+      pid: lock.lock?.pid || null,
+    });
+    return readQueueState(cwd, queueId);
+  }
+  try {
+    state = readQueueState(cwd, queueId);
+    const recovered = recoverInterruptedQueueTrials(state);
+    state = recovered.state;
+    const maxParallel = normalizeQueueMaxParallel(opts.maxParallel ?? state.max_parallel ?? state.spec?.max_parallel ?? 1);
+    const devices = queueDevicePool(state, opts);
+    state = writeQueueState(cwd, {
+      ...state,
+      status: "running",
+      started_at: state.started_at || new Date().toISOString(),
+      max_parallel: maxParallel,
+      cuda_visible_devices: devices.join(","),
+      device_pool: devices,
+      scheduler: {
+        mode: "parallel",
+        pid: process.pid,
+        max_parallel: maxParallel,
+        device_pool: devices,
+        started_at: new Date().toISOString(),
+      },
+    });
+    appendQueueEvent(cwd, queueId, "queue_started", {
+      max_parallel: maxParallel,
+      device_pool: devices,
+      recovered_running_trials: recovered.recovered,
+    });
+    const metricName = state.metric || "val_loss";
+    const timeoutSec = Number(state.timeout_seconds || 600) || 600;
+    const allowUnsafe = opts.allowUnsafe || hasFlag("--allow-unsafe");
+    const regexSource = state.spec?.regex || null;
+    const maxRetries = Math.max(0, Number(state.retry?.max_retries ?? 0) || 0);
+
+    async function runWorker(workerSlot) {
+      const workerId = `worker-${String(workerSlot).padStart(2, "0")}`;
+      const cudaVisibleDevices = devices.length ? devices[(workerSlot - 1) % devices.length] : null;
+      for (;;) {
+        const claim = claimNextPendingTrial(cwd, queueId, workerId, workerSlot, cudaVisibleDevices);
+        if (claim.stop || claim.drained) return claim.reason || "drained";
+        let trial = claim.trial;
+        let res;
+        try {
+          res = await executeRun({
+            cwd,
+            cmdText: trial.command,
+            metricName,
+            regexSource,
+            timeoutSec,
+            allowUnsafe,
+            isBaseline: false,
+            idOverride: trial.run_id,
+            extraEnv: queueWorkerEnv(workerId, workerSlot, cudaVisibleDevices),
+            extraConfig: {
+              sweep: state.name,
+              sweep_index: trial.index,
+              sweep_params: trial.params,
+              queue_id: state.queue_id,
+              queue_worker_id: workerId,
+              queue_worker_slot: workerSlot,
+              cuda_visible_devices: cudaVisibleDevices || null,
+            },
+            suppressExitCode: true,
+            quiet: true,
+            tags: ["sweep", `sweep:${state.name}`, ...(state.tags || [])],
+            parentId: state.queue_id,
+          });
+        } catch (err) {
+          res = {
+            status: "failed",
+            metricValue: null,
+            row: {
+              metrics: {},
+              log: `scheduler exception: ${err.message}`,
+              exit_code: null,
+              wall_seconds: null,
+              started_at: trial.started_at,
+              ended_at: new Date().toISOString(),
+            },
+          };
+        }
+        const finalStatus = res.status || "failed";
+        const patch = {
+          status: finalStatus,
+          metrics: res.row?.metrics || {},
+          log: res.row?.log || res.safety?.message || null,
+          exit_code: res.row?.exit_code ?? null,
+          wall_seconds: res.row?.wall_seconds ?? null,
+          started_at: res.row?.started_at || trial.started_at || new Date().toISOString(),
+          finished_at: res.row?.ended_at || new Date().toISOString(),
+          retry_count: trial.retry_count || 0,
+          worker_id: workerId,
+          worker_slot: workerSlot,
+          cuda_visible_devices: cudaVisibleDevices || null,
+        };
+        state = writeQueueState(cwd, updateQueueTrial(readQueueState(cwd, queueId), trial.run_id, patch));
+        appendQueueEvent(cwd, queueId, finalStatus === "complete" ? "trial_completed" : "trial_finished", {
+          run_id: trial.run_id,
+          status: finalStatus,
+          [metricName]: res.metricValue,
+          worker_id: workerId,
+          worker_slot: workerSlot,
+          cuda_visible_devices: cudaVisibleDevices || null,
+        });
+        const shouldRetry = retryableTrialStatus(finalStatus) && (trial.retry_count || 0) < maxRetries;
+        if (shouldRetry) {
+          trial = {
+            ...trial,
+            retry_count: (trial.retry_count || 0) + 1,
+          };
+          state = writeQueueState(cwd, updateQueueTrial(readQueueState(cwd, queueId), trial.run_id, {
+            status: "pending",
+            retry_count: trial.retry_count,
+            worker_id: null,
+            worker_slot: null,
+          }));
+          appendQueueEvent(cwd, queueId, "trial_retry_scheduled", {
+            run_id: trial.run_id,
+            retry_count: trial.retry_count,
+            worker_id: workerId,
+          });
+        }
+      }
+    }
+
+    await Promise.all(Array.from({ length: maxParallel }, (_, index) => runWorker(index + 1)));
+
+    state = readQueueState(cwd, queueId);
+    let remaining = (state.trials || []).some((trial) => trial.status === "pending" || trial.status === "running" || trial.status === "retrying");
+    if (!remaining && state.status === "running" && shouldRunQueueStability(state)) {
+      state = await runQueueStabilityRetests(cwd, queueId, {
+        allowUnsafe,
+        devicePool: devices,
+        cudaVisibleDevices: devices.join(","),
+      });
+      state = readQueueState(cwd, queueId);
+      remaining = (state.trials || []).some((trial) => trial.status === "pending" || trial.status === "running" || trial.status === "retrying");
+    }
+    let finalQueueStatus = state.status;
+    if (state.status === "running") {
+      finalQueueStatus = remaining ? "paused" : "complete";
+    } else if (state.status === "stabilizing") {
+      finalQueueStatus = "complete";
+    } else if (state.status === "pausing") {
+      finalQueueStatus = "paused";
+    }
+    state = writeQueueState(cwd, {
+      ...state,
+      status: finalQueueStatus,
+      scheduler: { ...(state.scheduler || {}), finished_at: new Date().toISOString() },
+      finished_at: remaining ? state.finished_at : new Date().toISOString(),
+    });
+    appendQueueEvent(cwd, queueId, finalQueueStatus === "complete" ? "queue_completed" : `queue_${finalQueueStatus}`);
+    writeQueueSummary(cwd, state);
+    if (finalQueueStatus === "complete") {
+      writeSweepReport(cwd, queueId);
+    }
+    return state;
+  } finally {
+    lock.release();
+  }
 }
 
 async function cmdSweep() {
@@ -11249,7 +12330,7 @@ async function cmdSweep() {
 
 async function cmdQueue() {
   const cwd = targetDir();
-  const subcommand = subcommandFor("queue", ["start", "pause", "resume", "cancel", "retry-failed", "report", "status"]) || "status";
+  const subcommand = subcommandFor("queue", ["start", "pause", "resume", "cancel", "retry-failed", "delete", "clear", "report", "status"]) || "status";
   const queueId = String(option("--id", option("--queue-id", ""))).trim();
   if (!queueId) {
     console.error(`autoresearch queue ${subcommand} requires --id <queue-id>`);
@@ -11258,12 +12339,17 @@ async function cmdQueue() {
   }
   try {
     if (subcommand === "start") {
-      const state = await startSweepQueue(cwd, queueId, { allowUnsafe: hasFlag("--allow-unsafe") });
+      const state = await startSweepQueue(cwd, queueId, {
+        allowUnsafe: hasFlag("--allow-unsafe"),
+        maxParallel: option("--max-parallel", null),
+        cudaVisibleDevices: option("--cuda-visible-devices", option("--device-pool", null)),
+      });
       if (String(option("--format", "text")) === "json") console.log(JSON.stringify(state, null, 2));
       else {
         console.log(`queue: ${state.queue_id}`);
         console.log(`status: ${state.status}`);
         console.log(`complete: ${state.counts.complete}/${state.counts.total}`);
+        console.log(`max_parallel: ${state.max_parallel || 1}`);
       }
       return;
     }
@@ -11285,6 +12371,16 @@ async function cmdQueue() {
     if (subcommand === "retry-failed") {
       const result = resetFailedTrialsForRetry(cwd, queueId);
       console.log(String(option("--format", "text")) === "json" ? JSON.stringify(result.state, null, 2) : `queue: ${result.state.queue_id} retry_pending=${result.changed}`);
+      return;
+    }
+    if (subcommand === "delete" || subcommand === "clear") {
+      const result = archiveSweepQueue(cwd, queueId);
+      if (String(option("--format", "text")) === "json") console.log(JSON.stringify(result, null, 2));
+      else {
+        console.log(`queue: ${result.queueId} deleted`);
+        if (result.archivedQueue) console.log(`archived_queue: ${result.archivedQueue}`);
+        if (result.archivedReport) console.log(`archived_report: ${result.archivedReport}`);
+      }
       return;
     }
     if (subcommand === "report") {
@@ -11607,7 +12703,7 @@ Usage:
   autoresearch baseline [--dir PATH] [--id ID] [--command CMD] [--metric NAME] [--regex PATTERN] [--timeout SECONDS] [--device auto|cpu|cuda|mps|directml] [--cuda-visible-devices LIST] [--tags TEXT] [--note TEXT] [--allow-unsafe]
   autoresearch sweep --spec FILE.json|yaml|csv [--metric NAME] [--seeds N] [--direction lower|higher] [--dry-run] [--allow-unsafe] [--dir PATH]
   autoresearch sweep validate|preview|create --spec FILE.json|yaml|csv [--dir PATH] [--format text|json]
-  autoresearch queue start|pause|resume|cancel|retry-failed|status|report --id QUEUE_ID [--dir PATH] [--format text|json]
+  autoresearch queue start|pause|resume|cancel|retry-failed|delete|clear|status|report --id QUEUE_ID [--dir PATH] [--max-parallel N] [--cuda-visible-devices LIST] [--format text|json]
   autoresearch sweep-report --id QUEUE_ID [--dir PATH] [--format text|json]
   autoresearch loop --command CMD [--iters N] [--metric NAME] [--direction lower|higher] [--patch-cmd CMD] [--revert-on-regression] [--commit-on-win] [--keep-if better|same] [--dir PATH]
   autoresearch anomalies [--id RUN_ID] [--format text|json] [--dir PATH]

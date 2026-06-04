@@ -5,7 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
-cli="node $repo_root/bin/researchloop.js"
+cli=(node "$repo_root/bin/researchloop.js")
 
 # Build a fake repo with multiple multi-GPU launchers visible to inspect.
 mkdir -p "$tmpdir/src"
@@ -37,8 +37,8 @@ deepspeed
 pytorch_lightning
 REQ
 
-$cli init --agent codex --dir "$tmpdir" >/tmp/autoresearch-mgpu-init.log
-$cli inspect --dir "$tmpdir" >/tmp/autoresearch-mgpu-inspect.log
+"${cli[@]}" init --agent codex --dir "$tmpdir" >/tmp/autoresearch-mgpu-init.log
+"${cli[@]}" inspect --dir "$tmpdir" >/tmp/autoresearch-mgpu-inspect.log
 
 # Verify each launcher detected.
 grep -q '"tool": "torchrun"' /tmp/autoresearch-mgpu-inspect.log

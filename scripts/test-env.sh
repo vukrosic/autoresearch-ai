@@ -11,7 +11,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-cli="node $repo_root/bin/researchloop.js"
+cli=(node "$repo_root/bin/researchloop.js")
 
 git init -q "$tmpdir"
 git -C "$tmpdir" config user.email "codex@example.com"
@@ -20,10 +20,10 @@ printf 'seed\n' >"$tmpdir/model.py"
 git -C "$tmpdir" add model.py
 git -C "$tmpdir" commit -q -m "seed"
 
-$cli init --agent codex --dir "$tmpdir" >/tmp/researchloop-env-init.log
+"${cli[@]}" init --agent codex --dir "$tmpdir" >/tmp/researchloop-env-init.log
 git -C "$tmpdir" add -A
 git -C "$tmpdir" commit -q -m "add researchloop harness"
-$cli run --dir "$tmpdir" --id clean-run --command "true" >/tmp/researchloop-env-clean.log
+"${cli[@]}" run --dir "$tmpdir" --id clean-run --command "true" >/tmp/researchloop-env-clean.log
 
 node --input-type=module - "$tmpdir" <<'NODE'
 import fs from "node:fs";
@@ -92,13 +92,13 @@ NODE
 
 printf 'dirty\n' >>"$tmpdir/model.py"
 
-$cli doctor --dir "$tmpdir" >"$doctor_log" 2>&1
+"${cli[@]}" doctor --dir "$tmpdir" >"$doctor_log" 2>&1
 grep -q "WARNING: doctor env mismatch git_dirty" "$doctor_log"
 
-$cli replay --dir "$tmpdir" --id clean-run >"$replay_log" 2>&1
+"${cli[@]}" replay --dir "$tmpdir" --id clean-run >"$replay_log" 2>&1
 grep -q "WARNING: replay env mismatch git_dirty" "$replay_log"
 
-$cli run --dir "$tmpdir" --id dirty-run --command "true" >/tmp/researchloop-env-dirty.log
+"${cli[@]}" run --dir "$tmpdir" --id dirty-run --command "true" >/tmp/researchloop-env-dirty.log
 
 node --input-type=module - "$tmpdir" <<'NODE'
 import fs from "node:fs";

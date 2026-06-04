@@ -5,12 +5,12 @@ tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cli="node $repo_root/bin/researchloop.js"
+cli=(node "$repo_root/bin/researchloop.js")
 
-$cli init --agent codex --dir "$tmpdir" >/dev/null 2>&1
+"${cli[@]}" init --agent codex --dir "$tmpdir" >/dev/null 2>&1
 
 echo "=== Test 1: run records wall_seconds ==="
-$cli run --command "sleep 1 && echo val_loss=0.5" --metric val_loss --dir "$tmpdir" >/dev/null 2>&1
+"${cli[@]}" run --command "sleep 1 && echo val_loss=0.5" --metric val_loss --dir "$tmpdir" >/dev/null 2>&1
 node --input-type=module - "$tmpdir/.researchloop/scratchpad/runs.jsonl" <<'NODE'
 import fs from "node:fs";
 
@@ -34,7 +34,7 @@ echo ""
 echo "=== Test 2: cost.yaml produces est_cost_usd ==="
 echo "gpu: H100
 hourly_usd: 2.50" > "$tmpdir/.researchloop/cost.yaml"
-$cli run --command "sleep 2 && echo val_loss=0.6" --metric val_loss --dir "$tmpdir" >/dev/null 2>&1
+"${cli[@]}" run --command "sleep 2 && echo val_loss=0.6" --metric val_loss --dir "$tmpdir" >/dev/null 2>&1
 node --input-type=module - "$tmpdir/.researchloop/scratchpad/runs.jsonl" <<'NODE'
 import fs from "node:fs";
 
@@ -49,14 +49,14 @@ console.log(`est_cost_usd: ${row.est_cost_usd}`);
 NODE
 echo "PASS: est_cost_usd computed from wall_seconds and hourly_usd"
 
-$cli report --dir "$tmpdir" >/tmp/researchloop-cost-report.log
+"${cli[@]}" report --dir "$tmpdir" >/tmp/researchloop-cost-report.log
 grep -q "wall_time:" /tmp/researchloop-cost-report.log
 grep -q "estimated_cost_usd:" /tmp/researchloop-cost-report.log
 
 echo ""
 echo "=== Test 3: no cost.yaml gives null est_cost_usd ==="
 rm "$tmpdir/.researchloop/cost.yaml"
-$cli run --command "sleep 1 && echo val_loss=0.7" --metric val_loss --dir "$tmpdir" >/dev/null 2>&1
+"${cli[@]}" run --command "sleep 1 && echo val_loss=0.7" --metric val_loss --dir "$tmpdir" >/dev/null 2>&1
 node --input-type=module - "$tmpdir/.researchloop/scratchpad/runs.jsonl" <<'NODE'
 import fs from "node:fs";
 

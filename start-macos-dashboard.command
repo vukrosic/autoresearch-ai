@@ -86,7 +86,15 @@ dashboard_has_current_ui() {
   page="$(/usr/bin/curl -fsS "$URL" 2>/dev/null || true)"
   printf "%s" "$page" | /usr/bin/grep -q 'id="batchAutoconfigBtn"' &&
     printf "%s" "$page" | /usr/bin/grep -q 'id="clearRunsBtn"' &&
-    printf "%s" "$page" | /usr/bin/grep -q 'id="toastStack"'
+    printf "%s" "$page" | /usr/bin/grep -q 'id="sweepDeleteBtn"' &&
+    printf "%s" "$page" | /usr/bin/grep -q 'id="toastStack"' &&
+    printf "%s" "$page" | /usr/bin/grep -q 'denseTraceChart' &&
+    printf "%s" "$page" | /usr/bin/grep -q 'axisTicks' &&
+    printf "%s" "$page" | /usr/bin/grep -q 'indexAxisLabel' &&
+    printf "%s" "$page" | /usr/bin/grep -q 'id="uiBatchMaxParallel"' &&
+    printf "%s" "$page" | /usr/bin/grep -q 'id="batchParallelHint"' &&
+    printf "%s" "$page" | /usr/bin/grep -q 'id="uiBatchStabilityEnabled"' &&
+    printf "%s" "$page" | /usr/bin/grep -q 'X：实验序号'
 }
 
 port_pid() {

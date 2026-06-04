@@ -5,7 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fixture="$(mktemp -d)"
 trap 'rm -rf "$fixture"' EXIT
 
-cli="node $repo_root/bin/researchloop.js"
+cli=(node "$repo_root/bin/researchloop.js")
 research_dir="$fixture/.researchloop"
 mkdir -p "$research_dir/scratchpad"
 cp "$repo_root/examples/fixtures/report/runs.jsonl" "$research_dir/scratchpad/runs.jsonl"
@@ -19,7 +19,7 @@ The spread between lr-3e-4 and baseline-001 is 0.12 val_loss.
 EOF
 
 echo "=== Test G21 claim audit pass ==="
-pass_out="$($cli audit supported.md --dir "$fixture")"
+pass_out="$("${cli[@]}" audit supported.md --dir "$fixture")"
 printf '%s\n' "$pass_out"
 grep -q "lr-3e-4:val_loss" <<<"$pass_out"
 grep -q "baseline-001:val_loss" <<<"$pass_out"
@@ -37,7 +37,7 @@ EOF
 
 echo "=== Test G21 claim audit fail ==="
 set +e
-fail_out="$($cli audit fabricated.md --dir "$fixture" 2>&1)"
+fail_out="$("${cli[@]}" audit fabricated.md --dir "$fixture" 2>&1)"
 fail_status=$?
 set -e
 printf '%s\n' "$fail_out"
@@ -65,8 +65,8 @@ lower
 val_loss = 0.38 (run lr-3e-4)
 EOF
 
-$cli report --dir "$fixture" --format markdown --out generated.md --include-plots >/tmp/autoresearch-audit-report.log
-generated_out="$($cli audit generated.md --dir "$fixture")"
+"${cli[@]}" report --dir "$fixture" --format markdown --out generated.md --include-plots >/tmp/autoresearch-audit-report.log
+generated_out="$("${cli[@]}" audit generated.md --dir "$fixture")"
 printf '%s\n' "$generated_out"
 if grep -q "| null |" <<<"$generated_out"; then
   echo "expected generated report to audit cleanly"
