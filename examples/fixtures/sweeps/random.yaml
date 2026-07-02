@@ -1,0 +1,9 @@
+name: rand-seed
+base_command: "printf 'val_loss={lr}\n'"
+strategy: random
+budget: 10
+seed: 123
+metric: val_loss
+direction: lower
+params:
+  lr: {type: log_uniform, min: 0.0001, max: 0.01}

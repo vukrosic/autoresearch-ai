@@ -1,0 +1,5 @@
+{"id":"r1","status":"completed","metrics":{"val_loss":0.50},"value":0.50,"timestamp":"2026-05-17T10:00:00Z","params":{"lr":0.001}}
+{"id":"r2","status":"completed","metrics":{"val_loss":0.31},"value":0.31,"timestamp":"2026-05-17T10:01:00Z","params":{"lr":0.003}}
+{"id":"r3","status":"failed","metrics":{"val_loss":null},"value":null,"timestamp":"2026-05-17T10:02:00Z","params":{"lr":0.005}}
+{"id":"r4","status":"completed","metrics":{"val_loss":0.20},"value":0.20,"timestamp":"2026-05-17T10:03:00Z","params":{"lr":0.010}}
+{"id":"r5","status":"completed","metrics":{"val_loss":0.10},"value":0.10,"timestamp":"2026-05-17T10:04:00Z","params":{"lr":0.020}}

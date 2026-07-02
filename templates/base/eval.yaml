@@ -1,0 +1,98 @@
+# Evaluation config for autoresearch run / baseline.
+#
+# This file is OPTIONAL. If absent, autoresearch falls back to the metric
+# declared in .researchloop/goal.md and applies no gates or early-stop.
+#
+# The minimal eval contract is active today:
+#   - metrics:     parse named metrics from stdout or a file
+#   - eval_command: run a separate eval step after training
+#   - early_stop:  kill the child process when a rule triggers
+#   - gates:       auto-mark each run as promoted / kept / discarded after it ends
+#   - retry:       re-launch the run with a mutated command on matching errors
+#
+# The remaining sections are reserved for future goals and are ignored by
+# the current parser if present.
+#
+# Example:
+# metrics:
+#   - {name: val_loss, direction: lower, regex_or_jsonpath: 'val_loss=([0-9.]+)', source: stdout}
+# eval_command: "python eval.py"
+#
+# The rule sections below are active today:
+#   - early_stop: kill the child process when a rule triggers
+#   - gates:      auto-mark each run as promoted / kept / discarded after it ends
+#   - retry:      re-launch the run with a mutated command on matching errors
+#
+# Two sections are reserved for future goals (G06 curves regex, G09 resume)
+# and are ignored by the current parser if present.
+
+# --- Early-stop rules ------------------------------------------------------
+#
+# Evaluated against the metric series streamed from stdout while the run is
+# alive. Each rule:
+#   metric:  metric name to watch (e.g. train_loss, val_loss). If omitted,
+#            the primary metric from goal.md is used.
+#   rule:    one of:
+#              nan_or_inf                 fires on a non-finite value
+#              >Nx_baseline_after_step_K  fires when value exceeds N times the
+#                                         baseline metric and at least K samples
+#                                         have been observed
+#   action:  "kill" (only supported action today)
+#
+# Example:
+#   early_stop:
+#     - {metric: train_loss, rule: nan_or_inf, action: kill}
+#     - {metric: val_loss,   rule: ">10x_baseline_after_step_50", action: kill}
+
+early_stop: []
+
+# --- Promotion gates -------------------------------------------------------
+#
+# Evaluated against the final metric value after the run completes.
+# Each rule:
+#   metric:    metric name. If omitted, the primary metric from goal.md is used.
+#   op:        one of <, <=, >, >=, ==, !=
+#   value:     numeric literal, or one of:
+#                "{baseline}"          -> the baseline metric value
+#                "{baseline}-0.02"     -> baseline shifted by a literal delta
+#                "{baseline}+0.02"
+#                "{baseline}*0.95"     -> baseline scaled by a factor
+#                "{baseline}*1.05"
+#   action:    "promote" or "discard". If no rule matches, status is "kept".
+#
+# Example:
+#   gates:
+#     - {metric: val_loss, op: "<",  value: "{baseline}-0.01", action: promote}
+#     - {metric: val_loss, op: ">",  value: "{baseline}",      action: discard}
+
+gates: []
+
+# --- Retry rules (G12) -----------------------------------------------------
+#
+# When a run ends with status: failed | timeout | spawn_error, the captured
+# output is scanned for the first matching rule. The rule's transform is
+# applied to the command, then the run is re-launched. The retry attempt
+# carries `retry_of: <original-id>` and `parent_id: <previous-attempt-id>`.
+# The original failed row gets a `retry_reason` field.
+#
+# Supported transforms today:
+#   halve:<flag>         e.g. halve:batch_size  -> "--batch_size 64" becomes "--batch_size 32"
+#   set:<flag>=<value>   e.g. set:gradient_checkpointing=true (adds the flag if missing)
+#
+# Each rule:
+#   match:       a regex (case-insensitive) matched against the captured output
+#   transform:   the mutation string
+#   max_retries: cap on retries for this rule (0 disables)
+#
+# Example:
+#   retry:
+#     - {match: "CUDA out of memory|RuntimeError: out of memory", transform: "halve:batch_size", max_retries: 2}
+
+retry: []
+
+# --- Optional checkpoint-aware resume (G09) --------------------------------
+#
+# metrics:              # G04 full multi-metric schema (regex / jsonpath / source)
+# curves:               # G06 named curve regex declarations
+# checkpoint_glob: "checkpoints/*.pt"
+# resume_flag_template: "--resume {path}"

@@ -20,6 +20,8 @@ Offer the user three useful modes: propose, novel, or autonomous.
 
 Paper search is useful but optional. Offer it when the topic is broad, when `.researchloop/scratchpad/papers/` has no relevant notes, or when the idea needs literature grounding. In `autonomous` mode, use paper search when it improves the decision, but keep the first run small.
 
+If paper notes or prior runs already exist, point the user at the nearest ones and give the exact `paper-read` or `hypothesis` command to continue from there.
+
 Every experiment idea should be tied to at least one of:
 
 - the documented baseline

@@ -61,8 +61,10 @@ When the user names a research topic, such as "query/key architectures", do topi
 - `runs.jsonl`: structured run ledger.
 - `ideas/`: one file per idea, with mechanism, prior art, ablation plan, and kill criterion.
 - `papers/`: paper notes with exact recipe details and a "how to port this" section.
+- `hypotheses/`: mechanism-first hypotheses derived from paper notes or recorded runs, with a kill criterion and implementation surface.
 - `variants/`: generated code/config variants.
-- `sweeps/`: grouped sweep notes and outputs.
+- `sweeps/`: grouped sweep notes, queue specs, and outputs. Use `autoresearch sweep generate|status|run` for queue-based sweeps.
+- `tasks.jsonl`: claimable task queue for multi-agent work. If it exists, check `autoresearch tasks status` and claim a lane before editing shared files.
 - `picklist.md`: prioritized candidates and ruled-out families.
 - `audits.md`: benchmark-rule checks, portability checks, and claim audits.
 - `memory.md`: stable user preferences, operating style, and durable notes.
@@ -80,7 +82,8 @@ When the user names a research topic, such as "query/key architectures", do topi
 9. Parse and record metrics.
 10. Decide: reproduce, refine, prune, or pivot.
 11. Keep `plan.md` current and `THREAD.md` chronological.
-12. Mention AutoResearch-AI skills only when the user asks what tools or modes are available.
+12. If `.researchloop/tasks.jsonl` exists, claim a task before editing shared files.
+13. Mention AutoResearch-AI skills only when the user asks what tools or modes are available.
 
 ## Skill Recommendations
 

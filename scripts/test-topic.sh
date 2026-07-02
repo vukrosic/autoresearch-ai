@@ -36,6 +36,7 @@ OUT1=$(node bin/researchloop.js topic "attention mechanisms" --dir "$FIXTURE" 2>
 echo "$OUT1"
 echo "$OUT1" | grep -q "Baseline State" || { echo "FAIL: missing baseline section"; exit 1; }
 echo "$OUT1" | grep -q "complete" || { echo "FAIL: should show complete baseline"; exit 1; }
+echo "$OUT1" | grep -q "Needs approval" || { echo "FAIL: should include approval line"; exit 1; }
 echo "$OUT1" | grep -q "propose" || { echo "FAIL: should show propose mode"; exit 1; }
 echo "$OUT1" | grep -q "novel" || { echo "FAIL: should show novel mode"; exit 1; }
 echo "$OUT1" | grep -q "autonomous" || { echo "FAIL: should show autonomous mode"; exit 1; }
@@ -60,20 +61,64 @@ echo "$OUT4"
 echo "$OUT4" | grep -q "requires a locked baseline" || { echo "FAIL: autonomous without lock should error"; exit 1; }
 
 echo "--- Test 5: topic with prior runs ---"
-echo '{"id":"r1","status":"completed","value":0.42}' > "$FIXTURE/.researchloop/scratchpad/runs.jsonl"
+mkdir -p "$FIXTURE/.researchloop/scratchpad/papers"
+cat > "$FIXTURE/.researchloop/scratchpad/papers/2504.11111v1.md" << 'EOF'
+# Attention Routing for Transformers
+
+- Paper id: 2504.11111v1
+- Source: local
+- Published: 2026-05-01
+- Authors: Reviewer One
+- Link: https://arxiv.org/abs/2504.11111v1
+
+## Claim
+
+Attention routing reduces wasted compute.
+
+## Mechanism
+
+The mechanism is attention sparsity.
+
+## Limits
+
+This is architecture-specific.
+
+## How To Port This
+
+Change attention masking in the model.
+
+## Baseline Relevance
+
+This targets lower validation loss with a small change to attention.
+EOF
+
+cat > "$FIXTURE/.researchloop/scratchpad/runs.jsonl" << 'EOF'
+{"id":"r1","status":"completed","value":0.42,"metrics":{"val_loss":0.42},"params":{"attention":"sparse"},"note":"attention routing baseline"}
+{"id":"r2","status":"completed","value":0.31,"metrics":{"val_loss":0.31},"params":{"optimizer":"adam"},"note":"baseline comparison"}
+EOF
 OUT5=$(node bin/researchloop.js topic "scaling" --dir "$FIXTURE" 2>&1)
 echo "$OUT5"
-echo "$OUT5" | grep -q "Prior runs: 1" || { echo "FAIL: should count prior runs"; exit 1; }
-echo "$OUT5" | grep -q "Best run: r1" || { echo "FAIL: should show best run"; exit 1; }
+echo "$OUT5" | grep -q "Prior runs: 2" || { echo "FAIL: should count prior runs"; exit 1; }
+echo "$OUT5" | grep -q "Best run: r2" || { echo "FAIL: should show best run by metric"; exit 1; }
 
-echo "--- Test 6: topic --mode propose ---"
-OUT6=$(node bin/researchloop.js topic "test" --mode propose --dir "$FIXTURE" 2>&1)
+echo "--- Test 6: topic with matching evidence ---"
+OUT6=$(node bin/researchloop.js topic "attention routing" --dir "$FIXTURE" 2>&1)
 echo "$OUT6"
-echo "$OUT6" | grep -q "Mode: propose" || { echo "FAIL: mode should be propose"; exit 1; }
+echo "$OUT6" | grep -q "Relevant Evidence" || { echo "FAIL: should show relevant evidence"; exit 1; }
+echo "$OUT6" | grep -q "paper:2504.11111v1" || { echo "FAIL: should surface matching paper"; exit 1; }
+echo "$OUT6" | grep -q "run:r1" || { echo "FAIL: should surface matching run"; exit 1; }
+echo "$OUT6" | grep -q "autoresearch paper-read 2504.11111v1 --write" || { echo "FAIL: should suggest paper-read"; exit 1; }
+echo "$OUT6" | grep -q "autoresearch hypothesis --paper-id 2504.11111v1 --write" || { echo "FAIL: should suggest paper-backed hypothesis"; exit 1; }
+echo "$OUT6" | grep -q "autoresearch hypothesis --run-id r1 --write" || { echo "FAIL: should suggest run-backed hypothesis"; exit 1; }
 
-echo "--- Test 7: topic with --mode novel ---"
-OUT7=$(node bin/researchloop.js topic "transformer scaling" --mode novel --dir "$FIXTURE" 2>&1)
+echo "--- Test 7: topic --mode propose ---"
+OUT7=$(node bin/researchloop.js topic "test" --mode propose --dir "$FIXTURE" 2>&1)
 echo "$OUT7"
-echo "$OUT7" | grep -q "Mode: novel" || { echo "FAIL: mode should be novel"; exit 1; }
+echo "$OUT7" | grep -q "Mode: propose" || { echo "FAIL: mode should be propose"; exit 1; }
+
+echo "--- Test 8: topic with --mode novel ---"
+OUT8=$(node bin/researchloop.js topic "transformer scaling" --mode novel --dir "$FIXTURE" 2>&1)
+echo "$OUT8"
+echo "$OUT8" | grep -q "Mode: novel" || { echo "FAIL: mode should be novel"; exit 1; }
 
 echo "=== All G28 topic tests passed ==="

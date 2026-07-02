@@ -12,17 +12,15 @@
 项目路径:
 ```
 
-直接回车会使用默认项目 `~/Desktop/operator-benchmarks/mlx-benchmark`。如果要测试别的项目，把项目文件夹完整路径粘贴进去，例如：
+直接回车会使用脚本配置的默认项目路径。不同机器上的目录通常不同；如果要测试别的项目，把项目文件夹完整路径粘贴进去，例如：
 
 ```text
-/Users/MacBook/Desktop/my-benchmark-project
+/path/to/my-benchmark-project
 ```
 
-脚本会启动本地面板并打开：
+脚本会启动本地面板，并在终端输出实际可访问的本机地址，例如 `http://127.0.0.1:<port>/`。端口会根据当前机器的占用情况选择，不需要手动写死。
 
-```text
-http://127.0.0.1:8792/
-```
+打开面板时以脚本输出或浏览器自动打开的地址为准。
 
 仓库内也保留了同等逻辑的脚本：
 
@@ -66,9 +64,9 @@ node ./bin/researchloop.js dashboard --dir "/path/to/test-project" --host 127.0.
 常见项目路径示例：
 
 ```text
-/Users/MacBook/Desktop/operator-benchmarks/mlx-benchmark
-/Users/MacBook/Desktop/my-pytorch-training
-/Users/MacBook/Desktop/my-cuda-kernel-benchmark
+~/projects/operator-benchmarks/mlx-benchmark
+~/projects/my-pytorch-training
+~/projects/my-cuda-kernel-benchmark
 ```
 
 切换项目后，面板会重新读取该项目中的入口文件、实验脚本、`.researchloop/` 记录和运行结果。
@@ -305,10 +303,10 @@ npm run test:resource-usage
 npm run test:windows
 ```
 
-启动后还可以访问：
+启动后还可以访问脚本输出地址下的 `/api/state`，例如：
 
 ```text
-http://127.0.0.1:8792/api/state
+http://127.0.0.1:<port>/api/state
 ```
 
 确认当前项目、入口命令、批量队列模板和运行记录是否正确。

@@ -1,0 +1,9 @@
+name: lr-list
+base_command: "printf 'val_loss={lr}\n'"
+strategy: list
+metric: val_loss
+direction: lower
+variants:
+  - {lr: 0.50}
+  - {lr: 0.30}
+  - {lr: 0.10}

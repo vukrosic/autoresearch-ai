@@ -7,6 +7,74 @@ import process from "node:process";
 import { execSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { buildRunDiff, buildRunLineage, buildRunTraces, readCurvesForRun, summarizeTraces } from "./researchloop-dashboard.js";
+import { cmdDeterminism } from "./researchloop-determinism.js";
+import { cmdHypothesis, cmdPaperRead } from "./researchloop-research.js";
+import { cmdPaperReread } from "./researchloop-paper-reread.js";
+import { buildTopicNote } from "./researchloop-topic.js";
+import { cmdPower } from "./researchloop-power.js";
+import { cmdSimilar } from "./researchloop-similar.js";
+import { cmdLearn } from "./researchloop-learn.js";
+import { cmdArchive } from "./researchloop-archive.js";
+import { cmdForecast } from "./researchloop-forecast.js";
+import { cmdPareto } from "./researchloop-pareto.js";
+import { cmdAblate } from "./researchloop-ablate.js";
+import { cmdCompute } from "./researchloop-compute.js";
+import { cmdMechanisms } from "./researchloop-mechanisms.js";
+import { cmdDiskCheck } from "./researchloop-disk.js";
+import { cmdLeaderboard } from "./researchloop-leaderboard.js";
+import { cmdBibtex } from "./researchloop-bibtex.js";
+import { cmdSeed } from "./researchloop-seed.js";
+import { cmdPrBundle } from "./researchloop-pr-bundle.js";
+import { cmdAgentMemory } from "./researchloop-agent-memory.js";
+import { cmdStory } from "./researchloop-story.js";
+import { cmdSmoke } from "./researchloop-smoke.js";
+import { cmdShare } from "./researchloop-share.js";
+import { cmdPropose as cmdProposeEngine } from "./researchloop-proposals.js";
+import { cmdRank as cmdRankEngine } from "./researchloop-rank.js";
+import { cmdPriors as cmdPriorsEngine } from "./researchloop-priors.js";
+import { cmdNextExperiment } from "./researchloop-next-experiment.js";
+import { cmdEval as cmdEvalEngine, loadEvalSpec, runDeclaredEval, mergeEvalResultIntoRow } from "./researchloop-eval.js";
+import { metricNumber } from "./researchloop-core.js";
+import { cmdBench } from "./researchloop-bench.js";
+import { cmdSlurm } from "./researchloop-slurm.js";
+import { cmdRetrospective } from "./researchloop-retrospective.js";
+import { cmdLitDiff } from "./researchloop-lit-diff.js";
+import { cmdBudget } from "./researchloop-budget.js";
+import { cmdFork } from "./researchloop-fork.js";
+import { cmdValidateConfig } from "./researchloop-validate-config.js";
+import { cmdEta } from "./researchloop-eta.js";
+import { cmdSummary } from "./researchloop-summary.js";
+import { cmdHardware } from "./researchloop-hardware.js";
+import { cmdHooks } from "./researchloop-hooks.js";
+import { cmdDataSample } from "./researchloop-data-sample.js";
+import { cmdCanary } from "./researchloop-canary.js";
+import { cmdStaleLocks } from "./researchloop-stale-locks.js";
+import { cmdReset } from "./researchloop-reset.js";
+import { cmdQuestion } from "./researchloop-question.js";
+import { cmdSearch } from "./researchloop-search.js";
+import { cmdTail } from "./researchloop-tail.js";
+import { cmdTasks } from "./researchloop-tasks.js";
+import { cmdContainerSnapshot } from "./researchloop-container.js";
+import { cmdWarmstart } from "./researchloop-warmstart.js";
+import { cmdGpuReport } from "./researchloop-gpu-report.js";
+import { cmdGpuFit, analyzeVram } from "./researchloop-gpu-fit.js";
+import { cmdEvalDiff } from "./researchloop-eval-diff.js";
+import { cmdScalingFit } from "./researchloop-scaling-fit.js";
+import { cmdSampleEfficiency } from "./researchloop-sample-efficiency.js";
+import { cmdRlStats } from "./researchloop-rl-stats.js";
+import { cmdSweepProjection } from "./researchloop-sweep-projection.js";
+import { cmdHeadroom } from "./researchloop-headroom.js";
+import { cmdMfu, computeMfuForRow } from "./researchloop-mfu.js";
+import { cmdKvCache } from "./researchloop-kv-cache.js";
+import { cmdLrFinder } from "./researchloop-lr-finder.js";
+import { cmdOverfitWatch, analyzeOverfit } from "./researchloop-overfit-watch.js";
+import { cmdShardPlan } from "./researchloop-shard-plan.js";
+import { cmdElo } from "./researchloop-elo.js";
+import { cmdApiBudget } from "./researchloop-api-budget.js";
+import { cmdJudge } from "./researchloop-judge.js";
+import { cmdGradNoise } from "./researchloop-grad-noise.js";
+import { cmdMemorization } from "./researchloop-memorization.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const packageRoot = path.resolve(path.dirname(__filename), "..");
@@ -204,6 +272,144 @@ function positionalText(excludedFlags = []) {
 
 function targetDir() {
   return path.resolve(String(option("--dir", process.cwd())));
+}
+
+const COMMAND_REGISTRY = [
+  { group: "Setup", canonical: "init", aliases: [], summary: "scaffold .researchloop/ + agent instructions" },
+  { group: "Setup", canonical: "goal", aliases: [], summary: "save research objective + metric + baseline command" },
+  { group: "Setup", canonical: "inspect", aliases: [], summary: "write repo-profile.json (frameworks, launchers, model block)" },
+  { group: "Setup", canonical: "doctor", aliases: [], summary: "check local tooling; --repair-plan prints fixes" },
+  { group: "Setup", canonical: "prompt", aliases: [], summary: "print agent-ready autonomous research prompt" },
+
+  { group: "Backlog & ideation", canonical: "topic", aliases: [], summary: "baseline-aware intake for a research topic" },
+  { group: "Backlog & ideation", canonical: "scan-papers", aliases: [], summary: "fetch arXiv abstracts into scratchpad/papers/" },
+  { group: "Backlog & ideation", canonical: "paper-read", aliases: [], summary: "structured claim/mechanism/limits/port/baseline note" },
+  { group: "Backlog & ideation", canonical: "paper-reread", aliases: [], summary: "compare paper note against a finished run" },
+  { group: "Backlog & ideation", canonical: "hypothesis", aliases: [], summary: "mechanism-first hypotheses from papers or runs" },
+  { group: "Backlog & ideation", canonical: "propose", aliases: [], summary: "write grounded experiment proposals to JSONL" },
+  { group: "Backlog & ideation", canonical: "rank", aliases: [], summary: "score proposals (impact/cost/risk/novelty/evidence)" },
+  { group: "Backlog & ideation", canonical: "priors", aliases: [], summary: "attach arXiv prior-art to one proposal" },
+  { group: "Backlog & ideation", canonical: "next-experiment", aliases: ["next"], summary: "turn the top proposal into an executable runbook" },
+  { group: "Backlog & ideation", canonical: "idea", aliases: [], summary: "chat-first research prompt for the agent" },
+  { group: "Backlog & ideation", canonical: "mechanisms", aliases: [], summary: "collect mechanism strings; --check dedups for propose --novel" },
+  { group: "Backlog & ideation", canonical: "ablate", aliases: [], summary: "turn a winning config into halve/double/remove/flip proposals" },
+  { group: "Backlog & ideation", canonical: "fork", aliases: [], summary: "emit a run snippet from a known-good config" },
+  { group: "Backlog & ideation", canonical: "warmstart", aliases: [], summary: "launch snippet using a prior run's checkpoint as init weights" },
+  { group: "Backlog & ideation", canonical: "suggest", aliases: [], summary: "next-experiment suggestion off the ledger" },
+  { group: "Backlog & ideation", canonical: "similar", aliases: [], summary: "find runs most similar by config + metric" },
+  { group: "Backlog & ideation", canonical: "search", aliases: ["grep"], summary: "full-text grep across papers, hypotheses, proposals, ledger" },
+
+  { group: "Run", canonical: "run", aliases: [], summary: "execute a training/eval command + record" },
+  { group: "Run", canonical: "baseline", aliases: [], summary: "run baseline; --lock / --unlock freeze it" },
+  { group: "Run", canonical: "baseline-status", aliases: [], summary: "report baseline presence + lock state" },
+  { group: "Run", canonical: "eval", aliases: [], summary: "run eval.yaml structured eval for a recorded run" },
+  { group: "Run", canonical: "record", aliases: [], summary: "manual ledger row (escape hatch; prefer run)" },
+  { group: "Run", canonical: "sweep", aliases: [], summary: "generate|status|run queue-based sweeps" },
+  { group: "Run", canonical: "loop", aliases: [], summary: "ratchet loop; keeps the best across iterations" },
+  { group: "Run", canonical: "smoke", aliases: [], summary: "actually-run smoke test (60s budget) on a real command" },
+  { group: "Run", canonical: "replay", aliases: [], summary: "re-execute a recorded run + report drift" },
+  { group: "Run", canonical: "verify", aliases: [], summary: "re-run + report deterministic / drifted" },
+  { group: "Run", canonical: "resume", aliases: [], summary: "re-launch a failed/timeout run from checkpoint" },
+  { group: "Run", canonical: "determinism", aliases: ["det"], summary: "re-run same command N times; tolerance check" },
+  { group: "Run", canonical: "anomalies", aliases: ["anomaly"], summary: "detect divergence, spikes, plateaus in metric history" },
+  { group: "Run", canonical: "preflight", aliases: [], summary: "pre-run gates: command/safety/metric/disk/RAM/GPU/baseline" },
+  { group: "Run", canonical: "eta", aliases: [], summary: "best-effort time-to-completion off streamed metrics" },
+  { group: "Run", canonical: "tail", aliases: [], summary: "tail the run log (or streamed metrics with --metrics)" },
+
+  { group: "Resource planning", canonical: "gpu-fit", aliases: ["vram-fit", "vram"], summary: "VRAM estimator per GPU SKU; ZeRO / TP / DP / activations" },
+  { group: "Resource planning", canonical: "kv-cache", aliases: ["kv"], summary: "inference VRAM; GQA-aware; max batch/context" },
+  { group: "Resource planning", canonical: "mfu", aliases: [], summary: "Model FLOPs Utilization per ledger row" },
+  { group: "Resource planning", canonical: "compute-budget", aliases: ["compute"], summary: "Chinchilla tokens/FLOPs/gpu-days calculator" },
+  { group: "Resource planning", canonical: "shard-plan", aliases: ["parallelism", "shard"], summary: "recommend (TP, PP, DP) split for a target model + cluster" },
+  { group: "Resource planning", canonical: "sweep-projection", aliases: ["sweep-project", "project-sweep"], summary: "project sweep wall time + cost before launching" },
+  { group: "Resource planning", canonical: "headroom", aliases: [], summary: "gap-to-perfect / gap-to-SoTA reality check" },
+  { group: "Resource planning", canonical: "gpu-report", aliases: ["gpu"], summary: "aggregate per-run system.jsonl load + memory" },
+  { group: "Resource planning", canonical: "hardware", aliases: ["hw"], summary: "GPU/CUDA/Python/Torch distributions across the ledger" },
+  { group: "Resource planning", canonical: "disk-check", aliases: ["disk"], summary: "exit non-zero when free space is below threshold" },
+  { group: "Resource planning", canonical: "container-snapshot", aliases: ["container"], summary: "Dockerfile + requirements.lock repro kit for a run" },
+
+  { group: "Statistical rigor", canonical: "significance", aliases: ["sig"], summary: "permutation test + bootstrap CI on metric delta" },
+  { group: "Statistical rigor", canonical: "power", aliases: [], summary: "required sample size for a given effect size" },
+  { group: "Statistical rigor", canonical: "sample-efficiency", aliases: ["se"], summary: "step at which a run hit 50/75/90/95/99% improvement" },
+  { group: "Statistical rigor", canonical: "rl-stats", aliases: ["rl"], summary: "Agarwal-2021 robust episode-return aggregator with IQM" },
+  { group: "Statistical rigor", canonical: "scaling-fit", aliases: ["scaling"], summary: "Kaplan / Chinchilla power-law fit on the ledger" },
+  { group: "Statistical rigor", canonical: "grad-noise", aliases: ["gns", "gradient-noise"], summary: "McCandlish 2018 critical-batch estimator" },
+  { group: "Statistical rigor", canonical: "overfit-watch", aliases: ["overfit"], summary: "val-min step, divergence, wasted-compute fraction" },
+  { group: "Statistical rigor", canonical: "memorization", aliases: ["memo", "verbatim-check"], summary: "verbatim training-data leakage in model outputs" },
+  { group: "Statistical rigor", canonical: "canary", aliases: [], summary: "exact / substring eval-train leak detector" },
+
+  { group: "API / LLM evals", canonical: "api-budget", aliases: ["api-cost", "tokens-cost"], summary: "project $ cost across baked-in pricing registry" },
+  { group: "API / LLM evals", canonical: "judge", aliases: [], summary: "LLM-as-judge harness (pairwise / scalar / reference)" },
+  { group: "API / LLM evals", canonical: "elo", aliases: ["arena"], summary: "pairwise model ratings: online Elo + Bradley-Terry MLE" },
+  { group: "API / LLM evals", canonical: "eval-diff", aliases: ["predictions-diff"], summary: "flip analysis between two predictions files" },
+  { group: "API / LLM evals", canonical: "lr-finder", aliases: ["lrfinder", "find-lr"], summary: "analyze a Smith-style LR range test; report elbow" },
+  { group: "API / LLM evals", canonical: "bench", aliases: ["benchmark"], summary: "MMLU/HumanEval/GSM8K/... preset registry; add patches eval.yaml" },
+
+  { group: "Compare & promote", canonical: "compare", aliases: [], summary: "rank runs by metric; auto-runs significance" },
+  { group: "Compare & promote", canonical: "curves", aliases: ["curve"], summary: "sparkline + stats for streamed metric series" },
+  { group: "Compare & promote", canonical: "diff-runs", aliases: [], summary: "two-run diff in text / json / markdown" },
+  { group: "Compare & promote", canonical: "review", aliases: [], summary: "programmatic pre-promote checks on a recorded run" },
+  { group: "Compare & promote", canonical: "promote", aliases: [], summary: "copy a winning run to winners/; gates on review" },
+  { group: "Compare & promote", canonical: "audit", aliases: [], summary: "verify numeric claims in a markdown resolve to ledger" },
+
+  { group: "Reporting", canonical: "report", aliases: [], summary: "lab-note markdown report; +MFU / Overfit / cost tables" },
+  { group: "Reporting", canonical: "summary", aliases: ["status"], summary: "one-screen project state + next-action command" },
+  { group: "Reporting", canonical: "leaderboard", aliases: ["top"], summary: "top-N runs with deltas, status, wall time, USD" },
+  { group: "Reporting", canonical: "story", aliases: [], summary: "narrate a run's ancestry, diff, descendants, lesson" },
+  { group: "Reporting", canonical: "retrospective", aliases: ["retro"], summary: "weekly synthesis: counts, top runs, lessons, spend" },
+  { group: "Reporting", canonical: "digest", aliases: [], summary: "text/json/markdown digest --since window" },
+  { group: "Reporting", canonical: "param-importance", aliases: [], summary: "rank which params moved the metric most" },
+  { group: "Reporting", canonical: "failures", aliases: [], summary: "top failure patterns across runs" },
+  { group: "Reporting", canonical: "query", aliases: [], summary: "ad-hoc filter/sort/limit over runs.jsonl" },
+  { group: "Reporting", canonical: "model-card", aliases: [], summary: "per-run model card markdown" },
+  { group: "Reporting", canonical: "pr-bundle", aliases: ["pr"], summary: "render PR-ready markdown body for a run" },
+  { group: "Reporting", canonical: "agent-memory", aliases: ["memory"], summary: "distill project into a CLAUDE.md-sized fragment" },
+  { group: "Reporting", canonical: "bibtex", aliases: ["bib"], summary: "extract BibTeX from paper notes; filter to cited entries" },
+  { group: "Reporting", canonical: "lit-diff", aliases: ["litdiff"], summary: "section-by-section diff of two paper notes" },
+  { group: "Reporting", canonical: "share", aliases: [], summary: "package a run as a portable .tar.gz" },
+  { group: "Reporting", canonical: "forecast", aliases: [], summary: "project metric trajectory forward from the ledger" },
+  { group: "Reporting", canonical: "pareto", aliases: [], summary: "Pareto front across two competing metrics" },
+  { group: "Reporting", canonical: "dashboard", aliases: [], summary: "localhost dashboard: scatter, curves, /diff, /lineage" },
+
+  { group: "Hygiene & ops", canonical: "prune", aliases: [], summary: "prune runs by age / status; --dry-run safe" },
+  { group: "Hygiene & ops", canonical: "tag", aliases: [], summary: "add/remove/list tags on a run" },
+  { group: "Hygiene & ops", canonical: "archive", aliases: [], summary: "mark a dead-end with a reason" },
+  { group: "Hygiene & ops", canonical: "learn", aliases: [], summary: "capture a transferable lesson off a run" },
+  { group: "Hygiene & ops", canonical: "reset", aliases: [], summary: "remove a row + side-archive the run dir" },
+  { group: "Hygiene & ops", canonical: "question", aliases: ["q"], summary: "open-questions parking lot at questions.jsonl" },
+  { group: "Hygiene & ops", canonical: "stale-locks", aliases: ["locks"], summary: "find/remove zombie sweep/task lock files" },
+  { group: "Hygiene & ops", canonical: "validate-config", aliases: ["validate"], summary: "schema lint for .researchloop/*.yaml" },
+  { group: "Hygiene & ops", canonical: "budget", aliases: [], summary: "cost guardrail; --check exits 2 over-budget" },
+  { group: "Hygiene & ops", canonical: "seed", aliases: [], summary: "single source of truth for today's seed; --env emits ritual" },
+  { group: "Hygiene & ops", canonical: "data-fingerprint", aliases: [], summary: "hash input data for reproducibility" },
+  { group: "Hygiene & ops", canonical: "data-sample", aliases: ["sample-data"], summary: "JSONL/CSV/TSV sample + length percentiles + class balance" },
+  { group: "Hygiene & ops", canonical: "hooks", aliases: ["hook"], summary: "manage pre/post-run / promote / failure shell hooks" },
+  { group: "Hygiene & ops", canonical: "slurm", aliases: ["sbatch"], summary: "generate .sbatch wrapping autoresearch run" },
+
+  { group: "Coordination", canonical: "team", aliases: [], summary: "generate multi-agent development board" },
+  { group: "Coordination", canonical: "tasks", aliases: [], summary: "claimable multi-agent queue at tasks.jsonl" },
+];
+
+function cmdListCommands() {
+  const fmt = option("--format", "text");
+  if (fmt === "json") {
+    console.log(JSON.stringify(COMMAND_REGISTRY, null, 2));
+    return;
+  }
+  const groups = new Map();
+  for (const entry of COMMAND_REGISTRY) {
+    if (!groups.has(entry.group)) groups.set(entry.group, []);
+    groups.get(entry.group).push(entry);
+  }
+  for (const [group, entries] of groups) {
+    console.log(`\n${group}`);
+    console.log("-".repeat(group.length));
+    for (const entry of entries) {
+      const aliasPart = entry.aliases.length ? ` (${entry.aliases.join(", ")})` : "";
+      console.log(`  ${entry.canonical}${aliasPart}  —  ${entry.summary}`);
+    }
+  }
+  console.log("");
 }
 
 function defaultSafetyPolicy() {
@@ -595,7 +801,12 @@ function readLatestRunRow(cwd) {
 function readRunRowById(cwd, runId) {
   const ledgerPath = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
   const runs = parseRunsLedger(ledgerPath);
-  return runs.find((row) => row && !row.parse_error && String(row.id) === String(runId)) || null;
+  return [...runs].reverse().find((row) => row && !row.parse_error && String(row.id) === String(runId)) || null;
+}
+
+function readRunRows(cwd) {
+  const ledgerPath = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
+  return parseRunsLedger(ledgerPath).filter((row) => row && !row.parse_error);
 }
 
 function appendRunRow(cwd, row) {
@@ -766,6 +977,7 @@ function installAgentFile(cwd, agent, force) {
     "- recent idea notes in `.researchloop/scratchpad/ideas/`",
     "",
     "Use `.researchloop/` as durable working memory.",
+    "If `.researchloop/tasks.jsonl` exists, claim a task before editing shared files.",
     "Record commands, metrics, decisions, history, and next experiments there.",
     "Keep stable user preferences and working style in `.researchloop/scratchpad/memory.md`.",
     "Base new ideas on the repo's own experiment history first.",
@@ -1214,16 +1426,16 @@ function xmlEscape(value) {
 function runMetricValue(row, metricName) {
   if (metricName && row?.metrics && Object.prototype.hasOwnProperty.call(row.metrics, metricName)) {
     const raw = row.metrics[metricName];
-    const value = raw !== null && raw !== undefined && raw !== "" ? Number(raw) : Number.NaN;
+    const value = metricNumber(raw);
     if (Number.isFinite(value)) return value;
   }
   if (row?.metrics) {
     for (const raw of Object.values(row.metrics)) {
-      const num = raw !== null && raw !== undefined && raw !== "" ? Number(raw) : Number.NaN;
+      const num = metricNumber(raw);
       if (Number.isFinite(num)) return num;
     }
   }
-  const fallback = row?.value !== null && row?.value !== undefined && row?.value !== "" ? Number(row.value) : Number.NaN;
+  const fallback = metricNumber(row?.value);
   return Number.isFinite(fallback) ? fallback : Number.NaN;
 }
 
@@ -1451,7 +1663,13 @@ function renderMarkdownReport(cwd, runs, goal, plan, opts = {}) {
   const entries = buildReportMetricEntries(cleanRuns, primaryMetric, preferHigher);
   const best = entries[0] || null;
   const worst = entries[entries.length - 1] || null;
-  const traces = buildRunTraces(cwd, cleanRuns, primaryMetric, preferHigher);
+  const traces = buildRunTraces({
+    cwd,
+    runs: cleanRuns,
+    primaryMetric,
+    preferHigher,
+    readRunMetricSeries,
+  });
   const plotRefs = opts.includePlots ? writeReportPlots(cwd, opts.outPath, entries, traces, primaryMetric, preferHigher) : [];
   const completeRuns = cleanRuns.filter((row) => ["complete", "completed", "promoted"].includes(String(row.status || "").toLowerCase()));
   const failedRuns = cleanRuns.filter((row) => {
@@ -1565,6 +1783,52 @@ function renderMarkdownReport(cwd, runs, goal, plan, opts = {}) {
     ["GPU-hours", totalGpuHours > 0 ? formatReportNumber(totalGpuHours) : "—"],
   ]));
   lines.push("");
+
+  // Compute utilization — MFU per run when we have the inputs.
+  const mfuRows = cleanRuns
+    .map((r) => ({ row: r, mfu: computeMfuForRow(r, {}) }))
+    .filter((e) => e.mfu && e.mfu.mfu !== null);
+  if (mfuRows.length > 0) {
+    lines.push("## Compute Utilization (MFU)");
+    lines.push("");
+    const tbl = mfuRows
+      .sort((a, b) => b.mfu.mfu - a.mfu.mfu)
+      .slice(0, 10)
+      .map((e) => [
+        `\`${e.row.id}\``,
+        e.mfu.gpuName || "?",
+        String(e.mfu.worldSize),
+        ((e.mfu.achievedFlopsPerSec || 0) / 1e12).toFixed(1),
+        e.mfu.peakTflopsSingle ? (e.mfu.peakTflopsSingle * e.mfu.worldSize).toFixed(0) : "?",
+        `${(e.mfu.mfu * 100).toFixed(1)}%`,
+      ]);
+    lines.push(markdownTable(["Run", "GPU", "World", "TFLOP/s", "Peak TF/s", "MFU"], tbl));
+    lines.push("");
+    const sorted = mfuRows.map((e) => e.mfu.mfu).sort((a, b) => a - b);
+    const med = sorted[Math.floor(sorted.length / 2)];
+    lines.push(`Median MFU across runs: **${(med * 100).toFixed(1)}%**${med < 0.20 ? " — likely dataloader-bound; profile with `nvidia-smi dmon`" : med < 0.35 ? " — try FlashAttention-2, torch.compile, fused optimizer" : med >= 0.45 ? " — well-tuned" : ""}.`);
+    lines.push("");
+  }
+
+  // Overfit summaries — show only runs that have row.overfit attached (those
+  // whose post-completion analyzeOverfit succeeded).
+  const overfitRows = cleanRuns.filter((r) => r.overfit && (r.overfit.diverge_step !== null || r.overfit.wasted_fraction > 0.1));
+  if (overfitRows.length > 0) {
+    lines.push("## Overfit Watch");
+    lines.push("");
+    const tbl = overfitRows.slice(0, 10).map((r) => [
+      `\`${r.id}\``,
+      r.overfit.val_best_step,
+      formatReportNumber(r.overfit.val_best_value),
+      r.overfit.diverge_step ?? "—",
+      `${(r.overfit.wasted_fraction * 100).toFixed(1)}%`,
+    ]);
+    lines.push(markdownTable(["Run", "Val best step", "Val best value", "Diverged at", "Wasted compute"], tbl));
+    lines.push("");
+    lines.push("Run `autoresearch overfit-watch <run-id>` for the full breakdown.");
+    lines.push("");
+  }
+
   lines.push("## Loss Curves");
   lines.push("");
   if (plotRefs.length) {
@@ -1904,10 +2168,10 @@ function collectLedgerMetricValues(runs) {
     const metrics = row.metrics || {};
     for (const [metric, raw] of Object.entries(metrics)) {
       if (!isNumericMetric(raw)) continue;
-      values.push({ runId: row.id, metric, value: Number(raw) });
+      values.push({ runId: row.id, metric, value: metricNumber(raw) });
     }
     if (isNumericMetric(row.value)) {
-      values.push({ runId: row.id, metric: "value", value: Number(row.value) });
+      values.push({ runId: row.id, metric: "value", value: metricNumber(row.value) });
     }
   }
   return values;
@@ -2085,8 +2349,8 @@ function cmdDiffRuns() {
   const allMetricKeys = new Set([...Object.keys(rowA.metrics || {}), ...Object.keys(rowB.metrics || {})]);
   const metricDiffs = [];
   for (const key of allMetricKeys) {
-    const valA = Number(rowA.metrics?.[key]);
-    const valB = Number(rowB.metrics?.[key]);
+    const valA = metricNumber(rowA.metrics?.[key]);
+    const valB = metricNumber(rowB.metrics?.[key]);
     if (Number.isFinite(valA) && Number.isFinite(valB)) {
       const delta = valB - valA;
       const arrow = delta > 0 ? "\u2191" : delta < 0 ? "\u2193" : " ";
@@ -3040,79 +3304,6 @@ function readRunMetricSeries(cwd, run, metricName, customRegexSource) {
     step: index + 1,
     value,
   }));
-}
-
-function summarizeTraces(traces, preferHigher = false) {
-  const finalEntries = traces
-    .map((trace) => ({ trace, final: Number(trace.final) }))
-    .filter((entry) => Number.isFinite(entry.final));
-  const sorted = finalEntries
-    .slice()
-    .sort((a, b) => (preferHigher ? b.final - a.final : a.final - b.final));
-  const bestFinal = sorted[0] || null;
-  const worstFinal = sorted[sorted.length - 1] || null;
-
-  const improved = traces
-    .map((trace) => {
-      const first = Number(trace.values?.[0]?.value);
-      const final = Number(trace.final);
-      return {
-        trace,
-        delta: Number.isFinite(first) && Number.isFinite(final)
-          ? (preferHigher ? final - first : first - final)
-          : Number.NaN,
-      };
-    })
-    .filter((entry) => Number.isFinite(entry.delta))
-    .sort((a, b) => b.delta - a.delta);
-
-  return {
-    bestFinal,
-    worstFinal,
-    bestImprovement: improved[0] || null,
-  };
-}
-
-function buildRunTraces(cwd, runs, primaryMetric, preferHigher, customRegexSource) {
-  const palette = [
-    "#62d6a6",
-    "#71a7ff",
-    "#f6c177",
-    "#ff8b8b",
-    "#c38bff",
-    "#6ee7e7",
-  ];
-
-  return runs
-    .filter((run) => !run.parse_error)
-    .map((run, index) => {
-      const values = readRunMetricSeries(cwd, run, primaryMetric, customRegexSource);
-      const metricRaw = run?.metrics?.[primaryMetric];
-      const finalFromMetrics = metricRaw !== null && metricRaw !== undefined && metricRaw !== "" ? Number(metricRaw) : Number.NaN;
-      const final = Number.isFinite(finalFromMetrics)
-        ? finalFromMetrics
-        : Number(values.length ? values[values.length - 1].value : Number.NaN);
-      const fallbackValues = values.length
-        ? values
-        : (Number.isFinite(final) ? [{ step: 1, value: final }] : []);
-      return {
-        id: run.id,
-        status: run.status,
-        final,
-        values: fallbackValues,
-        log: run.log || "",
-        notes: run.notes || "",
-        color: palette[index % palette.length],
-        isBest: false,
-        isLatest: false,
-        index,
-      };
-    })
-    .filter((trace) => trace.values.length || Number.isFinite(trace.final))
-    .map((trace) => ({
-      ...trace,
-      final: Number.isFinite(trace.final) ? trace.final : (trace.values.length ? trace.values[trace.values.length - 1].value : Number.NaN),
-    }));
 }
 
 function readExperimentHistory(cwd) {
@@ -5397,7 +5588,14 @@ function buildDashboardState(cwd, systemSnapshot = null) {
   const primaryMetric = choosePrimaryMetric(goal, runs);
   const preferHigher = String(goal.direction || "").toLowerCase().includes("high");
   const summary = summarizeDashboardRuns(runs, primaryMetric, preferHigher);
-  const traces = buildRunTraces(cwd, runs, primaryMetric, preferHigher);
+  const traces = buildRunTraces({
+    cwd,
+    runs,
+    primaryMetric,
+    preferHigher,
+    readRunMetricSeries,
+  });
+  const lineage = buildRunLineage(runs, primaryMetric);
   const comparison = summarizeTraces(traces, preferHigher);
   const system = systemSnapshot || readSystemMetrics(cwd);
   const thread = readThreadTail(cwd, 24);
@@ -5440,6 +5638,7 @@ function buildDashboardState(cwd, systemSnapshot = null) {
     preferHigher,
     summary,
     traces: payloadTraces,
+    lineage,
     comparison,
     payloadInfo: {
       dense: densePayload,
@@ -6420,6 +6619,70 @@ async function handleDashboardAction(req, res, getCwd, setCwd, hostIsLoopback, g
   }
 }
 
+function renderAsciiSparkline(values) {
+  const finite = values.filter((v) => Number.isFinite(v));
+  if (finite.length < 2) return finite.length === 1 ? "·" : "";
+  const min = Math.min(...finite);
+  const max = Math.max(...finite);
+  const span = max - min || 1;
+  const ramp = "▁▂▃▄▅▆▇█";
+  return values.map((v) => {
+    if (!Number.isFinite(v)) return "?";
+    const idx = Math.min(ramp.length - 1, Math.max(0, Math.round(((v - min) / span) * (ramp.length - 1))));
+    return ramp[idx];
+  }).join("");
+}
+
+function cmdCurves() {
+  const cwd = targetDir();
+  const runId = option("--id", positionalText(["--id", "--format", "--dir", "--metric"])) || null;
+  const format = String(option("--format", "text")).toLowerCase();
+  if (!runId) {
+    console.error("autoresearch curves: missing --id <run-id>");
+    process.exitCode = 1;
+    return;
+  }
+  const payload = readCurvesForRun(cwd, runId);
+  if (format === "json" || format === "jsonl") {
+    if (format === "jsonl") {
+      for (const point of payload.series) {
+        console.log(JSON.stringify(point));
+      }
+      return;
+    }
+    console.log(JSON.stringify(payload, null, 2));
+    return;
+  }
+  if (payload.error) {
+    console.error(`autoresearch curves: ${payload.error}`);
+    process.exitCode = 1;
+    return;
+  }
+  const series = payload.series;
+  if (series.length === 0) {
+    console.log(`run: ${payload.run_id}`);
+    console.log("series: empty (no metric samples were streamed)");
+    return;
+  }
+  const values = series.map((p) => Number(p.value));
+  const finite = values.filter((v) => Number.isFinite(v));
+  const metricName = series[0].metric || "metric";
+  const min = finite.length ? Math.min(...finite) : null;
+  const max = finite.length ? Math.max(...finite) : null;
+  const last = values.length ? values[values.length - 1] : null;
+  const fmt = (v) => (Number.isFinite(v) ? Number(v).toFixed(4).replace(/\.?0+$/, "") : String(v));
+  console.log(`run: ${payload.run_id}`);
+  console.log(`metric: ${metricName}`);
+  console.log(`samples: ${series.length}`);
+  if (min !== null) console.log(`min: ${fmt(min)}`);
+  if (max !== null) console.log(`max: ${fmt(max)}`);
+  if (last !== null) console.log(`final: ${fmt(last)}`);
+  const non = values.length - finite.length;
+  if (non > 0) console.log(`non_finite: ${non}`);
+  const spark = renderAsciiSparkline(values);
+  if (spark) console.log(`curve: ${spark}`);
+}
+
 function cmdDashboard() {
   const cwd = targetDir();
   let activeCwd = cwd;
@@ -6472,15 +6735,51 @@ function cmdDashboard() {
       fs.createReadStream(file).pipe(res);
       return;
     }
+    if (url.pathname === "/lineage") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(html);
+      return;
+    }
+    if (url.pathname === "/diff") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(html);
+      return;
+    }
     if (url.pathname === "/api/state") {
       res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
       res.end(`${JSON.stringify(buildDashboardState(activeCwd, systemSampler.getSnapshot()), null, 2)}\n`);
+      return;
+    }
+    if (url.pathname === "/api/lineage") {
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+      const state = buildDashboardState(activeCwd, systemSampler.getSnapshot());
+      res.end(`${JSON.stringify(state.lineage || { roots: [] }, null, 2)}\n`);
       return;
     }
     if (url.pathname === "/api/runs") {
       res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
       const state = buildDashboardState(activeCwd, systemSampler.getSnapshot());
       res.end(`${JSON.stringify(state.runs, null, 2)}\n`);
+      return;
+    }
+    if (url.pathname === "/api/diff") {
+      const runIdA = String(url.searchParams.get("a") || url.searchParams.get("id_a") || "").trim();
+      const runIdB = String(url.searchParams.get("b") || url.searchParams.get("id_b") || "").trim();
+      if (!runIdA || !runIdB) {
+        res.writeHead(404, { "content-type": "application/json; charset=utf-8" });
+        res.end(`${JSON.stringify({ error: "missing diff run ids" }, null, 2)}\n`);
+        return;
+      }
+      const rows = parseRunsLedger(path.join(activeCwd, ".researchloop", "scratchpad", "runs.jsonl"));
+      const rowA = rows.find((r) => r && !r.parse_error && String(r.id) === runIdA) || null;
+      const rowB = rows.find((r) => r && !r.parse_error && String(r.id) === runIdB) || null;
+      if (!rowA || !rowB) {
+        res.writeHead(404, { "content-type": "application/json; charset=utf-8" });
+        res.end(`${JSON.stringify({ error: "run not found", id_a: runIdA, id_b: runIdB }, null, 2)}\n`);
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+      res.end(`${JSON.stringify(buildRunDiff(rowA, rowB), null, 2)}\n`);
       return;
     }
     if (url.pathname === "/api/goal") {
@@ -6507,6 +6806,13 @@ function cmdDashboard() {
     }
     if (url.pathname.startsWith("/api/action/")) {
       handleDashboardAction(req, res, () => activeCwd, setActiveCwd, hostIsLoopback, () => systemSampler.getSnapshot());
+      return;
+    }
+    if (url.pathname === "/api/curves") {
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+      const runId = url.searchParams.get("run") || url.searchParams.get("id");
+      const payload = readCurvesForRun(activeCwd, runId);
+      res.end(`${JSON.stringify(payload, null, 2)}\n`);
       return;
     }
     res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
@@ -6733,6 +7039,29 @@ function cmdCompare() {
       console.log(`  ${level.key}: available=${level.available}/${level.metrics.length} avg=${formatReportPercent(level.avg_improvement)} weighted=${formatReportNumber(level.weighted_score)}`);
     }
   }
+
+  // Auto-significance: when the best run is distinct from the worst, run
+  // the permutation test + bootstrap CI automatically. Skips when either
+  // side is a single-point scalar AND the other side is also a single-point
+  // scalar (uninformative) unless the user passes --skip-significance.
+  if (!hasFlag("--skip-significance") && scored.length >= 2 && best.row.id !== worst.row.id) {
+    try {
+      const extractA = extractRunValues(worst.row, resolvedMetric);
+      const extractB = extractRunValues(best.row, resolvedMetric);
+      if (extractA.values.length > 0 && extractB.values.length > 0
+          && !(extractA.source === "scalar" && extractB.source === "scalar")) {
+        const stats = runSignificanceTest(extractA.values, extractB.values, { nPermutations: 5000, nBootstrap: 2000, seed: 42 });
+        const verdict = stats.p_value < 0.05 ? "SIGNIFICANT" : "not significant";
+        console.log("---");
+        console.log(`significance (best vs worst, auto):`);
+        console.log(`  delta: ${(stats.delta).toFixed(6)}   CI95 [${stats.ci_low.toFixed(6)}, ${stats.ci_high.toFixed(6)}]`);
+        console.log(`  Cohen's d: ${stats.cohens_d.toFixed(3)}   p (permutation): ${stats.p_value.toFixed(4)}   verdict: ${verdict}`);
+        if (stats.p_value >= 0.05) {
+          console.log("  Tip: \"best\" may be inside the seed noise. Run `autoresearch power --detect-delta` to size N.");
+        }
+      }
+    } catch { /* never block compare on a stats failure */ }
+  }
 }
 
 function renderMetricTierText(analysis) {
@@ -6792,7 +7121,262 @@ function rowMetricValue(row, key) {
   if (!row || !row.metrics || !(key in row.metrics)) {
     return Number.NaN;
   }
-  return Number(row.metrics[key]);
+  return metricNumber(row.metrics[key]);
+}
+
+// Returns { values, source } for a run row.
+// - Seed aggregate rows (with seeds.values array) contribute every seed value.
+// - Single rows contribute the scalar at metrics[name], if finite.
+// - Returns { values: [], source: "none" } when nothing usable is present.
+function extractRunValues(row, metricName) {
+  if (!row) return { values: [], source: "none" };
+  if (row.seeds && Array.isArray(row.seeds.values)) {
+    const vals = row.seeds.values.filter((v) => Number.isFinite(Number(v))).map(Number);
+    if (vals.length > 0) return { values: vals, source: "seeds" };
+  }
+  const v = metricNumber(row.metrics ? row.metrics[metricName] : NaN);
+  if (Number.isFinite(v)) return { values: [v], source: "scalar" };
+  return { values: [], source: "none" };
+}
+
+// Mulberry32 PRNG — deterministic, no deps. Returns floats in [0, 1).
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function next() {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function arrMean(arr) {
+  if (arr.length === 0) return NaN;
+  return arr.reduce((a, b) => a + b, 0) / arr.length;
+}
+
+// Sample standard deviation (n-1). For n<=1 returns 0 to avoid NaN-cascade in display.
+function arrStd(arr) {
+  if (arr.length <= 1) return 0;
+  const m = arrMean(arr);
+  const ss = arr.reduce((a, b) => a + (b - m) ** 2, 0);
+  return Math.sqrt(ss / (arr.length - 1));
+}
+
+function percentile(sortedAsc, p) {
+  if (sortedAsc.length === 0) return NaN;
+  if (sortedAsc.length === 1) return sortedAsc[0];
+  const idx = (sortedAsc.length - 1) * p;
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  if (lo === hi) return sortedAsc[lo];
+  return sortedAsc[lo] + (sortedAsc[hi] - sortedAsc[lo]) * (idx - lo);
+}
+
+// Permutation test (two-sided) + bootstrap CI on the delta of means.
+//
+// Permutation test answers "is the observed |delta| unlikely under the null
+// that the two groups are exchangeable?" — exact for small n, no t-distribution
+// approximation required.
+//
+// Bootstrap CI: resample within each group, recompute delta. Wide CIs at small
+// n are honest; the caller should not pretend otherwise.
+function runSignificanceTest(valuesA, valuesB, opts = {}) {
+  const nPerm = Math.max(100, Math.min(200000, opts.nPermutations || 10000));
+  const nBoot = Math.max(100, Math.min(200000, opts.nBootstrap || 10000));
+  const seed = Number.isFinite(opts.seed) ? opts.seed : 42;
+  const rng = mulberry32(seed);
+
+  const meanA = arrMean(valuesA);
+  const meanB = arrMean(valuesB);
+  const stdA = arrStd(valuesA);
+  const stdB = arrStd(valuesB);
+  const observedDelta = meanA - meanB;
+
+  const pooled = valuesA.concat(valuesB);
+  const nA = valuesA.length;
+  let countExtreme = 0;
+  for (let i = 0; i < nPerm; i += 1) {
+    const shuffled = pooled.slice();
+    for (let j = shuffled.length - 1; j > 0; j -= 1) {
+      const k = Math.floor(rng() * (j + 1));
+      const tmp = shuffled[j];
+      shuffled[j] = shuffled[k];
+      shuffled[k] = tmp;
+    }
+    let sumA = 0;
+    for (let j = 0; j < nA; j += 1) sumA += shuffled[j];
+    let sumB = 0;
+    for (let j = nA; j < shuffled.length; j += 1) sumB += shuffled[j];
+    const permDelta = sumA / nA - sumB / (shuffled.length - nA);
+    if (Math.abs(permDelta) >= Math.abs(observedDelta) - 1e-12) countExtreme += 1;
+  }
+  const pValue = countExtreme / nPerm;
+
+  const bootDeltas = new Array(nBoot);
+  for (let i = 0; i < nBoot; i += 1) {
+    let sumA = 0;
+    for (let j = 0; j < nA; j += 1) sumA += valuesA[Math.floor(rng() * nA)];
+    let sumB = 0;
+    const nB = valuesB.length;
+    for (let j = 0; j < nB; j += 1) sumB += valuesB[Math.floor(rng() * nB)];
+    bootDeltas[i] = sumA / nA - sumB / nB;
+  }
+  bootDeltas.sort((a, b) => a - b);
+  const ciLow = percentile(bootDeltas, 0.025);
+  const ciHigh = percentile(bootDeltas, 0.975);
+
+  // Pooled SD for Cohen's d; falls back to averaged SD when one group has n=1.
+  let pooledSd = NaN;
+  if (valuesA.length > 1 || valuesB.length > 1) {
+    const num = (Math.max(0, valuesA.length - 1)) * stdA ** 2 + (Math.max(0, valuesB.length - 1)) * stdB ** 2;
+    const den = Math.max(1, valuesA.length + valuesB.length - 2);
+    pooledSd = Math.sqrt(num / den);
+  }
+  const cohensD = Number.isFinite(pooledSd) && pooledSd > 0 ? observedDelta / pooledSd : null;
+
+  return {
+    n_a: valuesA.length,
+    n_b: valuesB.length,
+    mean_a: meanA,
+    mean_b: meanB,
+    std_a: stdA,
+    std_b: stdB,
+    delta: observedDelta,
+    ci_low: ciLow,
+    ci_high: ciHigh,
+    cohens_d: cohensD,
+    p_value: pValue,
+    n_permutations: nPerm,
+    n_bootstrap: nBoot,
+    seed,
+  };
+}
+
+function fmtSig(n, digits = 6) {
+  if (n === null || n === undefined || !Number.isFinite(n)) return "null";
+  return Number(n).toFixed(digits);
+}
+
+async function cmdSignificance() {
+  const cwd = targetDir();
+  const sigIdx = args.findIndex((a) => a === "significance" || a === "sig");
+  const runIdA = String(option("--id-a", sigIdx !== -1 && args[sigIdx + 1] && !args[sigIdx + 1].startsWith("-") ? args[sigIdx + 1] : "")).trim();
+  const runIdB = String(option("--id-b", sigIdx !== -1 && args[sigIdx + 2] && !args[sigIdx + 2].startsWith("-") ? args[sigIdx + 2] : "")).trim();
+  const formatJson = String(option("--format", "text")).toLowerCase() === "json";
+  const alpha = Math.max(0, Math.min(1, parseFloat(String(option("--alpha", "0.05")))));
+  const nPermutations = parseInt(String(option("--n-permutations", "10000")), 10);
+  const nBootstrap = parseInt(String(option("--n-bootstrap", "10000")), 10);
+  const seed = parseInt(String(option("--seed", "42")), 10);
+  const requireSignificant = hasFlag("--require-significant");
+  const directionRaw = option("--direction", null);
+
+  if (!runIdA || !runIdB) {
+    console.error("Usage: autoresearch significance <run-a> <run-b> [--metric NAME] [--alpha N] [--n-permutations N] [--seed N] [--format text|json] [--require-significant] [--dir PATH]");
+    process.exitCode = 1;
+    return;
+  }
+
+  const ledger = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
+  if (!fs.existsSync(ledger)) {
+    console.error("No run ledger found at " + ledger);
+    process.exitCode = 1;
+    return;
+  }
+
+  const rowA = readRunRowById(cwd, runIdA);
+  const rowB = readRunRowById(cwd, runIdB);
+  if (!rowA) { console.error("Run not found: " + runIdA); process.exitCode = 1; return; }
+  if (!rowB) { console.error("Run not found: " + runIdB); process.exitCode = 1; return; }
+
+  let metricName = option("--metric", null);
+  if (!metricName || typeof metricName !== "string") {
+    const fromA = rowA.metrics ? Object.keys(rowA.metrics).filter((k) => !k.endsWith("_std"))[0] : null;
+    const fromB = rowB.metrics ? Object.keys(rowB.metrics).filter((k) => !k.endsWith("_std"))[0] : null;
+    metricName = fromA || fromB || "val_loss";
+  }
+  metricName = String(metricName).trim();
+
+  const extractA = extractRunValues(rowA, metricName);
+  const extractB = extractRunValues(rowB, metricName);
+  if (extractA.values.length === 0) {
+    console.error(`Run ${runIdA} has no usable value for metric "${metricName}".`);
+    process.exitCode = 1;
+    return;
+  }
+  if (extractB.values.length === 0) {
+    console.error(`Run ${runIdB} has no usable value for metric "${metricName}".`);
+    process.exitCode = 1;
+    return;
+  }
+  if (extractA.source === "scalar" && extractB.source === "scalar") {
+    console.error("WARNING: both sides are single-point runs (n=1 vs n=1). Permutation p-value is uninformative; rerun with `--seeds N` on at least one side for a real test.");
+  }
+
+  const stats = runSignificanceTest(extractA.values, extractB.values, {
+    nPermutations,
+    nBootstrap,
+    seed,
+  });
+  const significant = stats.p_value < alpha;
+  const direction = directionRaw && typeof directionRaw === "string" ? String(directionRaw).toLowerCase() : null;
+  let interpretation = "no preference declared";
+  if (direction === "lower" || direction === "min" || direction === "minimize") {
+    interpretation = stats.delta < 0 ? `${runIdA} better (lower)` : (stats.delta > 0 ? `${runIdB} better (lower)` : "tied");
+  } else if (direction === "higher" || direction === "max" || direction === "maximize") {
+    interpretation = stats.delta > 0 ? `${runIdA} better (higher)` : (stats.delta < 0 ? `${runIdB} better (higher)` : "tied");
+  }
+
+  const minN = Math.min(stats.n_a, stats.n_b);
+  const smallN = minN < 3;
+
+  if (formatJson) {
+    const out = {
+      metric: metricName,
+      alpha,
+      run_a: { id: runIdA, n: stats.n_a, mean: stats.mean_a, std: stats.std_a, source: extractA.source },
+      run_b: { id: runIdB, n: stats.n_b, mean: stats.mean_b, std: stats.std_b, source: extractB.source },
+      delta: stats.delta,
+      ci_95: [stats.ci_low, stats.ci_high],
+      cohens_d: stats.cohens_d,
+      p_value: stats.p_value,
+      significant,
+      n_permutations: stats.n_permutations,
+      n_bootstrap: stats.n_bootstrap,
+      seed: stats.seed,
+      direction,
+      interpretation,
+      small_n_warning: smallN,
+    };
+    console.log(JSON.stringify(out, null, 2));
+  } else {
+    console.log(`significance: ${runIdA} vs ${runIdB}`);
+    console.log(`metric: ${metricName}`);
+    console.log(`alpha: ${alpha}`);
+    console.log(`n_permutations: ${stats.n_permutations}`);
+    console.log(`n_bootstrap: ${stats.n_bootstrap}`);
+    console.log(`seed: ${stats.seed}`);
+    console.log("---");
+    console.log("| run | source | n | mean | std |");
+    console.log("| --- | --- | --- | --- | --- |");
+    console.log(`| ${runIdA} | ${extractA.source} | ${stats.n_a} | ${fmtSig(stats.mean_a)} | ${fmtSig(stats.std_a)} |`);
+    console.log(`| ${runIdB} | ${extractB.source} | ${stats.n_b} | ${fmtSig(stats.mean_b)} | ${fmtSig(stats.std_b)} |`);
+    console.log("---");
+    console.log(`delta (${runIdA} - ${runIdB}): ${fmtSig(stats.delta)}`);
+    console.log(`ci_95 (bootstrap): [${fmtSig(stats.ci_low)}, ${fmtSig(stats.ci_high)}]`);
+    console.log(`cohens_d: ${stats.cohens_d === null ? "null" : fmtSig(stats.cohens_d, 3)}`);
+    console.log(`p_value (permutation, two-sided): ${fmtSig(stats.p_value, 4)}`);
+    console.log(`significant: ${significant ? "yes" : "no"} (p${significant ? "<" : ">="}${alpha})`);
+    if (direction) console.log(`interpretation: ${interpretation}`);
+    if (smallN) {
+      console.log(`warning: small n on at least one side (min=${minN}) — CI and effect size are wide`);
+    }
+  }
+
+  if (requireSignificant && !significant) {
+    process.exitCode = 1;
+  }
 }
 
 function parseMetric(metricText) {
@@ -6955,6 +7539,482 @@ function parseMetricFromOutput(output, metricName, customRegexSource) {
       }
     } catch {
       // not JSON, skip
+    }
+  }
+  return null;
+}
+
+// Eval config (G04/G05/G09/G11) — parses .researchloop/eval.yaml without a YAML dep.
+// Keep this intentionally small: top-level scalar keys and inline-list rules.
+
+function loadEvalConfig(cwd) {
+  const evalFile = path.join(cwd, ".researchloop", "eval.yaml");
+  if (!fs.existsSync(evalFile)) {
+    return { earlyStop: [], gates: [], checkpointGlob: null, resumeFlagTemplate: null, metrics: [], evalCommand: null, present: false };
+  }
+  const raw = fs.readFileSync(evalFile, "utf8");
+  const spec = loadEvalSpec(cwd);
+  return {
+    earlyStop: parseEvalListSection(raw, "early_stop"),
+    gates: parseEvalListSection(raw, "gates"),
+    checkpointGlob: parseEvalScalar(raw, "checkpoint_glob"),
+    resumeFlagTemplate: parseEvalScalar(raw, "resume_flag_template"),
+    metrics: spec.metrics || [],
+    evalCommand: spec.evalCommand || null,
+    present: true,
+  };
+}
+
+function stripYamlInlineComment(text) {
+  let inStr = null;
+  let out = "";
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inStr) {
+      out += ch;
+      if (ch === inStr && text[i - 1] !== "\\") inStr = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inStr = ch;
+      out += ch;
+      continue;
+    }
+    if (ch === "#") break;
+    out += ch;
+  }
+  return out.trim();
+}
+
+function parseEvalScalar(text, key) {
+  const re = new RegExp(`^${escapeRegExp(key)}\\s*:\\s*(.*)$`);
+  for (const rawLine of text.split(/\r?\n/)) {
+    if (/^\s*#/.test(rawLine)) continue;
+    const match = rawLine.match(re);
+    if (!match) continue;
+    let value = stripYamlInlineComment(match[1] || "");
+    if (!value || value === "null" || value === "~" || value === "[]") return null;
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    return value.trim() || null;
+  }
+  return null;
+}
+
+function parseEvalListSection(text, sectionName) {
+  const lines = text.split(/\r?\n/);
+  const out = [];
+  let inSection = false;
+  const headRe = new RegExp(`^${sectionName}\\s*:`);
+  const flowEmptyRe = new RegExp(`^${sectionName}\\s*:\\s*\\[\\s*\\]\\s*$`);
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (!inSection) {
+      if (flowEmptyRe.test(line)) {
+        return [];
+      }
+      if (headRe.test(line)) {
+        inSection = true;
+      }
+      continue;
+    }
+    if (/^\S/.test(line) && !/^\s*-/.test(line)) {
+      break;
+    }
+    const item = line.match(/^\s*-\s*(\{.*\})\s*$/);
+    if (item) {
+      const parsed = parseInlineObject(item[1]);
+      if (parsed) out.push(parsed);
+    }
+  }
+  return out;
+}
+
+function parseInlineObject(text) {
+  const inner = text.replace(/^\{|\}$/g, "").trim();
+  if (!inner) return null;
+  const parts = [];
+  let depth = 0;
+  let buf = "";
+  let inStr = null;
+  for (let i = 0; i < inner.length; i += 1) {
+    const ch = inner[i];
+    if (inStr) {
+      buf += ch;
+      if (ch === inStr && inner[i - 1] !== "\\") inStr = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") { inStr = ch; buf += ch; continue; }
+    if (ch === "{" || ch === "[") depth += 1;
+    else if (ch === "}" || ch === "]") depth -= 1;
+    if (ch === "," && depth === 0) { parts.push(buf); buf = ""; continue; }
+    buf += ch;
+  }
+  if (buf.trim()) parts.push(buf);
+  const obj = {};
+  for (const part of parts) {
+    const idx = part.indexOf(":");
+    if (idx === -1) continue;
+    const key = part.slice(0, idx).trim().replace(/^["']|["']$/g, "");
+    let value = part.slice(idx + 1).trim();
+    if (value.startsWith('"') && value.endsWith('"')) {
+      value = value.slice(1, -1);
+    } else if (value.startsWith("'") && value.endsWith("'")) {
+      value = value.slice(1, -1);
+    } else if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(value)) {
+      value = Number(value);
+    } else if (value === "true") {
+      value = true;
+    } else if (value === "false") {
+      value = false;
+    } else if (value === "null" || value === "~") {
+      value = null;
+    }
+    obj[key] = value;
+  }
+  return obj;
+}
+
+function toPosixPath(filePath) {
+  return String(filePath).split(path.sep).join("/");
+}
+
+function hasGlobMagic(pattern) {
+  return /[*?\[]/.test(String(pattern || ""));
+}
+
+function globStaticBase(pattern) {
+  const normalized = String(pattern || "").replace(/\\/g, "/").replace(/^\.\//, "");
+  const firstMagic = normalized.search(/[*?\[]/);
+  if (firstMagic === -1) {
+    const dir = path.posix.dirname(normalized);
+    return dir === "." ? "." : dir;
+  }
+  const prefix = normalized.slice(0, firstMagic);
+  const slash = prefix.lastIndexOf("/");
+  if (slash === -1) return ".";
+  const dir = prefix.slice(0, slash);
+  return dir || ".";
+}
+
+function globPatternToRegex(pattern) {
+  const normalized = String(pattern || "").replace(/\\/g, "/").replace(/^\.\//, "");
+  let out = "^";
+  for (let i = 0; i < normalized.length; i += 1) {
+    const ch = normalized[i];
+    if (ch === "*") {
+      if (normalized[i + 1] === "*") {
+        i += 1;
+        if (normalized[i + 1] === "/") {
+          i += 1;
+          out += "(?:.*/)?";
+        } else {
+          out += ".*";
+        }
+      } else {
+        out += "[^/]*";
+      }
+      continue;
+    }
+    if (ch === "?") {
+      out += "[^/]";
+      continue;
+    }
+    out += ch.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  }
+  out += "$";
+  return new RegExp(out);
+}
+
+function collectFilesForGlob(baseDir, out = [], limit = 20000) {
+  if (out.length >= limit) return out;
+  let entries;
+  try {
+    entries = fs.readdirSync(baseDir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
+    if (out.length >= limit) break;
+    const full = path.join(baseDir, entry.name);
+    if (entry.isDirectory()) {
+      if ([".git", "node_modules", ".venv", "venv", "__pycache__", ".mypy_cache", ".pytest_cache"].includes(entry.name)) {
+        continue;
+      }
+      collectFilesForGlob(full, out, limit);
+    } else if (entry.isFile()) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+function checkpointResult(cwd, filePath, stat) {
+  const absolute = path.resolve(filePath);
+  return {
+    absolute,
+    relative: toPosixPath(path.relative(cwd, absolute)),
+    mtimeMs: stat.mtimeMs,
+  };
+}
+
+function findNewestCheckpoint(cwd, pattern) {
+  if (!pattern || typeof pattern !== "string") return null;
+  const normalized = pattern.trim().replace(/\\/g, "/").replace(/^\.\//, "");
+  if (!normalized) return null;
+  if (!hasGlobMagic(normalized)) {
+    const filePath = path.resolve(cwd, normalized);
+    try {
+      const stat = fs.statSync(filePath);
+      return stat.isFile() ? checkpointResult(cwd, filePath, stat) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  const base = globStaticBase(normalized);
+  const baseDir = path.resolve(cwd, base);
+  if (!fs.existsSync(baseDir)) return null;
+  const re = globPatternToRegex(normalized);
+  let best = null;
+  for (const filePath of collectFilesForGlob(baseDir)) {
+    const rel = toPosixPath(path.relative(cwd, filePath));
+    if (!re.test(rel)) continue;
+    let stat;
+    try {
+      stat = fs.statSync(filePath);
+    } catch {
+      continue;
+    }
+    if (!stat.isFile()) continue;
+    const hit = checkpointResult(cwd, filePath, stat);
+    if (!best || hit.mtimeMs > best.mtimeMs || (hit.mtimeMs === best.mtimeMs && hit.relative > best.relative)) {
+      best = hit;
+    }
+  }
+  return best;
+}
+
+function existingCheckpointFromRow(cwd, row) {
+  if (!row || !row.last_checkpoint || typeof row.last_checkpoint !== "string") return null;
+  const rel = row.last_checkpoint.trim();
+  if (!rel) return null;
+  const absolute = path.isAbsolute(rel) ? rel : path.resolve(cwd, rel);
+  try {
+    const stat = fs.statSync(absolute);
+    return stat.isFile() ? checkpointResult(cwd, absolute, stat) : null;
+  } catch {
+    return null;
+  }
+}
+
+function applyResumeFlagTemplate(commandText, template, checkpointRel) {
+  const flagTemplate = template && typeof template === "string" ? template : "--resume {path}";
+  const quotedPath = shellQuote(checkpointRel);
+  const flag = flagTemplate
+    .replace(/\{path\}/g, quotedPath)
+    .replace(/\{checkpoint\}/g, quotedPath)
+    .trim();
+  return flag ? `${commandText} ${flag}` : commandText;
+}
+
+// Retry rules (G12): same loader pattern as gates / early_stop.
+function loadEvalRetryRules(cwd) {
+  const evalFile = path.join(cwd, ".researchloop", "eval.yaml");
+  if (!fs.existsSync(evalFile)) return [];
+  const raw = fs.readFileSync(evalFile, "utf8");
+  return parseEvalListSection(raw, "retry");
+}
+
+// Apply a transform string to a command. Supported today:
+//   halve:<flag>         e.g. halve:batch_size  -> "--batch_size 64" becomes "--batch_size 32"
+//   set:<flag>=<value>   e.g. set:gradient_checkpointing=true
+// Returns { command, applied: bool, change: string|null }
+function applyRetryTransform(commandText, transform) {
+  if (!commandText || !transform) return { command: commandText, applied: false, change: null };
+  const halveMatch = String(transform).match(/^halve:([A-Za-z0-9_.-]+)$/);
+  if (halveMatch) {
+    const flag = halveMatch[1];
+    const escapedFlag = flag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // Match --flag VAL, --flag=VAL, -flag VAL, -flag=VAL, or env-style FLAG=VAL.
+    const patterns = [
+      new RegExp(`(--?${escapedFlag})(\\s+)(-?\\d+(?:\\.\\d+)?)`, "i"),
+      new RegExp(`(--?${escapedFlag}=)(-?\\d+(?:\\.\\d+)?)`, "i"),
+      new RegExp(`(\\b${escapedFlag}=)(-?\\d+(?:\\.\\d+)?)`),
+    ];
+    for (const re of patterns) {
+      const m = commandText.match(re);
+      if (m) {
+        // m[0] is full match; m[1..N] are groups; the value is the last group.
+        const valueIdx = m.length - 1;
+        const current = Number(m[valueIdx]);
+        if (!Number.isFinite(current) || current <= 1) continue;
+        const next = Math.max(1, Math.floor(current / 2));
+        // Within String.replace's callback, `groups` starts at m[1] — so the
+        // value is at index `valueIdx - 1`. Keep the prefix groups, drop the
+        // value group, append the halved value.
+        const valueIdxInGroups = valueIdx - 1;
+        const replaced = commandText.replace(re, (_full, ...groups) => {
+          const prefix = groups.slice(0, valueIdxInGroups);
+          return prefix.join("") + String(next);
+        });
+        if (replaced !== commandText) {
+          return { command: replaced, applied: true, change: `${flag}: ${current} -> ${next}` };
+        }
+      }
+    }
+    return { command: commandText, applied: false, change: null };
+  }
+  const setMatch = String(transform).match(/^set:([A-Za-z0-9_.-]+)=(.+)$/);
+  if (setMatch) {
+    const flag = setMatch[1];
+    const value = setMatch[2];
+    const escapedFlag = flag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const present = new RegExp(`(--?${escapedFlag})(\\s+|=)[^\\s]+`, "i").test(commandText);
+    if (present) {
+      const replaced = commandText.replace(
+        new RegExp(`(--?${escapedFlag})(\\s+|=)([^\\s]+)`, "i"),
+        (_full, g1, g2) => `${g1}${g2}${value}`,
+      );
+      return { command: replaced, applied: replaced !== commandText, change: `${flag} <- ${value}` };
+    }
+    // Append the flag.
+    return { command: `${commandText} --${flag} ${value}`, applied: true, change: `${flag} appended as ${value}` };
+  }
+  return { command: commandText, applied: false, change: null };
+}
+
+// Pick a retry rule whose `match` regex appears in the output. Returns the rule or null.
+function findRetryRule(rules, output) {
+  if (!rules || rules.length === 0) return null;
+  for (const rule of rules) {
+    if (!rule || !rule.match) continue;
+    try {
+      const re = new RegExp(rule.match, "i");
+      if (re.test(output)) return rule;
+    } catch { /* invalid regex, skip */ }
+  }
+  return null;
+}
+
+// Resolve "{baseline}-0.02" / "{baseline}*0.95" / literal numbers against a baseline value.
+function resolveGateValue(spec, baselineValue) {
+  if (typeof spec === "number") return spec;
+  if (typeof spec !== "string") return null;
+  const text = spec.trim();
+  const num = Number(text);
+  if (Number.isFinite(num)) return num;
+  const m = text.match(/^\{baseline\}\s*([+\-*\/])?\s*(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)?$/);
+  if (!m) return null;
+  if (!Number.isFinite(baselineValue)) return null;
+  if (!m[1]) return baselineValue;
+  const delta = Number(m[2]);
+  if (!Number.isFinite(delta)) return null;
+  switch (m[1]) {
+    case "+": return baselineValue + delta;
+    case "-": return baselineValue - delta;
+    case "*": return baselineValue * delta;
+    case "/": return delta === 0 ? null : baselineValue / delta;
+    default: return null;
+  }
+}
+
+function evalCompareOp(op, lhs, rhs) {
+  if (!Number.isFinite(lhs) || !Number.isFinite(rhs)) return false;
+  switch (op) {
+    case "<": return lhs < rhs;
+    case "<=": return lhs <= rhs;
+    case ">": return lhs > rhs;
+    case ">=": return lhs >= rhs;
+    case "==": case "=": return lhs === rhs;
+    case "!=": return lhs !== rhs;
+    default: return false;
+  }
+}
+
+function readBaselineMetricValue(cwd, metricName) {
+  const lockFile = path.join(cwd, ".researchloop", "baseline.lock");
+  if (fs.existsSync(lockFile)) {
+    try {
+      const lock = JSON.parse(fs.readFileSync(lockFile, "utf8"));
+      const v = lock?.metric_value ?? lock?.value ?? (lock?.metrics && lock.metrics[metricName]);
+      const numeric = metricNumber(v);
+      if (Number.isFinite(numeric)) return numeric;
+    } catch { /* fall through */ }
+  }
+  const ledger = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
+  if (!fs.existsSync(ledger)) return null;
+  const rows = fs.readFileSync(ledger, "utf8").trim().split("\n").filter(Boolean);
+  for (let i = rows.length - 1; i >= 0; i -= 1) {
+    try {
+      const row = JSON.parse(rows[i]);
+      if (row.agent && String(row.agent).startsWith("autoresearch baseline")) {
+        const v = row?.metrics?.[metricName];
+        const numeric = metricNumber(v);
+        if (Number.isFinite(numeric)) return numeric;
+      }
+    } catch { /* skip */ }
+  }
+  return null;
+}
+
+function applyPromotionGates(cwd, gates, finalMetrics, defaultMetric) {
+  if (!gates || gates.length === 0) {
+    return { status: null, reasons: [] };
+  }
+  const reasons = [];
+  let promoted = false;
+  let discarded = false;
+  for (const gate of gates) {
+    const metric = gate.metric || defaultMetric;
+    const value = metricNumber(finalMetrics?.[metric]);
+    if (!Number.isFinite(value)) {
+      reasons.push(`${metric}: no value (gate skipped)`);
+      continue;
+    }
+    const baseline = readBaselineMetricValue(cwd, metric);
+    const threshold = resolveGateValue(gate.value, baseline);
+    if (threshold === null) {
+      reasons.push(`${metric}: could not resolve threshold ${JSON.stringify(gate.value)}`);
+      continue;
+    }
+    const triggered = evalCompareOp(gate.op, value, threshold);
+    if (!triggered) continue;
+    const action = String(gate.action || "promote").toLowerCase();
+    reasons.push(`${metric}=${value} ${gate.op} ${threshold} -> ${action}`);
+    if (action === "promote") promoted = true;
+    else if (action === "discard") discarded = true;
+  }
+  let status = null;
+  if (discarded) status = "discarded";
+  else if (promoted) status = "promoted";
+  else status = "kept";
+  return { status, reasons };
+}
+
+// Early-stop rule evaluator: returns a string reason on trigger, or null.
+function evaluateEarlyStopRules(rules, metricName, value, sampleCount, baselineByMetric) {
+  for (const rule of rules) {
+    const m = rule.metric || metricName;
+    if (m !== metricName) continue;
+    const ruleText = String(rule.rule || "").trim();
+    if (ruleText === "nan_or_inf") {
+      if (!Number.isFinite(value)) {
+        return `nan_or_inf ${m}`;
+      }
+      continue;
+    }
+    const xMatch = ruleText.match(/^>\s*(\d+(?:\.\d+)?)\s*x_baseline(?:_after_step_(\d+))?$/);
+    if (xMatch) {
+      const factor = Number(xMatch[1]);
+      const afterStep = xMatch[2] ? Number(xMatch[2]) : 0;
+      const baseline = baselineByMetric[m];
+      if (!Number.isFinite(baseline) || baseline === 0) continue;
+      if (sampleCount <= afterStep) continue;
+      if (Number.isFinite(value) && Math.abs(value) > factor * Math.abs(baseline)) {
+        return `>${factor}x_baseline ${m}=${value} (baseline=${baseline})`;
+      }
     }
   }
   return null;
@@ -7678,36 +8738,73 @@ function writeArtifactManifest(runDir) {
 }
 
 function spawnCommand(commandText, cwd, timeoutMs, logFile, timeoutReason = "timeout", childEnv = process.env, opts = {}) {
+  const { onLine = null, echoOutput = true, onSpawn = null } = opts;
   return new Promise((resolve) => {
-    const child = spawn(commandText, { cwd, shell: true, env: childEnv });
-    if (typeof opts.onSpawn === "function") {
+    // detached:true puts the shell into its own process group so we can signal
+    // the whole group (shell + any grandchildren like `sleep`). Without this,
+    // killing the shell leaves grandchildren holding the stdout pipe and
+    // child.on('close') never fires.
+    const child = spawn(commandText, { cwd, shell: true, env: childEnv, detached: true });
+    if (typeof onSpawn === "function") {
       try {
-        opts.onSpawn(child);
+        onSpawn(child);
       } catch {
         // Sampler hooks are best-effort; command execution must continue.
       }
     }
     const chunks = [];
     let timedOut = false;
-    const streamOutput = opts.streamOutput !== false;
+    let killedByRule = null;
+    let stdoutBuf = "";
+    let stderrBuf = "";
     const logStream = fs.createWriteStream(logFile);
+    const killGroup = (signal) => {
+      if (!child.pid) return;
+      try {
+        process.kill(-child.pid, signal);
+      } catch {
+        try { child.kill(signal); } catch { /* gone */ }
+      }
+    };
     const timer = setTimeout(() => {
       timedOut = true;
-      try {
-        child.kill("SIGKILL");
-      } catch {
-        // already gone
-      }
+      killGroup("SIGKILL");
     }, timeoutMs);
+    const requestKill = (reason) => {
+      if (killedByRule || timedOut) return;
+      killedByRule = reason;
+      killGroup("SIGTERM");
+      setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null) killGroup("SIGKILL");
+      }, 2000);
+    };
+    const handleLine = (line) => {
+      if (!onLine || !line) return;
+      const verdict = onLine(line);
+      if (verdict && typeof verdict === "object" && verdict.kill) {
+        requestKill(verdict.kill);
+      }
+    };
+    const drainBuffer = (buf, stream) => {
+      const text = stream === "out" ? stdoutBuf : stderrBuf;
+      const updated = text + buf;
+      const lines = updated.split(/\r?\n/);
+      const remainder = lines.pop();
+      for (const line of lines) handleLine(line);
+      if (stream === "out") stdoutBuf = remainder;
+      else stderrBuf = remainder;
+    };
     child.stdout.on("data", (data) => {
       chunks.push(data);
-      if (streamOutput) process.stdout.write(data);
+      if (echoOutput) process.stdout.write(data);
       logStream.write(data);
+      drainBuffer(data.toString("utf8"), "out");
     });
     child.stderr.on("data", (data) => {
       chunks.push(data);
-      if (streamOutput) process.stderr.write(data);
+      if (echoOutput) process.stderr.write(data);
       logStream.write(data);
+      drainBuffer(data.toString("utf8"), "err");
     });
     child.on("error", (err) => {
       clearTimeout(timer);
@@ -7718,10 +8815,13 @@ function spawnCommand(commandText, cwd, timeoutMs, logFile, timeoutReason = "tim
         exitCode: null,
         timedOut,
         spawnError: err.message,
+        killedByRule,
       });
     });
     child.on("close", (code) => {
       clearTimeout(timer);
+      if (stdoutBuf) { handleLine(stdoutBuf); stdoutBuf = ""; }
+      if (stderrBuf) { handleLine(stderrBuf); stderrBuf = ""; }
       logStream.end();
       resolve({
         output: Buffer.concat(chunks).toString("utf8"),
@@ -7729,6 +8829,7 @@ function spawnCommand(commandText, cwd, timeoutMs, logFile, timeoutReason = "tim
         timedOut,
         timedOutBy: timedOut ? timeoutReason : null,
         spawnError: null,
+        killedByRule,
       });
     });
   });
@@ -7875,23 +8976,105 @@ async function executeRun(opts) {
   const stopSampler = enableSystemSampling ? startSystemSampler(runDir, 1000, { cwd }) : () => ({});
   const childEnv = { ...process.env, RESEARCHLOOP_RUN_DIR: runDir, ...(extraEnv || {}) };
   const startedAt = new Date().toISOString();
+
+  // Streaming metric pipeline (G06 minimal): line-by-line parse, push to
+  // metrics.jsonl live, evaluate early_stop (G11) per sample.
+  const evalConfig = loadEvalConfig(cwd);
+  let lastCheckpoint = null;
+  const refreshLastCheckpoint = () => {
+    if (!evalConfig.checkpointGlob) return null;
+    const hit = findNewestCheckpoint(cwd, evalConfig.checkpointGlob);
+    if (hit) lastCheckpoint = hit;
+    return hit;
+  };
+  const liveMetricsPath = path.join(runDir, "metrics.jsonl");
+  fs.writeFileSync(liveMetricsPath, "");
+  const liveStream = fs.createWriteStream(liveMetricsPath, { flags: "a" });
+  const streamedSeries = [];
+  const baselineByMetric = {};
+  for (const rule of evalConfig.earlyStop) {
+    const m = rule.metric || metricName;
+    if (!(m in baselineByMetric)) {
+      baselineByMetric[m] = readBaselineMetricValue(cwd, m);
+    }
+  }
+  const numericRegex = regexSource
+    ? new RegExp(regexSource, "i")
+    : new RegExp(defaultMetricRegex(metricName).source, "i");
+  // Companion regex that *also* matches non-finite tokens (nan / inf / -inf)
+  // so early_stop:nan_or_inf can fire on training output like "train_loss=nan".
+  const escapedMetric = metricName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const nonFiniteRegex = new RegExp(
+    `["']?${escapedMetric}["']?\\s*[:=]\\s*["']?([+\\-]?(?:nan|inf|infinity))\\b`,
+    "i",
+  );
+
+  const onLine = (rawLine) => {
+    const line = rawLine.trim();
+    if (!line) return null;
+    let raw = null;
+    const numMatch = line.match(numericRegex);
+    if (numMatch) {
+      raw = numMatch[1] !== undefined ? numMatch[1] : numMatch[0];
+    } else {
+      const nfMatch = line.match(nonFiniteRegex);
+      if (nfMatch) raw = nfMatch[1];
+    }
+    if (raw === null) return null;
+    let value;
+    const lower = String(raw).toLowerCase();
+    if (lower === "nan" || lower === "+nan" || lower === "-nan") {
+      value = NaN;
+    } else if (lower === "inf" || lower === "+inf" || lower === "infinity" || lower === "+infinity") {
+      value = Infinity;
+    } else if (lower === "-inf" || lower === "-infinity") {
+      value = -Infinity;
+    } else {
+      value = Number(raw);
+    }
+    const step = streamedSeries.length + 1;
+    streamedSeries.push(value);
+    refreshLastCheckpoint();
+    try {
+      liveStream.write(`${JSON.stringify({ metric: metricName, step, value: Number.isFinite(value) ? value : null, raw })}\n`);
+    } catch { /* best-effort */ }
+    if (evalConfig.earlyStop.length > 0) {
+      const reason = evaluateEarlyStopRules(
+        evalConfig.earlyStop,
+        metricName,
+        value,
+        step,
+        baselineByMetric,
+      );
+      if (reason) return { kill: reason };
+    }
+    return null;
+  };
+
   let result;
   try {
     result = await spawnCommand(cmdText, cwd, effectiveTimeoutMs, logFile, timeoutReason, childEnv, {
+      onLine,
       onSpawn(child) {
         if (stopSampler.bindPid) stopSampler.bindPid(child.pid);
       },
-      streamOutput: !quiet,
+      echoOutput: !quiet,
     });
   } finally {
     stopSampler();
+    try { liveStream.end(); } catch { /* ignore */ }
   }
   const gpuAgg = (stopSampler.getAggregates && stopSampler.getAggregates()) || {};
   const finishedAt = new Date().toISOString();
+  refreshLastCheckpoint();
 
   let status;
+  let killReason = null;
   if (result.spawnError) {
     status = "spawn_error";
+  } else if (result.killedByRule) {
+    status = "killed_by_rule";
+    killReason = result.killedByRule;
   } else if (result.timedOut && result.timedOutBy === "safety") {
     status = "killed_by_safety";
   } else if (result.timedOut) {
@@ -7902,9 +9085,17 @@ async function executeRun(opts) {
     status = "complete";
   }
 
-  let metricValue = parseMetricFromOutput(result.output, metricName, regexSource);
   const metrics = extractMetricsFromOutput(result.output, metricName, regexSource);
-  const metricSeries = extractMetricSeriesFromText(result.output, metricName, regexSource);
+  // Prefer streamed series for both the final value and the history — it's the
+  // ground truth the early-stop loop already saw. Fall back to post-hoc parsing
+  // if streaming caught nothing (e.g. stdout buffered above the line splitter).
+  const finiteStreamed = streamedSeries.filter((v) => Number.isFinite(v));
+  let metricValue = finiteStreamed.length ? finiteStreamed[finiteStreamed.length - 1] : null;
+  let metricSeries = streamedSeries.slice();
+  if (metricValue === null) {
+    metricValue = parseMetricFromOutput(result.output, metricName, regexSource);
+    metricSeries = extractMetricSeriesFromText(result.output, metricName, regexSource);
+  }
   if (metricValue === null && isNumericMetric(metrics[metricName])) {
     metricValue = Number(metrics[metricName]);
   }
@@ -7920,6 +9111,34 @@ async function executeRun(opts) {
   }
   if (status === "complete" && metricValue === null) {
     status = "complete_no_metric";
+  }
+
+  let evalResult = null;
+  if (evalConfig.present && Array.isArray(evalConfig.metrics) && evalConfig.metrics.length > 0 && evalConfig.evalCommand) {
+    evalResult = await runDeclaredEval({
+      cwd,
+      runId: id,
+      command: evalConfig.evalCommand,
+      allowUnsafe,
+      quiet: true,
+    });
+    if (evalResult && evalResult.ok) {
+      for (const [key, value] of Object.entries(evalResult.metrics || {})) {
+        metrics[key] = value;
+      }
+      const evalMetricValue = metricNumber(evalResult.metrics?.[metricName]);
+      if (metricValue === null && Number.isFinite(evalMetricValue)) {
+        metricValue = evalMetricValue;
+        metrics[metricName] = metricValue;
+        if (status === "complete_no_metric") status = "complete";
+      }
+    }
+  }
+
+  // Promotion gates (G05): apply after the training metric and any declared eval metrics.
+  const gateResult = applyPromotionGates(cwd, evalConfig.gates, metrics, metricName);
+  if (status === "complete" && gateResult.status) {
+    status = gateResult.status;
   }
 
   const wallSeconds = Math.round((new Date(finishedAt) - new Date(startedAt)) / 1000);
@@ -7982,10 +9201,45 @@ async function executeRun(opts) {
   if (extraConfig?.compute_device?.effective) {
     row.compute_device = extraConfig.compute_device.effective;
   }
+  if (evalResult && evalResult.ok) {
+    row.eval_command = evalResult.command;
+    row.eval_log = evalResult.logPath ? path.relative(cwd, evalResult.logPath) : null;
+    row.eval_status = evalResult.status;
+    if (evalResult.parseWarnings && evalResult.parseWarnings.length) {
+      row.parse_warnings = evalResult.parseWarnings.slice();
+    }
+  } else if (evalResult && evalResult.parseWarnings && evalResult.parseWarnings.length) {
+    row.eval_status = evalResult.status;
+    row.parse_warnings = evalResult.parseWarnings.slice();
+  }
+  if (evalConfig.checkpointGlob) {
+    row.last_checkpoint = lastCheckpoint ? lastCheckpoint.relative : null;
+  }
+  if (killReason) row.kill_reason = killReason;
+  if (gateResult.reasons.length) row.gate_reasons = gateResult.reasons;
   if (tags) row.tags = tags;
   if (parentId) row.parent_id = parentId;
+  // Auto overfit-watch: when both train_loss and val_loss streamed to
+  // metrics.jsonl, attach an overfit summary to the row + emit a warning
+  // line so the agent doesn't have to know to call `overfit-watch`.
+  try {
+    const overfit = analyzeOverfit(cwd, id);
+    if (overfit && !overfit.error) {
+      row.overfit = {
+        val_best_step: overfit.val_best_step,
+        val_best_value: overfit.val_best_value,
+        diverge_step: overfit.diverge_step,
+        wasted_fraction: overfit.wasted_fraction,
+        still_descending: overfit.still_descending,
+      };
+    }
+  } catch { /* opt-in feature; never block the run */ }
   appendRunRow(cwd, row);
-  writeArtifactMetricsJsonl(runDir, metricName, metricSeries);
+  // metrics.jsonl is now written live during the run; do not clobber it here
+  // unless the live stream caught nothing (post-hoc fallback path).
+  if (streamedSeries.length === 0 && metricSeries.length > 0) {
+    writeArtifactMetricsJsonl(runDir, metricName, metricSeries);
+  }
   writeArtifactManifest(runDir);
 
   const thread = path.join(cwd, ".researchloop", "scratchpad", "THREAD.md");
@@ -7997,15 +9251,46 @@ async function executeRun(opts) {
     console.log("---");
     console.log(`status: ${status}`);
     console.log(`exit_code: ${result.exitCode}`);
+    if (killReason) {
+      console.log(`kill_reason: ${killReason}`);
+    }
     if (metricValue !== null) {
       console.log(`${metricName}: ${metricValue}`);
     } else {
       console.log("metric: not parsed");
     }
+    if (evalResult && evalResult.ok) {
+      console.log(`eval: ${path.relative(cwd, evalResult.logPath)}`);
+      for (const [key, value] of Object.entries(evalResult.metrics || {})) {
+        console.log(`eval_metric: ${key}=${value === null ? "null" : value}`);
+      }
+      for (const warning of evalResult.parseWarnings || []) {
+        console.log(`eval_warning: ${warning}`);
+      }
+    } else if (evalResult && !evalResult.ok && evalResult.parseWarnings && evalResult.parseWarnings.length) {
+      for (const warning of evalResult.parseWarnings) {
+        console.log(`eval_warning: ${warning}`);
+      }
+    }
+    if (gateResult.reasons.length) {
+      for (const r of gateResult.reasons) {
+        console.log(`gate: ${r}`);
+      }
+    }
     if (gpuAgg.gpu_present) {
       const peak = gpuAgg.gpu_memory_peak_mb ?? "?";
       const util = gpuAgg.gpu_util_max_pct ?? "?";
       console.log(`gpu: max_util=${util}% peak_mem=${peak}MB gpu_hours=${gpuHours}`);
+    }
+    if (evalConfig.checkpointGlob) {
+      console.log(`checkpoint: ${row.last_checkpoint || "not found"}`);
+    }
+    if (row.overfit) {
+      if (row.overfit.diverge_step !== null) {
+        console.log(`overfit: divergence at step ${row.overfit.diverge_step}; val best @ ${row.overfit.val_best_step} (=${row.overfit.val_best_value.toFixed(6)}); ${(row.overfit.wasted_fraction * 100).toFixed(1)}% of compute spent after the val min`);
+      } else if (row.overfit.still_descending) {
+        console.log(`overfit: val still descending — more training likely helps`);
+      }
     }
     console.log(`recorded: ${id}`);
   }
@@ -8023,11 +9308,11 @@ async function executeRun(opts) {
     if (status === "failed" || status === "timeout" || status === "spawn_error") {
       process.exitCode = 1;
     }
-    if (status === "killed_by_safety") {
+    if (status === "killed_by_safety" || status === "killed_by_rule") {
       process.exitCode = 1;
     }
   }
-  return { ok: true, id, status, metricValue, metricName, row, gpuAgg, wallSeconds };
+  return { ok: true, id, status, metricValue, metricName, row, gpuAgg, wallSeconds, output: result.output };
 }
 
 async function cmdRun(isBaseline) {
@@ -8070,15 +9355,98 @@ async function cmdRun(isBaseline) {
     return;
   }
 
-  await executeRun({
+  const idOverride = option("--id", null);
+  await executeRunWithRetries({
     cwd, cmdText, metricName, regexSource, timeoutSec, allowUnsafe, isBaseline,
-    idOverride: option("--id", null),
+    idOverride,
     enableSystemSampling,
     extraConfig: { compute_device: computeDevice },
     extraEnv: computeDevice.env,
     tags: tags.length ? tags : null,
     notes,
   });
+}
+
+// Run once. On `failed | spawn_error | timeout`, scan the captured output for
+// retry rules from eval.yaml (G12), mutate the command (e.g. halve:batch_size),
+// re-launch with parent_id pointing at the original, and record `retry_of`.
+async function executeRunWithRetries(opts) {
+  const cwd = opts.cwd;
+  const retryRules = loadEvalRetryRules(cwd);
+  const maxRetries = retryRules.length > 0
+    ? Math.max(...retryRules.map((r) => Number.isFinite(Number(r.max_retries)) ? Number(r.max_retries) : 2))
+    : 0;
+
+  let currentCmd = opts.cmdText;
+  let attempt = 0;
+  let firstId = null;
+  let lastResult = null;
+  let parentId = null;
+
+  while (true) {
+    const attemptId = attempt === 0
+      ? (opts.idOverride || null)
+      : `${firstId}-retry${attempt}`;
+    const result = await executeRun({
+      ...opts,
+      cmdText: currentCmd,
+      idOverride: attemptId,
+      parentId,
+      extraConfig: attempt > 0 ? { retry_of: firstId, retry_attempt: attempt } : null,
+      suppressExitCode: true,
+    });
+    lastResult = result;
+    if (!result.ok) {
+      process.exitCode = 1;
+      return result;
+    }
+    if (attempt === 0) firstId = result.id;
+    if (attempt > 0) {
+      updateRunRow(cwd, result.id, (row) => {
+        row.retry_of = firstId;
+        row.retry_attempt = attempt;
+        return row;
+      });
+    }
+
+    const retryableStatus = result.status === "failed"
+      || result.status === "spawn_error"
+      || result.status === "timeout";
+
+    if (!retryableStatus || attempt >= maxRetries) {
+      const finalBad = retryableStatus
+        || result.status === "killed_by_safety"
+        || result.status === "killed_by_rule";
+      if (finalBad) process.exitCode = 1;
+      return result;
+    }
+
+    const rule = findRetryRule(retryRules, result.output || "");
+    if (!rule) {
+      if (retryableStatus) process.exitCode = 1;
+      return result;
+    }
+    const transform = applyRetryTransform(currentCmd, rule.transform);
+    if (!transform.applied) {
+      console.error(`autoresearch retry: matched rule but transform did not apply (${rule.transform})`);
+      if (retryableStatus) process.exitCode = 1;
+      return result;
+    }
+
+    // Mark the failed row with retry_reason so the audit trail is clear.
+    updateRunRow(cwd, result.id, (row) => {
+      row.retry_reason = `matched ${rule.match}; transform ${rule.transform} -> ${transform.change}`;
+      return row;
+    });
+
+    console.log("---");
+    console.log(`retry: rule matched (${rule.match}) — applying ${rule.transform}`);
+    console.log(`change: ${transform.change}`);
+    console.log(`next attempt: ${attempt + 1}/${maxRetries}`);
+    currentCmd = transform.command;
+    parentId = result.id;
+    attempt += 1;
+  }
 }
 
 function applySeedToCommand(cmdText, seed) {
@@ -8172,12 +9540,12 @@ async function runWithSeeds({ cwd, cmdText, metricName, regexSource, timeoutSec,
   }
 }
 
-function cmdReplay() {
+async function cmdReplay() {
   const cwd = targetDir();
-  const runId = String(option("--id", positionalText())).trim();
+  const runId = String(option("--id", positionalText(["--id", "--metric", "--regex", "--timeout", "--tolerance", "--n", "--replay-id", "--dir"]))).trim();
   if (!runId) {
     console.error("No run id provided.");
-    console.error("Usage: autoresearch replay <run-id>");
+    console.error("Usage: autoresearch replay <run-id> [--n 1] [--tolerance 0.01]");
     process.exitCode = 1;
     return;
   }
@@ -8188,26 +9556,419 @@ function cmdReplay() {
     process.exitCode = 1;
     return;
   }
+  if (!source.command) {
+    console.error(`Run ${runId} has no recorded command — cannot replay.`);
+    process.exitCode = 1;
+    return;
+  }
 
   const currentEnv = captureEnv(cwd);
+  const metricKeys = source.metrics ? Object.keys(source.metrics).filter((k) => !k.endsWith("_std")) : [];
+  const metricName = String(option("--metric", metricKeys[0] || "val_loss")).trim();
+  const expectedValue = source.metrics ? metricNumber(source.metrics[metricName]) : Number.NaN;
+  if (!Number.isFinite(expectedValue)) {
+    console.error(`Run ${runId} has no finite ${metricName} metric; cannot replay against a tolerance.`);
+    console.error("Run eval first or choose a metric that exists on the source row.");
+    process.exitCode = 1;
+    return;
+  }
+  const toleranceRaw = String(option("--tolerance", "0.01"));
+  const tolerance = Number(toleranceRaw);
+  if (!Number.isFinite(tolerance) || tolerance < 0) {
+    console.error("replay: --tolerance must be a non-negative number");
+    process.exitCode = 1;
+    return;
+  }
+  const replayCountRaw = Number(String(option("--n", "1")));
+  if (!Number.isInteger(replayCountRaw) || replayCountRaw < 1 || replayCountRaw > 20) {
+    console.error("replay: --n must be an integer from 1 to 20");
+    process.exitCode = 1;
+    return;
+  }
+  const replayCount = replayCountRaw;
+  const timeoutSec = Number(option("--timeout", 600));
+  if (!Number.isFinite(timeoutSec) || timeoutSec <= 0) {
+    console.error("replay: --timeout must be a positive number of seconds");
+    process.exitCode = 1;
+    return;
+  }
+  const allowUnsafe = hasFlag("--allow-unsafe");
+  const regexSource = option("--regex", null);
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const replayIdBase = String(option("--replay-id", `replay-${runId}-${stamp}`));
+
   console.log(`replay: ${runId}`);
-  console.log(`command: ${source.command || "not recorded"}`);
+  console.log(`command: ${source.command}`);
+  console.log(`metric: ${metricName}`);
+  console.log(`tolerance: ${tolerance}`);
+  console.log(`n: ${replayCount}`);
 
   if (!source.env) {
     console.error("WARNING: replay source run has no env capture.");
-    return;
+  } else {
+    const mismatches = envMismatches(source.env, currentEnv);
+    for (const mismatch of mismatches) {
+      console.error(
+        `WARNING: replay env mismatch ${mismatch.field}: stored=${formatEnvValue(mismatch.expected)} current=${formatEnvValue(mismatch.current)}`
+      );
+    }
   }
 
-  const mismatches = envMismatches(source.env, currentEnv);
-  if (!mismatches.length) {
-    console.log("env: match");
-    return;
+  console.log("---");
+  console.log("| replay_id | status | metric | expected | actual | delta | within_tolerance |");
+  console.log("| --- | --- | --- | --- | --- | --- | --- |");
+
+  let failed = false;
+  for (let i = 0; i < replayCount; i += 1) {
+    const replayId = replayCount === 1 ? replayIdBase : `${replayIdBase}-${i + 1}`;
+    const res = await executeRun({
+      cwd,
+      cmdText: source.command,
+      metricName,
+      regexSource: typeof regexSource === "string" ? regexSource : null,
+      timeoutSec,
+      allowUnsafe,
+      isBaseline: false,
+      idOverride: replayId,
+      extraConfig: { replay_of: runId, replay_index: i + 1, expected_metric: { [metricName]: expectedValue } },
+      suppressExitCode: true,
+      quiet: true,
+      tags: ["replay"],
+      parentId: runId,
+    });
+    if (!res.ok) {
+      console.log(`| ${replayId} | ${res.status} | ${metricName} | ${Number.isFinite(expectedValue) ? expectedValue : "null"} | null | null | no |`);
+      failed = true;
+      continue;
+    }
+    updateRunRow(cwd, replayId, (row) => {
+      row.replay_of = runId;
+      row.replay_index = i + 1;
+      return row;
+    });
+    const actual = res.metricValue;
+    const delta = Number.isFinite(actual) && Number.isFinite(expectedValue) ? actual - expectedValue : null;
+    const within = delta !== null && Math.abs(delta) <= tolerance;
+    const statusBad = res.status === "failed" || res.status === "timeout" || res.status === "spawn_error" || res.status === "killed_by_safety" || res.status === "killed_by_rule";
+    if (!within || statusBad) failed = true;
+    console.log(`| ${replayId} | ${res.status} | ${metricName} | ${Number.isFinite(expectedValue) ? expectedValue : "null"} | ${Number.isFinite(actual) ? actual : "null"} | ${delta === null ? "null" : delta.toFixed(6)} | ${within ? "yes" : "no"} |`);
   }
 
-  for (const mismatch of mismatches) {
-    console.error(
-      `WARNING: replay env mismatch ${mismatch.field}: stored=${formatEnvValue(mismatch.expected)} current=${formatEnvValue(mismatch.current)}`
+  if (failed) {
+    console.log("replay: drifted");
+    process.exitCode = 1;
+  } else {
+    console.log("replay: reproduced");
+  }
+  if (source.env) {
+    const mismatches = envMismatches(source.env, currentEnv);
+    console.log(`env: ${mismatches.length ? "mismatch(" + mismatches.length + ")" : "match"}`);
+  } else {
+    console.log("env: unknown");
+  }
+  console.log(`recorded: ${replayIdBase}${replayCount > 1 ? `..${replayCount}` : ""}`);
+}
+
+// Rewrite a row in runs.jsonl in place. We never delete from the ledger;
+// `promote` just flips status + appends gate_reasons so the audit trail stays.
+function updateRunRow(cwd, runId, mutator) {
+  const ledger = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
+  if (!fs.existsSync(ledger)) return false;
+  const raw = fs.readFileSync(ledger, "utf8");
+  const lines = raw.split("\n");
+  let updated = false;
+  const next = lines.map((line) => {
+    if (!line.trim()) return line;
+    try {
+      const obj = JSON.parse(line);
+      if (obj.id === runId) {
+        const mutated = mutator(obj);
+        updated = true;
+        return JSON.stringify(mutated);
+      }
+      return line;
+    } catch {
+      return line;
+    }
+  });
+  if (updated) fs.writeFileSync(ledger, next.join("\n"));
+  return updated;
+}
+
+function copyFileIfExists(src, dest) {
+  if (!fs.existsSync(src)) return false;
+  ensureDir(path.dirname(dest));
+  fs.copyFileSync(src, dest);
+  return true;
+}
+
+// G19 minimal: run programmatic checks against a row + its artifact bundle.
+// Returns { pass, checks: [{name, pass, detail}] } — pass is true iff every
+// non-warn check passed. Used by both `autoresearch review` and `promote`
+// (unless --skip-review is set).
+function runReviewChecks(cwd, row) {
+  const checks = [];
+  const runId = row?.id || "(unknown)";
+  const runDir = path.join(cwd, ".researchloop", "scratchpad", "runs", runId);
+  const push = (name, pass, detail = "") => checks.push({ name, pass: !!pass, detail });
+
+  // 1. Status is healthy.
+  const okStatuses = new Set(["complete", "promoted", "kept"]);
+  push(
+    "status_ok",
+    okStatuses.has(row.status),
+    `status=${row.status}`,
+  );
+
+  // 2. Final primary metric is present and finite.
+  const metricNames = Object.keys(row.metrics || {});
+  const primary = metricNames[0] || null;
+  const primaryValue = primary ? metricNumber(row.metrics[primary]) : NaN;
+  push(
+    "metric_finite",
+    primary !== null && Number.isFinite(primaryValue),
+    primary ? `${primary}=${row.metrics[primary]}` : "no metric on row",
+  );
+
+  // 3. Env captured (G14) and working tree was clean.
+  const env = row.env || {};
+  push(
+    "env_captured",
+    !!env && (env.git_sha || env.python || env.os),
+    env.git_sha ? `git_sha=${env.git_sha}` : "no git_sha",
+  );
+  // Pass when the working tree is clean (git_dirty: false) OR when there's
+  // no git context at all (git_dirty: null/undefined). Only an explicit
+  // dirty tree (git_dirty: true) fails the check.
+  push(
+    "git_clean",
+    env.git_dirty !== true,
+    `git_dirty=${env.git_dirty}`,
+  );
+
+  // 4. Streamed metric series is non-trivial.
+  const history = row.metric_history && primary ? row.metric_history[primary] : null;
+  const historyLen = Array.isArray(history) ? history.length : 0;
+  push(
+    "curve_present",
+    historyLen >= 1,
+    `samples=${historyLen}`,
+  );
+
+  // 5. Per-run artifact bundle is intact.
+  const requiredFiles = ["env.json", "config.json", "MANIFEST.json"];
+  const missing = requiredFiles.filter((f) => !fs.existsSync(path.join(runDir, f)));
+  push(
+    "artifacts_present",
+    missing.length === 0,
+    missing.length === 0 ? "ok" : `missing: ${missing.join(", ")}`,
+  );
+
+  // overfit_clean: warn (not block) if the run started overfitting before
+  // its end. Uses the row.overfit block written by executeRun, falling back
+  // to a fresh analyzeOverfit on the artifact dir.
+  const overfit = row.overfit || (function () {
+    try { return analyzeOverfit(cwd, runId); } catch { return null; }
+  })();
+  if (overfit && !overfit.error) {
+    const wasted = overfit.wasted_fraction || 0;
+    const diverged = overfit.diverge_step !== null && overfit.diverge_step !== undefined;
+    // Only fails when > 25% of compute was post-val-min AND we saw real divergence.
+    const overfitFail = diverged && wasted > 0.25;
+    push(
+      "overfit_clean",
+      !overfitFail,
+      diverged
+        ? `divergence at step ${overfit.diverge_step}; ${(wasted * 100).toFixed(1)}% wasted after val min`
+        : "no divergence detected",
     );
+  }
+
+  // mfu_reasonable: warn (not block) if compute utilization < 10% — that's
+  // dataloader / kernel bottleneck territory and a promoted result built on
+  // it likely indicates a hidden inefficiency, not a meaningful win.
+  try {
+    const mfu = computeMfuForRow(row, {});
+    if (mfu && mfu.mfu !== null) {
+      const ok = mfu.mfu >= 0.10;
+      push(
+        "mfu_reasonable",
+        ok,
+        `MFU = ${(mfu.mfu * 100).toFixed(1)}% (${(mfu.achievedFlopsPerSec / 1e12).toFixed(1)} TFLOP/s vs ${(mfu.peakTflopsSingle * mfu.worldSize).toFixed(0)} TFLOPS peak)`,
+      );
+    }
+  } catch { /* MFU is opt-in; never block when fields are missing */ }
+
+  const pass = checks.every((c) => c.pass);
+  return { pass, checks, run_id: runId, primary_metric: primary, primary_value: Number.isFinite(primaryValue) ? primaryValue : null };
+}
+
+function renderReviewMarkdown(review) {
+  const lines = [];
+  lines.push(`# Review: ${review.run_id}`);
+  lines.push("");
+  lines.push(`- result: ${review.pass ? "**PASS**" : "**FAIL**"}`);
+  if (review.primary_metric) {
+    lines.push(`- ${review.primary_metric}: ${review.primary_value ?? "null"}`);
+  }
+  lines.push(`- generated_at: ${new Date().toISOString()}`);
+  lines.push("");
+  lines.push("| Check | Result | Detail |");
+  lines.push("| --- | --- | --- |");
+  for (const c of review.checks) {
+    lines.push(`| ${c.name} | ${c.pass ? "pass" : "FAIL"} | ${c.detail.replace(/\|/g, "\\|")} |`);
+  }
+  return lines.join("\n") + "\n";
+}
+
+function cmdReview() {
+  const cwd = targetDir();
+  const runId = String(option("--id", positionalText(["--id", "--format", "--dir", "--out"]))).trim();
+  if (!runId) {
+    console.error("autoresearch review: missing --id <run-id>");
+    process.exitCode = 1;
+    return;
+  }
+  const row = readRunRowById(cwd, runId);
+  if (!row) {
+    console.error(`autoresearch review: no run found for id: ${runId}`);
+    process.exitCode = 1;
+    return;
+  }
+  const review = runReviewChecks(cwd, row);
+  const format = String(option("--format", "text")).toLowerCase();
+  if (format === "json") {
+    console.log(JSON.stringify(review, null, 2));
+  } else if (format === "markdown") {
+    console.log(renderReviewMarkdown(review));
+  } else {
+    console.log(`review: ${review.run_id}`);
+    console.log(`result: ${review.pass ? "pass" : "FAIL"}`);
+    for (const c of review.checks) {
+      console.log(`  ${c.pass ? "ok" : "FAIL"}  ${c.name.padEnd(20)} ${c.detail}`);
+    }
+  }
+  const outPath = option("--out", null);
+  if (outPath && typeof outPath === "string") {
+    fs.writeFileSync(path.resolve(cwd, outPath), renderReviewMarkdown(review));
+    console.log(`wrote: ${outPath}`);
+  }
+  if (!review.pass) process.exitCode = 1;
+}
+
+function cmdPromote() {
+  const cwd = targetDir();
+  const runId = String(option("--id", positionalText(["--id", "--note", "--dir", "--force", "--skip-review"]))).trim();
+  if (!runId) {
+    console.error("autoresearch promote: missing --id <run-id>");
+    process.exitCode = 1;
+    return;
+  }
+  const note = String(option("--note", "")).trim();
+  const force = hasFlag("--force");
+  const skipReview = hasFlag("--skip-review");
+
+  const row = readRunRowById(cwd, runId);
+  if (!row) {
+    console.error(`autoresearch promote: no run found for id: ${runId}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  // Refuse to promote a clearly bad run unless --force.
+  const badStatuses = new Set([
+    "failed", "timeout", "spawn_error", "killed_by_safety", "killed_by_rule", "discarded",
+  ]);
+  if (badStatuses.has(row.status) && !force) {
+    console.error(`autoresearch promote: run status is "${row.status}". Use --force to promote anyway.`);
+    process.exitCode = 1;
+    return;
+  }
+
+  // G19: run the auto-review unless explicitly skipped. Failed checks block
+  // promotion; --force can override but emits a loud warning. --skip-review
+  // bypasses the review entirely (also loud).
+  let review = null;
+  if (skipReview) {
+    console.error("WARNING: --skip-review bypasses automated checks. The promoted winner is not vetted.");
+  } else {
+    review = runReviewChecks(cwd, row);
+    if (!review.pass && !force) {
+      console.error(`autoresearch promote: review failed for ${runId}. Use --force to promote anyway, or --skip-review to bypass review entirely.`);
+      for (const c of review.checks) {
+        if (!c.pass) console.error(`  FAIL ${c.name}: ${c.detail}`);
+      }
+      process.exitCode = 1;
+      return;
+    }
+    if (!review.pass && force) {
+      console.error("WARNING: review failed but --force was set; promoting anyway.");
+    }
+  }
+
+  const winnersDir = path.join(cwd, ".researchloop", "winners", runId);
+  ensureDir(winnersDir);
+  if (review) {
+    fs.writeFileSync(path.join(winnersDir, "review.md"), renderReviewMarkdown(review));
+  }
+
+  // Copy the per-run artifact bundle.
+  const runDir = path.join(cwd, ".researchloop", "scratchpad", "runs", runId);
+  const copied = [];
+  for (const name of ["env.json", "code.diff", "config.json", "metrics.jsonl", "system.jsonl", "MANIFEST.json", "log.txt"]) {
+    if (copyFileIfExists(path.join(runDir, name), path.join(winnersDir, name))) {
+      copied.push(name);
+    }
+  }
+
+  // Snapshot goal.md and command.
+  const goalSrc = path.join(cwd, ".researchloop", "goal.md");
+  if (fs.existsSync(goalSrc)) {
+    fs.copyFileSync(goalSrc, path.join(winnersDir, "goal.md"));
+    copied.push("goal.md");
+  }
+  fs.writeFileSync(path.join(winnersDir, "command.txt"), `${row.command || ""}\n`);
+  copied.push("command.txt");
+
+  // Persist the row.
+  const rowFile = path.join(winnersDir, "row.json");
+  fs.writeFileSync(rowFile, `${JSON.stringify(row, null, 2)}\n`);
+  copied.push("row.json");
+
+  // Append a small README-like marker so the directory is self-describing.
+  const promotedAt = new Date().toISOString();
+  const summaryLines = [
+    `# Winner: ${runId}`,
+    "",
+    `- promoted_at: ${promotedAt}`,
+    `- status_before_promote: ${row.status || "unknown"}`,
+    `- command: ${row.command || "(none)"}`,
+  ];
+  const primaryMetric = row.metrics && Object.keys(row.metrics)[0];
+  if (primaryMetric) {
+    summaryLines.push(`- ${primaryMetric}: ${row.metrics[primaryMetric]}`);
+  }
+  if (note) summaryLines.push("", `Note:`, "", note);
+  fs.writeFileSync(path.join(winnersDir, "PROMOTION.md"), summaryLines.join("\n") + "\n");
+  copied.push("PROMOTION.md");
+
+  // Flip the row status to "promoted" and append a gate_reason about manual promotion.
+  const flipped = updateRunRow(cwd, runId, (existing) => {
+    const before = existing.status;
+    existing.status = "promoted";
+    existing.promoted_at = promotedAt;
+    if (note) existing.promotion_note = note;
+    const reasons = Array.isArray(existing.gate_reasons) ? existing.gate_reasons : [];
+    reasons.push(`promoted manually (was: ${before})`);
+    existing.gate_reasons = reasons;
+    return existing;
+  });
+
+  console.log(`promoted: ${runId}`);
+  console.log(`winners_dir: ${path.relative(cwd, winnersDir)}`);
+  console.log(`files: ${copied.length}`);
+  if (!flipped) {
+    console.error("WARNING: could not update ledger row status (ledger missing or row not parseable).");
   }
 }
 
@@ -8232,11 +9993,27 @@ async function cmdVerify() {
   }
   const metricKeys = source.metrics ? Object.keys(source.metrics).filter((k) => !k.endsWith("_std")) : [];
   const metricName = String(option("--metric", metricKeys[0] || "val_loss")).trim();
-  const expectedValue = source.metrics ? Number(source.metrics[metricName]) : Number.NaN;
+  const expectedValue = source.metrics ? metricNumber(source.metrics[metricName]) : Number.NaN;
+  if (!Number.isFinite(expectedValue)) {
+    console.error(`Run ${runId} has no finite ${metricName} metric; cannot verify against a tolerance.`);
+    console.error("Run eval first or choose a metric that exists on the source row.");
+    process.exitCode = 1;
+    return;
+  }
   const tolRaw = option("--tolerance", "0.001");
-  const tolerance = Math.max(0, parseFloat(String(tolRaw)));
+  const tolerance = Number(String(tolRaw));
+  if (!Number.isFinite(tolerance) || tolerance < 0) {
+    console.error("verify: --tolerance must be a non-negative number");
+    process.exitCode = 1;
+    return;
+  }
   const allowUnsafe = hasFlag("--allow-unsafe");
   const timeoutSec = Number(option("--timeout", 600));
+  if (!Number.isFinite(timeoutSec) || timeoutSec <= 0) {
+    console.error("verify: --timeout must be a positive number of seconds");
+    process.exitCode = 1;
+    return;
+  }
   const regexSource = option("--regex", null);
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -8245,11 +10022,7 @@ async function cmdVerify() {
   console.log(`autoresearch verify`);
   console.log(`source: ${runId}`);
   console.log(`command: ${source.command}`);
-  if (Number.isFinite(expectedValue)) {
-    console.log(`expected ${metricName}: ${expectedValue} (tolerance=±${tolerance})`);
-  } else {
-    console.log(`expected ${metricName}: not recorded`);
-  }
+  console.log(`expected ${metricName}: ${expectedValue} (tolerance=±${tolerance})`);
   console.log("---");
 
   const currentEnv = captureEnv(cwd);
@@ -8326,7 +10099,20 @@ function findLatestResumableRun(cwd) {
 
 async function cmdResume() {
   const cwd = targetDir();
-  const explicitId = option("--id", null);
+  const idOpt = option("--id", null);
+  const valueFlags = new Set(["--dir", "--id", "--command", "--metric", "--regex", "--timeout", "--resume-id"]);
+  let positionalId = null;
+  for (let i = 1; i < args.length; i += 1) {
+    const arg = args[i];
+    if (valueFlags.has(arg)) {
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith("--")) continue;
+    positionalId = arg;
+    break;
+  }
+  const explicitId = typeof idOpt === "string" ? idOpt : positionalId;
   let source;
   if (explicitId && typeof explicitId === "string") {
     source = readRunRowById(cwd, explicitId);
@@ -8359,8 +10145,29 @@ async function cmdResume() {
   const regexSource = option("--regex", null);
   const timeoutSec = Number(option("--timeout", 600));
   const allowUnsafe = hasFlag("--allow-unsafe");
+  const dryRun = hasFlag("--dry-run");
   const cmdOverride = option("--command", null);
-  const cmdText = cmdOverride && typeof cmdOverride === "string" ? cmdOverride : source.command;
+  const evalConfig = loadEvalConfig(cwd);
+  const checkpointRequired = Boolean(evalConfig.checkpointGlob || source.last_checkpoint);
+  let checkpoint = existingCheckpointFromRow(cwd, source);
+  if (!checkpoint && evalConfig.checkpointGlob) {
+    checkpoint = findNewestCheckpoint(cwd, evalConfig.checkpointGlob);
+  }
+  if (checkpointRequired && !checkpoint) {
+    console.error(`autoresearch resume: no checkpoint found for run ${source.id}.`);
+    if (evalConfig.checkpointGlob) {
+      console.error(`checkpoint_glob: ${evalConfig.checkpointGlob}`);
+    } else if (source.last_checkpoint) {
+      console.error(`last_checkpoint: ${source.last_checkpoint}`);
+    }
+    process.exitCode = 1;
+    return;
+  }
+
+  const baseCmdText = cmdOverride && typeof cmdOverride === "string" ? cmdOverride : source.command;
+  const cmdText = checkpoint && !(cmdOverride && typeof cmdOverride === "string")
+    ? applyResumeFlagTemplate(baseCmdText, evalConfig.resumeFlagTemplate, checkpoint.relative)
+    : baseCmdText;
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const resumeId = String(option("--resume-id", `resume-${source.id}-${stamp}`));
@@ -8369,11 +10176,31 @@ async function cmdResume() {
   console.log(`source: ${source.id} (status=${source.status})`);
   console.log(`command: ${cmdText}`);
   console.log(`resume_dir: ${hasSourceDir ? path.relative(cwd, sourceRunDir) : "(missing — env vars set anyway)"}`);
+  if (checkpoint) {
+    console.log(`checkpoint: ${checkpoint.relative}`);
+  }
   console.log(`metric: ${metricName}`);
+  if (dryRun) {
+    console.log("dry_run: true");
+  }
   console.log("---");
 
   if (!hasSourceDir) {
     console.error("WARNING: prior run dir not found; resume env vars will point to a missing path.");
+  }
+
+  if (dryRun) {
+    return;
+  }
+
+  const resumeEnv = {
+    RESEARCHLOOP_RESUME: "1",
+    RESEARCHLOOP_RESUME_FROM: source.id,
+    RESEARCHLOOP_RESUME_DIR: sourceDirAbs,
+  };
+  if (checkpoint) {
+    resumeEnv.RESEARCHLOOP_RESUME_CHECKPOINT = checkpoint.absolute;
+    resumeEnv.RESEARCHLOOP_RESUME_CHECKPOINT_REL = checkpoint.relative;
   }
 
   const res = await executeRun({
@@ -8388,13 +10215,11 @@ async function cmdResume() {
     extraConfig: {
       resume_of: source.id,
       resume_dir: sourceDirAbs,
+      resume_checkpoint: checkpoint ? checkpoint.relative : null,
+      resume_command: cmdText,
       source_status: source.status,
     },
-    extraEnv: {
-      RESEARCHLOOP_RESUME: "1",
-      RESEARCHLOOP_RESUME_FROM: source.id,
-      RESEARCHLOOP_RESUME_DIR: sourceDirAbs,
-    },
+    extraEnv: resumeEnv,
     suppressExitCode: true,
     quiet: true,
     tags: ["resume"],
@@ -8520,6 +10345,53 @@ function cmdPreflight() {
     }
   } else {
     addCheck("baseline", "info", "no baseline lock");
+  }
+
+  // Optional VRAM fit check — fires when the user passes arch hints OR they
+  // live in the repo profile. Catches OOM before a 20-minute boot.
+  const profile = (() => {
+    const pf = path.join(cwd, ".researchloop", "repo-profile.json");
+    if (!fs.existsSync(pf)) return {};
+    try { return JSON.parse(fs.readFileSync(pf, "utf8")) || {}; } catch { return {}; }
+  })();
+  const arch = profile.model || {};
+  const vramOpts = {
+    params: option("--params", arch.params || null),
+    layers: option("--layers", arch.layers || null),
+    dModel: option("--d-model", arch.d_model || arch.hidden_size || null),
+    dFf: option("--d-ff", arch.d_ff || arch.ffn_dim || null),
+    vocab: option("--vocab", arch.vocab_size || arch.vocab || 32000),
+    batch: option("--batch", arch.batch_size || 1),
+    seq: option("--seq", arch.seq_len || arch.context_length || 2048),
+    dtype: option("--dtype", arch.dtype || "bf16"),
+    optimizer: option("--optimizer", arch.optimizer || "adamw"),
+    gradCheckpoint: hasFlag("--grad-checkpoint") || !!arch.grad_checkpoint,
+    tp: option("--tp", 1), dp: option("--dp", 1), zero: option("--zero", 0),
+  };
+  if (vramOpts.params || (vramOpts.layers && vramOpts.dModel)) {
+    const vram = analyzeVram(vramOpts);
+    if (!vram.error) {
+      const totalGb = vram.total_per_gpu_bytes / 1e9;
+      const gpuName = String(option("--gpu", "")).toLowerCase().trim();
+      const localGpuMaxGb = gpus && gpus.length ? Math.max(...gpus.map((g) => (g.mem_total_mb || 0) / 1024)) : null;
+      const targetGpu = gpuName
+        ? vram.gpu_fits.find((g) => g.name.toLowerCase() === gpuName)
+        : null;
+      const fitsLocal = localGpuMaxGb ? totalGb + 2 <= localGpuMaxGb : null;
+      let msg = `per-GPU ~${totalGb.toFixed(1)} GB`;
+      let status = "info";
+      if (targetGpu) {
+        msg += ` — ${targetGpu.fits_solo ? "✓ fits solo" : targetGpu.fits_dp2 ? "needs DP=2" : targetGpu.fits_dp4 ? "needs DP=4" : "needs DP=8+"} on ${targetGpu.name} (${targetGpu.vram_gb} GB)`;
+        status = targetGpu.fits_solo ? "pass" : "warn";
+      } else if (fitsLocal !== null) {
+        msg += ` — ${fitsLocal ? "✓ fits" : "✗ does NOT fit"} on local GPU (${localGpuMaxGb.toFixed(1)} GB)`;
+        status = fitsLocal ? "pass" : "fail";
+      } else {
+        msg += ` (pass --gpu H100 or similar for a fit verdict)`;
+      }
+      if (hasFlag("--require-fit") && status !== "pass") status = "fail";
+      addCheck("vram_fit", status, msg, { total_per_gpu_gb: totalGb });
+    }
   }
 
   const fail = checks.some((c) => c.status === "fail");
@@ -9285,7 +11157,14 @@ function cmdDigest() {
     else if (unit === "d") sinceMs = val * 24 * 60 * 60 * 1000;
     else if (unit === "m") sinceMs = val * 60 * 1000;
   }
-  const cutoff = Date.now() - sinceMs;
+  const nowFlag = option("--now");
+  const nowMs = nowFlag ? Date.parse(String(nowFlag)) : Date.now();
+  if (Number.isNaN(nowMs)) {
+    console.error(`autoresearch digest: invalid --now value: ${nowFlag}`);
+    process.exitCode = 1;
+    return;
+  }
+  const cutoff = nowMs - sinceMs;
 
   let runs = [];
   try {
@@ -9895,61 +11774,6 @@ function cmdTopic() {
     return;
   }
 
-  // Check baseline status (reuses baseline logic)
-  const baselineFile = path.join(cwd, ".researchloop", "baseline.md");
-  let baselineState = "unknown";
-  let baselineMetric = null;
-  let baselineValue = null;
-
-  if (fs.existsSync(baselineFile)) {
-    const raw = fs.readFileSync(baselineFile, "utf8");
-    const whatToRecord = extractSection(raw, "What To Record");
-    const frozenSurfaces = extractSection(raw, "Frozen Surfaces");
-    const requiredWhatToRecord = ["Baseline artifact", "Metric", "Direction", "Command or config"];
-    const requiredFrozen = ["Dataset", "Model size", "Seed"];
-    let missing = [];
-    for (const key of requiredWhatToRecord) {
-      if (!sectionHasValue(whatToRecord, key)) missing.push(key);
-    }
-    for (const key of requiredFrozen) {
-      if (!sectionHasValue(frozenSurfaces, key)) missing.push(key);
-    }
-    baselineState = missing.length === 0 ? "complete" : "incomplete";
-    baselineMetric = extractValue(whatToRecord, "Metric") || null;
-    baselineValue = extractValue(whatToRecord, "Metric") || null;
-  } else {
-    baselineState = "missing";
-  }
-
-  // Check for prior runs
-  let priorRunCount = 0;
-  let bestRun = null;
-  try {
-    const runsPath = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
-    if (fs.existsSync(runsPath)) {
-      const lines = fs.readFileSync(runsPath, "utf8").split("\n").filter(l => l.trim());
-      priorRunCount = lines.length;
-      for (const line of lines.reverse()) {
-        const row = JSON.parse(line);
-        if (row.status === "completed" && row.value != null) {
-          bestRun = row;
-          break;
-        }
-      }
-    }
-  } catch { /* ignore */ }
-
-  // Check for existing paper notes
-  let paperNotes = [];
-  try {
-    const papersDir = path.join(cwd, ".researchloop", "scratchpad", "papers");
-    if (fs.existsSync(papersDir)) {
-      for (const f of fs.readdirSync(papersDir)) {
-        if (f.endsWith(".md")) paperNotes.push(f.replace(".md", ""));
-      }
-    }
-  } catch { /* ignore */ }
-
   // Autonomy mode requires locked baseline
   if (mode === "autonomous") {
     const lockFile = path.join(cwd, ".researchloop", "baseline.lock");
@@ -9960,397 +11784,36 @@ function cmdTopic() {
     }
   }
 
-  // Build output
-  const slug = topicText.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50);
-  const timestamp = new Date().toISOString().split("T")[0];
-
-  let output = "# Topic: " + topicText + "\n\n";
-  output += "_Generated: " + timestamp + " | Mode: " + mode + "_\n\n";
-
-  output += "## Baseline State\n";
-  output += "- Status: **" + baselineState + "**\n";
-  if (baselineMetric) output += "- Metric: " + baselineMetric + "\n";
-  if (baselineValue) output += "- Baseline value: " + baselineValue + "\n";
-  if (priorRunCount > 0) output += "- Prior runs: " + priorRunCount + "\n";
-  if (bestRun) output += "- Best run: " + bestRun.id + " (" + bestRun.value + ")\n";
-  output += "\n";
-
-  if (baselineState !== "complete") {
-    output += "**Action required:** Baseline is " + baselineState + ". ";
-    output += "Create or complete `.researchloop/baseline.md` before proceeding with experiments.\n\n";
-  }
-
-  output += "## Available Modes\n\n";
-  output += "### propose (default)\n";
-  output += "Read repo history and optionally search papers to propose 2-4 grounded next experiments.\n\n";
-  output += "### novel\n";
-  output += "Generate 3-5 genuinely different hypotheses with mechanism, why it might work, why it might fail, smallest test, and kill criterion.\n\n";
-  output += "### autonomous\n";
-  output += "Run the full loop (read history, search papers, write notes, choose cheapest meaningful test, run it, record it, compare it) within an agreed time budget. **Requires baseline lock.**\n\n";
-
-  output += "## Next Steps\n\n";
-  output += "Choose a mode and run:\n\n";
-  output += "```bash\n";
-  output += "autoresearch propose --topic \"" + topicText + "\"\n";
-  output += "# OR\n";
-  output += "autoresearch hypothesis --from-runs --topic \"" + topicText + "\"\n";
-  output += "```\n\n";
-
-  if (paperNotes.length > 0) {
-    output += "## Relevant Paper Notes\n";
-    for (const note of paperNotes) {
-      output += "- " + note + "\n";
-    }
-    output += "\n";
-  }
-
-  output += "_Topic intake generated by AutoResearch-AI G28_\n";
+  const { output, slug, baselineState } = buildTopicNote({ cwd, topicText, mode });
 
   if (doWrite) {
     const topicsDir = path.join(cwd, ".researchloop", "scratchpad", "topics");
     if (!fs.existsSync(topicsDir)) fs.mkdirSync(topicsDir, { recursive: true });
     const outPath = path.join(topicsDir, slug + ".md");
-    fs.writeFileSync(outPath, output);
+    fs.writeFileSync(outPath, `${output}\n`);
     console.log("Topic note written to: " + outPath);
     if (mode === "autonomous" && baselineState !== "complete") {
       console.log("WARNING: baseline is " + baselineState + " — autonomous mode may not behave correctly.");
     }
   } else {
-    process.stdout.write(output);
+    process.stdout.write(`${output}\n`);
   }
 }
 
-function cmdPropose() {
-  const cwd = targetDir();
-  const n = parseInt(option("--n", "5"), 10);
-  const doWrite = hasFlag("--write");
-  const mode = option("--mode", "propose");
-  const focus = option("--focus", "all");
-  const metric = option("--metric", null);
-  const direction = option("--direction", null);
-
-  // Check baseline status
-  const baselineFile = path.join(cwd, ".researchloop", "baseline.md");
-  let baselineInfo = { status: "missing", metric: null, direction: null };
-  if (fs.existsSync(baselineFile)) {
-    const raw = fs.readFileSync(baselineFile, "utf8");
-    const whatToRecord = extractSection(raw, "What To Record");
-    const frozenSurfaces = extractSection(raw, "Frozen Surfaces");
-    const requiredWhatToRecord = ["Baseline artifact", "Metric", "Direction", "Command or config"];
-    const requiredFrozen = ["Dataset", "Model size", "Seed"];
-    let missing = [];
-    for (const key of requiredWhatToRecord) {
-      if (!sectionHasValue(whatToRecord, key)) missing.push(key);
-    }
-    for (const key of requiredFrozen) {
-      if (!sectionHasValue(frozenSurfaces, key)) missing.push(key);
-    }
-    baselineInfo.status = missing.length === 0 ? "complete" : "incomplete";
-    baselineInfo.metric = extractValue(whatToRecord, "Metric") || null;
-    baselineInfo.direction = extractValue(whatToRecord, "Direction") || null;
-  }
-
-  // Check if baseline is locked
-  const lockFile = path.join(cwd, ".researchloop", "baseline.lock");
-  if (fs.existsSync(lockFile)) {
-    try {
-      const lock = JSON.parse(fs.readFileSync(lockFile, "utf8"));
-      baselineInfo.locked_at = lock.locked_at;
-      baselineInfo.baseline_value = lock.baseline_value;
-    } catch { /* ignore */ }
-  }
-
-  // Collect prior runs
-  let runs = [];
-  try {
-    const runsPath = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
-    if (fs.existsSync(runsPath)) {
-      const lines = fs.readFileSync(runsPath, "utf8").split("\n").filter(l => l.trim());
-      for (const line of lines) {
-        runs.push(JSON.parse(line));
-      }
-    }
-  } catch { /* ignore */ }
-
-  // Collect paper notes
-  let paperNotes = [];
-  try {
-    const papersDir = path.join(cwd, ".researchloop", "scratchpad", "papers");
-    if (fs.existsSync(papersDir)) {
-      for (const f of fs.readdirSync(papersDir)) {
-        if (f.endsWith(".md")) {
-          const content = fs.readFileSync(path.join(papersDir, f), "utf8");
-          paperNotes.push({ id: f.replace(".md", ""), content });
-        }
-      }
-    }
-  } catch { /* ignore */ }
-
-  // Collect hypotheses
-  let hypotheses = [];
-  try {
-    const hypDir = path.join(cwd, ".researchloop", "scratchpad", "hypotheses");
-    if (fs.existsSync(hypDir)) {
-      for (const f of fs.readdirSync(hypDir)) {
-        if (f.endsWith(".md")) {
-          const content = fs.readFileSync(path.join(hypDir, f), "utf8");
-          hypotheses.push({ id: f.replace(".md", ""), content });
-        }
-      }
-    }
-  } catch { /* ignore */ }
-
-  // Determine target metric
-  const targetMetric = metric || baselineInfo.metric || "val_loss";
-  const targetDirection = direction || baselineInfo.direction || "lower";
-
-  // Generate proposals based on prior runs and baseline
-  const proposals = [];
-  const usedMechanisms = new Set();
-
-  // Extract mechanism from existing runs
-  for (const run of runs) {
-    if (run.params && run.params._mechanism) {
-      usedMechanisms.add(run.params._mechanism);
-    }
-  }
-
-  // Simple proposal generation based on common ML improvements
-  const proposalTemplates = [
-    { title: "Learning rate warmup", hypothesis: "Warmup prevents early gradient instability in transformers.", mechanism: "lr_warmup", change: "add warmup schedule", risk: "low" },
-    { title: "AdamW instead of Adam", hypothesis: "Decoupled weight decay in AdamW produces better regularization.", mechanism: "optimizer_change", change: "replace Adam with AdamW", risk: "low" },
-    { title: "Reduce batch size", hypothesis: "Smaller batches improve generalization for small datasets.", mechanism: "batch_reduction", change: "halve batch_size", risk: "medium" },
-    { title: "Add gradient clipping", hypothesis: "Gradient clipping prevents token-level explosion in transformers.", mechanism: "gradient_clipping", change: "set max_grad_norm=1.0", risk: "low" },
-    { title: "Increase model width", hypothesis: "Wider layers capture more complex patterns.", mechanism: "width_increase", change: "double hidden_dim", risk: "high" },
-    { title: "Dropout regularization", hypothesis: "Dropout prevents overfitting on small datasets.", mechanism: "dropout", change: "add dropout=0.1", risk: "low" },
-    { title: "Longer training with early stopping", hypothesis: "More epochs with patience finds better optimum.", mechanism: "longer_training", change: "increase epochs to 200", risk: "medium" },
-    { title: "Weight decay tuning", hypothesis: "Optimal weight decay depends on model size and dataset.", mechanism: "weight_decay", change: "sweep weight_decay 0.01-0.1", risk: "medium" },
-  ];
-
-  // Filter out already-tried mechanisms
-  const available = proposalTemplates.filter(p => !usedMechanisms.has(p.mechanism));
-
-  // Generate id for each proposal (content-hashed)
-  function hashId(text) {
-    let hash = 0;
-    for (let i = 0; i < text.length; i++) {
-      const char = text.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash;
-    }
-    return "prop_" + Math.abs(hash).toString(16).padStart(8, "0");
-  }
-
-  let count = 0;
-  for (const tpl of available) {
-    if (count >= n) break;
-
-    const id = hashId(tpl.title + Date.now());
-    const bestRun = runs.filter(r => r.status === "completed").sort((a, b) => {
-      if (targetDirection === "higher") return (b.value || 0) - (a.value || 0);
-      return (a.value || 0) - (b.value || 0);
-    })[0];
-
-    proposals.push({
-      id,
-      title: tpl.title,
-      hypothesis: tpl.hypothesis,
-      change: tpl.change,
-      metric: targetMetric,
-      expected_direction: targetDirection,
-      estimated_minutes: tpl.risk === "low" ? 30 : tpl.risk === "medium" ? 120 : 240,
-      est_cost_usd_or_null: null,
-      risk: tpl.risk,
-      priors: bestRun ? [{ type: "run", id: bestRun.id }] : [],
-      kill_criterion: targetMetric + " does not improve by >5% after " + (tpl.risk === "low" ? "1h" : "4h"),
-      mechanism: tpl.mechanism,
-      mode,
-      created_at: new Date().toISOString(),
-    });
-
-    count++;
-  }
-
-  // Output
-  if (doWrite) {
-    const proposalsPath = path.join(cwd, ".researchloop", "scratchpad", "proposals.jsonl");
-    const scratchpadDir = path.join(cwd, ".researchloop", "scratchpad");
-    if (!fs.existsSync(scratchpadDir)) fs.mkdirSync(scratchpadDir, { recursive: true });
-    const existingIds = new Set();
-    try {
-      if (fs.existsSync(proposalsPath)) {
-        const existing = fs.readFileSync(proposalsPath, "utf8").split("\n").filter(l => l.trim());
-        for (const line of existing) {
-          try { existingIds.add(JSON.parse(line).id); } catch { /* ignore */ }
-        }
-      }
-    } catch { /* ignore */ }
-
-    const filtered = proposals.filter(p => !existingIds.has(p.id));
-    if (filtered.length > 0) {
-      const lines = filtered.map(p => JSON.stringify(p)).join("\n") + "\n";
-      fs.appendFileSync(proposalsPath, lines);
-    }
-    console.log("Wrote " + filtered.length + " new proposal(s) to " + proposalsPath);
-  } else {
-    // JSON output
-    process.stdout.write(JSON.stringify(proposals, null, 2));
-  }
+async function cmdPropose() {
+  return cmdProposeEngine({ option, hasFlag, targetDir });
 }
 
 function cmdRank() {
-  const cwd = targetDir();
-  const inputFile = option("--input", null);
-  const doWrite = hasFlag("--write");
-  const inputPath = inputFile
-    ? path.join(cwd, inputFile)
-    : path.join(cwd, ".researchloop", "scratchpad", "proposals.jsonl");
+  return cmdRankEngine({ option, hasFlag, targetDir });
+}
 
-  // Load proposals
-  let proposals = [];
-  try {
-    if (!fs.existsSync(inputPath)) {
-      console.error("rank: no proposals found at " + inputPath + " (use --input or run `autoresearch propose --write` first)");
-      process.exitCode = 1;
-      return;
-    }
-    const lines = fs.readFileSync(inputPath, "utf8").split("\n").filter(l => l.trim());
-    for (const line of lines) {
-      proposals.push(JSON.parse(line));
-    }
-  } catch (e) {
-    console.error("rank: failed to read proposals: " + e.message);
-    process.exitCode = 1;
-    return;
-  }
+function cmdPriors() {
+  return cmdPriorsEngine({ option, hasFlag, targetDir });
+}
 
-  if (proposals.length === 0) {
-    console.error("rank: no proposals to rank");
-    process.exitCode = 1;
-    return;
-  }
-
-  // Load runs for novelty comparison
-  let runs = [];
-  try {
-    const runsPath = path.join(cwd, ".researchloop", "scratchpad", "runs.jsonl");
-    if (fs.existsSync(runsPath)) {
-      const lines = fs.readFileSync(runsPath, "utf8").split("\n").filter(l => l.trim());
-      for (const line of lines) {
-        runs.push(JSON.parse(line));
-      }
-    }
-  } catch { /* ignore */ }
-
-  // Score each proposal
-  function scoreProposal(prop) {
-    let impact = 0.5; // baseline
-    let cost = 0.5;
-    let risk = 0.5;
-    let novelty = 0.5;
-
-    // Risk scoring
-    const riskScores = { low: 0.2, medium: 0.5, high: 0.8 };
-    risk = riskScores[prop.risk] || 0.5;
-
-    // Estimated cost impact (minutes to hours, normalized 0-1)
-    const estMinutes = prop.estimated_minutes || 30;
-    cost = Math.min(estMinutes / 240, 1.0); // 240 min = 1.0
-
-    // Impact: if prior exists, score based on whether it beats the prior
-    if (prop.priors && prop.priors.length > 0) {
-      const priorRun = runs.find(r => prop.priors.some(p => p.id === r.id));
-      if (priorRun && priorRun.value != null) {
-        // Proposals targeting lower metric should beat prior's value
-        if (prop.expected_direction === "lower" && priorRun.value > (prop.target_value || 0)) {
-          impact = 0.8;
-        } else if (prop.expected_direction === "higher" && priorRun.value < (prop.target_value || 1)) {
-          impact = 0.8;
-        } else {
-          impact = 0.4;
-        }
-      }
-    }
-
-    // Novelty: check if mechanism was already tried
-    if (prop.mechanism) {
-      const usedMechanisms = new Set();
-      for (const run of runs) {
-        if (run.params && run.params._mechanism) {
-          usedMechanisms.add(run.params._mechanism);
-        }
-      }
-      novelty = usedMechanisms.has(prop.mechanism) ? 0.1 : 0.8;
-    }
-
-    // Composite score (weighted average)
-    const score = impact * 0.35 + (1 - cost) * 0.25 + (1 - risk) * 0.15 + novelty * 0.25;
-
-    // Generate why
-    let why = [];
-    if (impact > 0.6) why.push("high impact relative to prior");
-    else if (impact < 0.4) why.push("marginal improvement over prior");
-    if (cost < 0.3) why.push("cheap to run");
-    else if (cost > 0.7) why.push("expensive run");
-    if (risk < 0.3) why.push("low risk");
-    else if (risk > 0.6) why.push("high risk");
-    if (novelty > 0.6) why.push("novel mechanism");
-    else if (novelty < 0.3) why.push("already explored mechanism");
-
-    return {
-      score: Math.round(score * 1000) / 1000,
-      score_breakdown: {
-        impact: Math.round(impact * 100) / 100,
-        cost: Math.round(cost * 100) / 100,
-        risk: Math.round(risk * 100) / 100,
-        novelty_vs_runs: Math.round(novelty * 100) / 100,
-        why: why.join("; ") || "mixed signals",
-      },
-    };
-  }
-
-  // Score and sort
-  const scored = proposals.map(p => ({ ...p, ...scoreProposal(p) }));
-  scored.sort((a, b) => b.score - a.score);
-
-  // Write ranked output
-  if (doWrite) {
-    const rankedPath = path.join(cwd, ".researchloop", "scratchpad", "ranked-proposals.jsonl");
-    const scratchpadDir = path.join(cwd, ".researchloop", "scratchpad");
-    if (!fs.existsSync(scratchpadDir)) fs.mkdirSync(scratchpadDir, { recursive: true });
-
-    const lines = scored.map(p => JSON.stringify(p)).join("\n") + "\n";
-    fs.writeFileSync(rankedPath, lines);
-
-    // Also write human-readable markdown
-    let md = "# Ranked Proposals\n\n";
-    md += "_Generated: " + new Date().toISOString().split("T")[0] + "_\n\n";
-    md += "| Rank | Title | Score | Impact | Cost | Risk | Novelty | Mechanism |\n";
-    md += "|---|---|---|---|---|---|---|---|\n";
-    scored.forEach((p, i) => {
-      md += "| " + (i + 1) + " | " + p.title + " | " + p.score + " | ";
-      md += p.score_breakdown.impact + " | " + p.score_breakdown.cost + " | ";
-      md += p.score_breakdown.risk + " | " + p.score_breakdown.novelty_vs_runs + " | ";
-      md += (p.mechanism || "unknown") + " |\n";
-    });
-    md += "\n## Details\n\n";
-    scored.forEach((p, i) => {
-      md += "### " + (i + 1) + ". " + p.title + " (score: " + p.score + ")\n";
-      md += "- **Hypothesis:** " + p.hypothesis + "\n";
-      md += "- **Change:** " + p.change + "\n";
-      md += "- **Risk:** " + p.risk + "\n";
-      md += "- **Kill criterion:** " + p.kill_criterion + "\n";
-      md += "- **Why:** " + p.score_breakdown.why + "\n\n";
-    });
-
-    const mdPath = path.join(cwd, ".researchloop", "scratchpad", "ranked-proposals.md");
-    fs.writeFileSync(mdPath, md);
-
-    console.log("Ranked " + scored.length + " proposals -> " + rankedPath);
-    console.log("Markdown summary -> " + mdPath);
-  } else {
-    process.stdout.write(JSON.stringify(scored, null, 2));
-  }
+async function cmdEval() {
+  return cmdEvalEngine({ option, hasFlag, targetDir });
 }
 
 function splitInlineList(text) {
@@ -11246,6 +12709,139 @@ function paramsWithoutSeed(params) {
   return out;
 }
 
+function sweepSafeName(value, fallback = "sweep") {
+  const out = String(value || fallback)
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return out || fallback;
+}
+
+function sweepStableValue(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => sweepStableValue(item));
+  }
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const key of Object.keys(value).sort()) {
+      out[key] = sweepStableValue(value[key]);
+    }
+    return out;
+  }
+  return value;
+}
+
+function sweepStableJson(value) {
+  return JSON.stringify(sweepStableValue(value));
+}
+
+function sweepHash(value, length = 10) {
+  return createHash("sha256").update(sweepStableJson(value)).digest("hex").slice(0, length);
+}
+
+function splitSweepParts(text, separator = ",") {
+  const parts = [];
+  let current = "";
+  let depth = 0;
+  let quote = null;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (quote) {
+      current += ch;
+      if (ch === quote && text[i - 1] !== "\\") quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === "\"") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === "{" || ch === "[") depth += 1;
+    if (ch === "}" || ch === "]") depth -= 1;
+    if (ch === separator && depth === 0) {
+      parts.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) parts.push(current);
+  return parts;
+}
+
+function parseSweepScalar(raw) {
+  const text = String(raw ?? "").trim();
+  if (!text) return "";
+  if (text === "null" || text === "~") return null;
+  if (text === "true") return true;
+  if (text === "false") return false;
+  if (/^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(text)) {
+    return Number(text);
+  }
+  if ((text.startsWith("\"") && text.endsWith("\"")) || (text.startsWith("'") && text.endsWith("'"))) {
+    return text.slice(1, -1);
+  }
+  if (/^\[.*\]$/.test(text)) {
+    const inner = text.slice(1, -1).trim();
+    if (!inner) return [];
+    return splitSweepParts(inner, ",").map((part) => parseSweepScalar(part));
+  }
+  if (/^\{.*\}$/.test(text)) {
+    const inner = text.slice(1, -1).trim();
+    if (!inner) return {};
+    const obj = {};
+    for (const part of splitSweepParts(inner, ",")) {
+      const idx = part.indexOf(":");
+      if (idx === -1) continue;
+      const key = part.slice(0, idx).trim().replace(/^["']|["']$/g, "");
+      const value = part.slice(idx + 1).trim();
+      obj[key] = parseSweepScalar(value);
+    }
+    return obj;
+  }
+  return text;
+}
+
+function parseSweepYaml(text) {
+  const out = {};
+  let section = null;
+  for (const rawLine of String(text ?? "").split(/\r?\n/)) {
+    const line = rawLine.trimEnd();
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    if (!/^\s/.test(rawLine)) {
+      const top = rawLine.match(/^([A-Za-z0-9_.-]+):\s*(.*)$/);
+      if (!top) continue;
+      const key = top[1];
+      const rest = top[2].trim();
+      if (rest) {
+        out[key] = parseSweepScalar(rest);
+        section = null;
+      } else {
+        section = key;
+        if (key === "variants") out[key] = [];
+        else if (key === "params" || key === "grid") out[key] = {};
+        else out[key] = {};
+      }
+      continue;
+    }
+    if (section === "params" || section === "grid") {
+      const entry = rawLine.match(/^\s{2,}([A-Za-z0-9_.-]+):\s*(.*)$/);
+      if (entry) {
+        out[section][entry[1]] = parseSweepScalar(entry[2]);
+      }
+      continue;
+    }
+    if (section === "variants") {
+      const entry = rawLine.match(/^\s*-\s*(.*)$/);
+      if (entry) {
+        out.variants.push(parseSweepScalar(entry[1]));
+      }
+    }
+  }
+  return out;
+}
+
 function analyzeSeedGroups(trials, metric) {
   const groups = new Map();
   for (const trial of trials || []) {
@@ -12059,7 +13655,897 @@ async function startSweepQueue(cwd, queueId, opts = {}) {
   }
 }
 
+function parseSweepSpecText(text, sourcePath = "") {
+  const trimmed = String(text ?? "").trim();
+  if (!trimmed) {
+    throw new Error("sweep spec is empty");
+  }
+  if (sourcePath && path.extname(sourcePath).toLowerCase() === ".json") {
+    const parsed = JSON.parse(trimmed);
+    if (!parsed || typeof parsed !== "object") {
+      throw new Error("sweep spec must be a JSON object");
+    }
+    return parsed;
+  }
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (!parsed || typeof parsed !== "object") {
+      throw new Error("sweep spec must be a JSON object");
+    }
+    return parsed;
+  } catch {
+    const parsed = parseSweepYaml(trimmed);
+    if (!parsed || typeof parsed !== "object") {
+      throw new Error("sweep spec must be a YAML object");
+    }
+    return parsed;
+  }
+}
+
+function parseSweepSpecFile(file) {
+  return parseSweepSpecText(fs.readFileSync(file, "utf8"), file);
+}
+
+function sweepRoot(cwd) {
+  return path.join(cwd, ".researchloop", "sweeps");
+}
+
+function sweepSpecCandidates(cwd, sweepName) {
+  const base = sweepSafeName(sweepName, "sweep");
+  const root = sweepRoot(cwd);
+  return [
+    path.join(root, `${base}.yaml`),
+    path.join(root, `${base}.yml`),
+    path.join(root, `${base}.json`),
+  ];
+}
+
+function resolveSweepSpecFile(cwd, sweepNameOrPath) {
+  if (!sweepNameOrPath) return null;
+  const direct = path.isAbsolute(sweepNameOrPath) ? sweepNameOrPath : path.join(cwd, sweepNameOrPath);
+  if (fs.existsSync(direct) && fs.statSync(direct).isFile()) return direct;
+  for (const candidate of sweepSpecCandidates(cwd, sweepNameOrPath)) {
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
+  }
+  return null;
+}
+
+function sweepNameFromSpecPath(file) {
+  return sweepSafeName(path.basename(file).replace(/\.(yaml|yml|json)$/i, ""), "sweep");
+}
+
+function sweepQueuePath(cwd, sweepName) {
+  return path.join(sweepRoot(cwd), `${sweepSafeName(sweepName, "sweep")}.queue.jsonl`);
+}
+
+function sweepLockRoot(cwd, sweepName) {
+  return path.join(sweepRoot(cwd), `${sweepSafeName(sweepName, "sweep")}.lock`);
+}
+
+function sweepQueueLockPath(cwd, sweepName) {
+  return path.join(sweepLockRoot(cwd, sweepName), "claim.lock");
+}
+
+function sweepRowLockPath(cwd, sweepName, rowId) {
+  return path.join(sweepLockRoot(cwd, sweepName), `${rowId}.json`);
+}
+
+function sweepReadJsonl(file) {
+  if (!fs.existsSync(file)) return [];
+  return fs.readFileSync(file, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
+function sweepWriteJsonl(file, rows) {
+  ensureDir(path.dirname(file));
+  fs.writeFileSync(file, `${rows.map((row) => JSON.stringify(row)).join("\n")}${rows.length ? "\n" : ""}`);
+}
+
+function sweepPidAlive(pid) {
+  if (!Number.isFinite(pid) || pid <= 0) return null;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    if (err && err.code === "EPERM") return true;
+    return false;
+  }
+}
+
+function sweepReadLockMeta(file) {
+  try {
+    const text = fs.readFileSync(file, "utf8");
+    try {
+      return JSON.parse(text);
+    } catch {
+      const pid = parseInt(text.trim(), 10);
+      if (Number.isFinite(pid)) return { pid };
+      return { raw: text.trim() };
+    }
+  } catch {
+    return null;
+  }
+}
+
+function sweepRecoverStaleLock(file, maxAgeMinutes = 120) {
+  if (!fs.existsSync(file)) return false;
+  const stat = fs.statSync(file);
+  const meta = sweepReadLockMeta(file);
+  const pid = meta && Number.isFinite(meta.pid) ? meta.pid : null;
+  const alive = pid !== null ? sweepPidAlive(pid) : null;
+  const stale = alive === false || (pid === null && (Date.now() - stat.mtimeMs) / 60000 > maxAgeMinutes);
+  if (!stale) return false;
+  try {
+    fs.unlinkSync(file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function sweepAcquireExclusiveFile(file, payload) {
+  ensureDir(path.dirname(file));
+  fs.writeFileSync(file, `${JSON.stringify(payload, null, 2)}\n`, { flag: "wx" });
+}
+
+function sweepReleaseExclusiveFile(file) {
+  try {
+    fs.unlinkSync(file);
+  } catch {
+    // ignore
+  }
+}
+
+function sweepSpecBaseCommand(spec) {
+  return String(spec?.base_command || spec?.command_template || spec?.command || "").trim();
+}
+
+function sweepNormalizeParamSpec(value) {
+  if (Array.isArray(value)) {
+    return { type: "choice", values: value.slice() };
+  }
+  if (!value || typeof value !== "object") {
+    return { type: "fixed", value };
+  }
+  return value;
+}
+
+function sweepChoiceValues(def) {
+  if (Array.isArray(def)) return def.slice();
+  if (!def || typeof def !== "object") return [def];
+  if (Array.isArray(def.values)) return def.values.slice();
+  if (Array.isArray(def.choices)) return def.choices.slice();
+  if (Array.isArray(def.options)) return def.options.slice();
+  if (Object.prototype.hasOwnProperty.call(def, "value")) return [def.value];
+  if (Object.prototype.hasOwnProperty.call(def, "default")) return [def.default];
+  return [def];
+}
+
+function sweepSampleValue(def, rng) {
+  const spec = sweepNormalizeParamSpec(def);
+  const type = String(spec.type || (Array.isArray(spec.values) ? "choice" : "fixed")).toLowerCase();
+  if (type === "choice" || type === "list") {
+    const values = sweepChoiceValues(spec);
+    if (!values.length) return null;
+    return values[Math.floor(rng() * values.length) % values.length];
+  }
+  if (type === "uniform") {
+    const min = Number(spec.min);
+    const max = Number(spec.max);
+    if (!Number.isFinite(min) || !Number.isFinite(max)) {
+      throw new Error("random sweep uniform params require min and max");
+    }
+    return min + (max - min) * rng();
+  }
+  if (type === "log_uniform" || type === "log-uniform") {
+    const min = Number(spec.min);
+    const max = Number(spec.max);
+    if (!Number.isFinite(min) || !Number.isFinite(max) || min <= 0 || max <= 0) {
+      throw new Error("random sweep log_uniform params require positive min and max");
+    }
+    const logMin = Math.log(min);
+    const logMax = Math.log(max);
+    return Math.exp(logMin + (logMax - logMin) * rng());
+  }
+  if (type === "int" || type === "integer") {
+    const min = Math.ceil(Number(spec.min));
+    const max = Math.floor(Number(spec.max));
+    if (!Number.isFinite(min) || !Number.isFinite(max)) {
+      throw new Error("random sweep int params require min and max");
+    }
+    return min + Math.floor(rng() * (max - min + 1));
+  }
+  if (type === "fixed") {
+    if (Object.prototype.hasOwnProperty.call(spec, "value")) return spec.value;
+    if (Object.prototype.hasOwnProperty.call(spec, "default")) return spec.default;
+    return null;
+  }
+  if (Array.isArray(spec.values) || Array.isArray(spec.choices) || Array.isArray(spec.options)) {
+    const values = sweepChoiceValues(spec);
+    return values[Math.floor(rng() * values.length) % values.length];
+  }
+  return spec;
+}
+
+function sweepExpandGridVariants(spec) {
+  const axesSource = spec.grid && typeof spec.grid === "object" ? spec.grid : spec.params;
+  const axes = Object.entries(axesSource || {});
+  if (!axes.length) return [];
+  let combos = [{}];
+  for (const [key, value] of axes) {
+    const normalized = sweepNormalizeParamSpec(value);
+    const values = sweepChoiceValues(normalized);
+    if (!values.length) {
+      throw new Error(`sweep grid axis "${key}" produced no values`);
+    }
+    if (!Array.isArray(values)) {
+      throw new Error(`sweep grid axis "${key}" must be a list`);
+    }
+    const next = [];
+    for (const combo of combos) {
+      for (const entry of values) {
+        next.push({ ...combo, [key]: entry });
+      }
+    }
+    combos = next;
+  }
+  return combos.map((params, index) => ({ params, index }));
+}
+
+function sweepExpandListVariants(spec) {
+  if (Array.isArray(spec.variants) && spec.variants.length) {
+    return spec.variants.map((params, index) => ({ params, index }));
+  }
+  const source = spec.params && typeof spec.params === "object" ? spec.params : null;
+  if (!source) return [];
+  const entries = Object.entries(source);
+  if (!entries.length) return [];
+  const lengths = entries.map(([, value]) => Array.isArray(value) ? value.length : null);
+  if (!lengths.every((value) => Number.isFinite(value))) {
+    throw new Error("list sweep requires `variants:` or `params:` values that are equally sized lists");
+  }
+  const uniqueLengths = new Set(lengths);
+  if (uniqueLengths.size !== 1) {
+    throw new Error("list sweep params must all have the same length");
+  }
+  const count = lengths[0];
+  const rows = [];
+  for (let index = 0; index < count; index += 1) {
+    const params = {};
+    for (const [key, value] of entries) {
+      params[key] = value[index];
+    }
+    rows.push({ params, index });
+  }
+  return rows;
+}
+
+function sweepExpandRandomVariants(spec) {
+  const budget = Number(spec.budget ?? spec.random_budget ?? 0);
+  if (!Number.isFinite(budget) || budget <= 0) {
+    throw new Error("random sweep requires a positive `budget`");
+  }
+  const seedSource = spec.seed ?? spec.random_seed ?? spec.name ?? "sweep";
+  const rng = (() => {
+    const seed = createHash("sha256").update(String(seedSource)).digest().readUInt32LE(0);
+    let state = seed || 0x9e3779b9;
+    return () => {
+      state = (state + 0x6D2B79F5) >>> 0;
+      let t = Math.imul(state ^ (state >>> 15), 1 | state);
+      t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  })();
+  const params = spec.params && typeof spec.params === "object" ? spec.params : {};
+  const rows = [];
+  for (let index = 0; index < budget; index += 1) {
+    const sample = {};
+    for (const [key, value] of Object.entries(params)) {
+      sample[key] = sweepSampleValue(value, rng);
+    }
+    rows.push({ params: sample, index });
+  }
+  return rows;
+}
+
+function sweepExpandVariants(spec) {
+  const strategy = String(spec.strategy || (spec.variants ? "list" : spec.grid ? "grid" : "grid")).toLowerCase();
+  let variants = [];
+  if (strategy === "random") {
+    variants = sweepExpandRandomVariants(spec);
+  } else if (strategy === "list") {
+    variants = sweepExpandListVariants(spec);
+  } else {
+    variants = sweepExpandGridVariants(spec);
+  }
+  const budget = Number(spec.budget ?? 0);
+  if (Number.isFinite(budget) && budget > 0 && variants.length > budget && strategy !== "random") {
+    variants = variants.slice(0, budget);
+  }
+  return variants.map((variant, index) => ({
+    params: variant.params || {},
+    index,
+  }));
+}
+
+function sweepVariantId(sweepName, index, params) {
+  const hash = sweepHash({ sweepName, index, params }, 12);
+  return `${sweepSafeName(sweepName, "sweep")}-${String(index).padStart(3, "0")}-${hash}`;
+}
+
+function sweepReadRuns(cwd) {
+  return readRunRows(cwd);
+}
+
+function sweepReadQueue(cwd, sweepName) {
+  return sweepReadJsonl(sweepQueuePath(cwd, sweepName));
+}
+
+function sweepWriteQueue(cwd, sweepName, rows) {
+  ensureDir(path.dirname(sweepQueuePath(cwd, sweepName)));
+  sweepWriteJsonl(sweepQueuePath(cwd, sweepName), rows);
+}
+
+function sweepRowQueueState(row, queueRows, runRows, cwd, sweepName) {
+  const lockPath = sweepRowLockPath(cwd, sweepName, row.id);
+  if (String(row.status) === "done") return "done";
+  if (String(row.status) === "failed") return "failed";
+  const runRow = runRows.find((entry) => String(entry.id) === String(row.id));
+  const runStatus = String(runRow?.status || "").toLowerCase();
+  if (["complete", "complete_no_metric", "complete_partial", "promoted", "kept", "discarded"].includes(runStatus)) {
+    return "done";
+  }
+  if (["failed", "timeout", "spawn_error", "killed_by_safety", "killed_by_rule"].includes(runStatus)) {
+    return "failed";
+  }
+  if (fs.existsSync(lockPath)) {
+    return "running";
+  }
+  if (String(row.status) === "running") return "queued";
+  return "queued";
+}
+
+function sweepBoard(cwd, sweepName) {
+  const queueRows = sweepReadQueue(cwd, sweepName);
+  const runRows = sweepReadRuns(cwd);
+  const rows = queueRows.map((row) => ({
+    ...row,
+    state: sweepRowQueueState(row, queueRows, runRows, cwd, sweepName),
+  }));
+  const counts = rows.reduce((acc, row) => {
+    acc[row.state] = (acc[row.state] || 0) + 1;
+    return acc;
+  }, { queued: 0, running: 0, done: 0, failed: 0 });
+  return { rows, counts, queueRows, runRows };
+}
+
+function sweepLockSummaryRow(row) {
+  const pieces = [`[${row.state}]`, row.id];
+  if (row.index !== undefined && row.index !== null) pieces.push(`#${row.index}`);
+  if (row.params && Object.keys(row.params).length) pieces.push(JSON.stringify(row.params));
+  if (row.command) pieces.push(`-> ${row.command}`);
+  return pieces.join(" ");
+}
+
+function sweepQueueSummary(board, sweepName, specPath, queuePath) {
+  const lines = ["autoresearch sweep", "---"];
+  lines.push(`sweep: ${sweepName}`);
+  if (specPath) lines.push(`spec: ${specPath}`);
+  lines.push(`queue: ${queuePath}`);
+  lines.push(`queued: ${board.counts.queued} running: ${board.counts.running} done: ${board.counts.done} failed: ${board.counts.failed}`);
+  if (!board.rows.length) {
+    lines.push("(empty)");
+    return `${lines.join("\n")}\n`;
+  }
+  lines.push("---");
+  for (const row of board.rows) {
+    lines.push(`- ${sweepLockSummaryRow(row)}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function sweepQueueJson(board, sweepName, specPath, queuePath) {
+  return `${JSON.stringify({
+    sweep: sweepName,
+    spec_path: specPath,
+    queue_path: queuePath,
+    counts: board.counts,
+    rows: board.rows,
+    generated_at: new Date().toISOString(),
+  }, null, 2)}\n`;
+}
+
+function sweepSubcommandName(subcommand) {
+  const subIndex = args.findIndex((arg, index) => index > 0 && !arg.startsWith("-") && arg === subcommand);
+  if (subIndex === -1) return "";
+  for (let i = subIndex + 1; i < args.length; i += 1) {
+    const token = args[i];
+    if (token.startsWith("-")) continue;
+    return token;
+  }
+  return "";
+}
+
+function sweepEnsureGenerated(cwd, sweepName) {
+  const queuePath = sweepQueuePath(cwd, sweepName);
+  if (fs.existsSync(queuePath)) {
+    return queuePath;
+  }
+  const specFile = resolveSweepSpecFile(cwd, sweepName);
+  if (!specFile) {
+    throw new Error(`sweep spec not found for ${sweepName}`);
+  }
+  const spec = parseSweepSpecFile(specFile);
+  const variants = sweepExpandVariants(spec);
+  const existing = sweepReadQueue(cwd, sweepName);
+  const priorById = new Map(existing.map((row) => [String(row.id), row]));
+  const now = new Date().toISOString();
+  const baseCommand = sweepSpecBaseCommand(spec);
+  if (!baseCommand) {
+    throw new Error("sweep spec must include `base_command` (or `command_template`)");
+  }
+  const rows = variants.map((variant, index) => {
+    const id = sweepVariantId(sweepName, index, variant.params);
+    const prior = priorById.get(String(id)) || {};
+    const command = renderSweepCommand(baseCommand, variant.params || {});
+    return {
+      id,
+      sweep: sweepName,
+      strategy: String(spec.strategy || (spec.variants ? "list" : spec.grid ? "grid" : "grid")).toLowerCase(),
+      spec_path: path.relative(cwd, specFile),
+      spec_hash: sweepHash(spec, 16),
+      command,
+      params: variant.params || {},
+      index,
+      status: prior.status || "queued",
+      created_at: prior.created_at || now,
+      updated_at: prior.updated_at || now,
+      claimed_at: prior.claimed_at || null,
+      claimed_by: prior.claimed_by || null,
+      lock_path: prior.lock_path || null,
+      run_id: prior.run_id || null,
+      run_status: prior.run_status || null,
+      exit_code: prior.exit_code ?? null,
+      metric_name: prior.metric_name || null,
+      metric_value: prior.metric_value ?? null,
+      completed_at: prior.completed_at || null,
+      finished_at: prior.finished_at || null,
+      failure_reason: prior.failure_reason || null,
+    };
+  });
+  ensureDir(path.dirname(queuePath));
+  sweepWriteQueue(cwd, sweepName, rows);
+  return queuePath;
+}
+
+function sweepClaimRow(cwd, sweepName, agent, workerName) {
+  const queuePath = sweepQueuePath(cwd, sweepName);
+  if (!fs.existsSync(queuePath)) return { state: "missing", row: null };
+  const claimLock = sweepQueueLockPath(cwd, sweepName);
+  sweepRecoverStaleLock(claimLock);
+  try {
+    sweepAcquireExclusiveFile(claimLock, {
+      scope: "sweeps",
+      kind: "queue-claim",
+      pid: process.pid,
+      agent,
+      worker: workerName,
+      sweep: sweepName,
+      acquired_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    if (err && err.code === "EEXIST") {
+      return { state: "busy", row: null };
+    }
+    throw err;
+  }
+
+  try {
+    const queueRows = sweepReadQueue(cwd, sweepName);
+    const runRows = sweepReadRuns(cwd);
+    for (const row of queueRows) {
+      const state = sweepRowQueueState(row, queueRows, runRows, cwd, sweepName);
+      if (state !== "queued") continue;
+      const rowLock = sweepRowLockPath(cwd, sweepName, row.id);
+      sweepRecoverStaleLock(rowLock);
+      if (fs.existsSync(rowLock)) continue;
+      const now = new Date().toISOString();
+      try {
+        sweepAcquireExclusiveFile(rowLock, {
+          scope: "sweeps",
+          kind: "row-claim",
+          pid: process.pid,
+          agent,
+          worker: workerName,
+          sweep: sweepName,
+          row_id: row.id,
+          claimed_at: now,
+        });
+      } catch (err) {
+        if (err && err.code === "EEXIST") {
+          continue;
+        }
+        throw err;
+      }
+
+      row.status = "running";
+      row.claimed_at = now;
+      row.claimed_by = agent;
+      row.worker = workerName;
+      row.lock_path = path.relative(cwd, rowLock);
+      row.updated_at = now;
+      sweepWriteQueue(cwd, sweepName, queueRows);
+      return { state: "claimed", row, lockPath: rowLock };
+    }
+    return { state: "no-row", row: null };
+  } finally {
+    sweepReleaseExclusiveFile(claimLock);
+  }
+}
+
+function sweepUpdateRow(cwd, sweepName, rowId, updater) {
+  const claimLock = sweepQueueLockPath(cwd, sweepName);
+  sweepRecoverStaleLock(claimLock);
+  try {
+    sweepAcquireExclusiveFile(claimLock, {
+      scope: "sweeps",
+      kind: "queue-update",
+      pid: process.pid,
+      sweep: sweepName,
+      row_id: rowId,
+      acquired_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    if (err && err.code === "EEXIST") {
+      throw new Error(`sweep queue busy for ${sweepName}`);
+    }
+    throw err;
+  }
+
+  try {
+    const queueRows = sweepReadQueue(cwd, sweepName);
+    const index = queueRows.findIndex((row) => String(row.id) === String(rowId));
+    if (index === -1) {
+      throw new Error(`sweep row not found: ${rowId}`);
+    }
+    const next = updater({ ...queueRows[index] });
+    queueRows[index] = {
+      ...queueRows[index],
+      ...next,
+      updated_at: new Date().toISOString(),
+    };
+    sweepWriteQueue(cwd, sweepName, queueRows);
+    return queueRows[index];
+  } finally {
+    sweepReleaseExclusiveFile(claimLock);
+  }
+}
+
+async function sweepRunOne(cwd, sweepName, row, ctx, sweepRunId, metricsName, regexSource, timeoutSec, allowUnsafe, enableSystemSampling) {
+  const res = await executeRun({
+    cwd,
+    cmdText: row.command,
+    metricName: metricsName,
+    regexSource,
+    timeoutSec,
+    allowUnsafe,
+    isBaseline: false,
+    idOverride: row.id,
+    extraConfig: {
+      sweep: sweepName,
+      sweep_run_id: sweepRunId,
+      sweep_index: row.index,
+      sweep_params: row.params,
+      sweep_queue: path.relative(cwd, sweepQueuePath(cwd, sweepName)),
+    },
+    suppressExitCode: true,
+    quiet: true,
+    tags: ["sweep", `sweep:${sweepName}`],
+    parentId: sweepRunId,
+    enableSystemSampling,
+  });
+
+  const metricValue = res.metricValue;
+  const finishedAt = new Date().toISOString();
+  let queueRow;
+  try {
+    queueRow = sweepUpdateRow(cwd, sweepName, row.id, (current) => ({
+      ...current,
+      status: res.status === "blocked" || res.status === "no_command" ? "failed" : (res.status === "failed" || res.status === "timeout" || res.status === "spawn_error" || res.status === "killed_by_safety" || res.status === "killed_by_rule" ? "failed" : "done"),
+      run_id: res.id || current.run_id || row.id,
+      run_status: res.status,
+      exit_code: res.row ? res.row.exit_code : null,
+      metric_name: metricValue !== null ? metricsName : current.metric_name,
+      metric_value: metricValue !== null ? metricValue : current.metric_value,
+      completed_at: finishedAt,
+      finished_at: finishedAt,
+      failure_reason: res.status === "blocked" ? res.safety?.message || "blocked by safety" : null,
+    }));
+  } finally {
+    sweepReleaseExclusiveFile(sweepRowLockPath(cwd, sweepName, row.id));
+  }
+
+  return {
+    ok: res.ok,
+    status: res.status,
+    metricValue,
+    runId: res.id,
+    queueRow,
+    wallSeconds: res.wallSeconds,
+  };
+}
+
+async function cmdSweepGenerate() {
+  const cwd = targetDir();
+  const sweepName = sweepSafeName(option("--name", sweepSubcommandName("generate")) || "sweep");
+  const specFile = resolveSweepSpecFile(cwd, sweepName);
+  if (!specFile) {
+    console.error(`sweep spec not found for ${sweepName}`);
+    process.exitCode = 1;
+    return;
+  }
+  let spec;
+  try {
+    spec = parseSweepSpecFile(specFile);
+  } catch (err) {
+    console.error(`sweep spec error: ${err.message}`);
+    process.exitCode = 1;
+    return;
+  }
+  const baseCommand = sweepSpecBaseCommand(spec);
+  if (!baseCommand) {
+    console.error("sweep spec must include `base_command` or `command_template`");
+    process.exitCode = 1;
+    return;
+  }
+
+  let variants;
+  try {
+    variants = sweepExpandVariants(spec);
+  } catch (err) {
+    console.error(`sweep spec error: ${err.message}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  if (!variants.length) {
+    console.error("sweep spec produced 0 variants");
+    process.exitCode = 1;
+    return;
+  }
+
+  const queuePath = sweepQueuePath(cwd, sweepName);
+  const existing = sweepReadQueue(cwd, sweepName);
+  const priorById = new Map(existing.map((row) => [String(row.id), row]));
+  const generatedAt = new Date().toISOString();
+  const rows = variants.map((variant, index) => {
+    const id = sweepVariantId(sweepName, index, variant.params || {});
+    const prior = priorById.get(String(id)) || {};
+    return {
+      id,
+      sweep: sweepName,
+      strategy: String(spec.strategy || (spec.variants ? "list" : spec.grid ? "grid" : "grid")).toLowerCase(),
+      spec_path: path.relative(cwd, specFile),
+      spec_hash: sweepHash(spec, 16),
+      command: renderSweepCommand(baseCommand, variant.params || {}),
+      params: variant.params || {},
+      index,
+      status: prior.status || "queued",
+      created_at: prior.created_at || generatedAt,
+      updated_at: prior.updated_at || generatedAt,
+      claimed_at: prior.claimed_at || null,
+      claimed_by: prior.claimed_by || null,
+      lock_path: prior.lock_path || null,
+      run_id: prior.run_id || null,
+      run_status: prior.run_status || null,
+      exit_code: prior.exit_code ?? null,
+      metric_name: prior.metric_name || null,
+      metric_value: prior.metric_value ?? null,
+      completed_at: prior.completed_at || null,
+      finished_at: prior.finished_at || null,
+      failure_reason: prior.failure_reason || null,
+    };
+  });
+  sweepWriteQueue(cwd, sweepName, rows);
+  const formatJson = String(option("--format", "text")).toLowerCase() === "json";
+  const board = sweepBoard(cwd, sweepName);
+  if (formatJson) {
+    console.log(sweepQueueJson(board, sweepName, path.relative(cwd, specFile), path.relative(cwd, queuePath)));
+  } else {
+    process.stdout.write(`autoresearch sweep generate\nsweep: ${sweepName}\nspec: ${path.relative(cwd, specFile)}\nqueue: ${path.relative(cwd, queuePath)}\nrows: ${rows.length}\n`);
+  }
+}
+
+async function cmdSweepStatus() {
+  const cwd = targetDir();
+  const sweepName = sweepSafeName(option("--name", sweepSubcommandName("status")) || "sweep");
+  const queuePath = sweepQueuePath(cwd, sweepName);
+  if (!fs.existsSync(queuePath)) {
+    console.error(`sweep queue not found: ${path.relative(cwd, queuePath)}`);
+    process.exitCode = 1;
+    return;
+  }
+  const specFile = resolveSweepSpecFile(cwd, sweepName);
+  const board = sweepBoard(cwd, sweepName);
+  const formatJson = String(option("--format", "text")).toLowerCase() === "json";
+  if (formatJson) {
+    console.log(sweepQueueJson(board, sweepName, specFile ? path.relative(cwd, specFile) : null, path.relative(cwd, queuePath)));
+  } else {
+    process.stdout.write(sweepQueueSummary(board, sweepName, specFile ? path.relative(cwd, specFile) : null, path.relative(cwd, queuePath)));
+  }
+}
+
+async function cmdSweepRunQueue() {
+  const cwd = targetDir();
+  const sweepName = sweepSafeName(option("--name", sweepSubcommandName("run")) || "sweep");
+  const specFile = resolveSweepSpecFile(cwd, sweepName);
+  if (!specFile) {
+    console.error(`sweep spec not found: ${sweepName}`);
+    process.exitCode = 1;
+    return;
+  }
+  try {
+    sweepEnsureGenerated(cwd, sweepName);
+  } catch (err) {
+    console.error(`sweep generate error: ${err.message}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const goalFields = readGoalFields(cwd);
+  const spec = parseSweepSpecFile(specFile);
+  const metricName = String(option("--metric", spec.metric || goalFields.metric || "val_loss")).trim() || "val_loss";
+  const regexSource = option("--regex", spec.regex || null);
+  const timeoutSec = Number(option("--timeout", spec.timeout || 600));
+  const allowUnsafe = hasFlag("--allow-unsafe");
+  const direction = String(option("--direction", spec.direction || goalFields.direction || "lower")).toLowerCase();
+  const workersRaw = Number(option("--workers", spec.workers || 1));
+  const workerCount = Number.isFinite(workersRaw) && workersRaw > 0 ? Math.max(1, Math.floor(workersRaw)) : 1;
+  const maxFailuresRaw = Number(option("--max-failures", spec.max_failures || spec.maxFailures || Infinity));
+  const maxFailures = Number.isFinite(maxFailuresRaw) && maxFailuresRaw >= 0 ? maxFailuresRaw : Infinity;
+  const enableSystemSampling = !hasFlag("--no-system-sampling");
+  const sweepRunId = `${sweepSafeName(sweepName, "sweep")}-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+
+  const board0 = sweepBoard(cwd, sweepName);
+  const total = board0.rows.length;
+  let completed = 0;
+  let failures = 0;
+  let stopRequested = false;
+
+  const onSigint = () => {
+    stopRequested = true;
+    console.log("sweep: stopping after current row");
+  };
+  process.once("SIGINT", onSigint);
+
+  console.log("autoresearch sweep run");
+  console.log(`sweep: ${sweepName}`);
+  console.log(`spec: ${path.relative(cwd, specFile)}`);
+  console.log(`queue: ${path.relative(cwd, sweepQueuePath(cwd, sweepName))}`);
+  console.log(`workers: ${workerCount}`);
+  console.log(`metric: ${metricName} (${direction === "higher" || direction === "max" || direction === "maximize" ? "higher" : "lower"})`);
+  if (maxFailures !== Infinity) console.log(`max_failures: ${maxFailures}`);
+  console.log("---");
+
+  async function workerLoop(workerIndex) {
+    const workerName = `worker-${workerIndex}`;
+    while (!stopRequested) {
+      const claim = sweepClaimRow(cwd, sweepName, "autoresearch sweep", workerName);
+      if (claim.state === "busy") {
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        continue;
+      }
+      if (claim.state !== "claimed" || !claim.row) {
+        return;
+      }
+      const row = claim.row;
+      const started = Date.now();
+      try {
+        const result = await sweepRunOne(cwd, sweepName, row, { workerName }, sweepRunId, metricName, regexSource, timeoutSec, allowUnsafe, enableSystemSampling);
+        completed += 1;
+        const rowFailed = String(result.queueRow?.status || "").toLowerCase() === "failed" || (!result.ok && !result.queueRow);
+        if (rowFailed) {
+          failures += 1;
+          if (failures >= maxFailures) {
+            stopRequested = true;
+          }
+        }
+        const metricSuffix = Number.isFinite(result.metricValue) ? ` ${metricName}=${result.metricValue}` : "";
+        const elapsed = Math.max(0, Math.round((Date.now() - started) / 1000));
+        console.log(`[${completed}/${total}] ${row.id} ${row.command}${metricSuffix} (${elapsed}s)`);
+      } catch (err) {
+        failures += 1;
+        stopRequested = true;
+        sweepReleaseExclusiveFile(sweepRowLockPath(cwd, sweepName, row.id));
+        try {
+          sweepUpdateRow(cwd, sweepName, row.id, (current) => ({
+            ...current,
+            status: "failed",
+            failure_reason: err.message,
+            completed_at: new Date().toISOString(),
+          }));
+        } catch {
+          // ignore update failure
+        }
+        console.error(`sweep row failed: ${row.id}: ${err.message}`);
+      }
+    }
+  }
+
+  const workerRuns = [];
+  for (let i = 0; i < workerCount; i += 1) {
+    workerRuns.push(workerLoop(i + 1));
+  }
+  try {
+    await Promise.all(workerRuns);
+  } finally {
+    process.removeListener("SIGINT", onSigint);
+  }
+
+  const finalBoard = sweepBoard(cwd, sweepName);
+  const scored = finalBoard.rows
+    .map((row) => ({
+      id: row.id,
+      params: row.params,
+      value: Number.isFinite(metricNumber(row.metric_value)) ? metricNumber(row.metric_value) : metricNumber(readRunRowById(cwd, row.id)?.metrics?.[metricName]),
+    }))
+    .filter((row) => Number.isFinite(row.value));
+  scored.sort((a, b) => (direction === "higher" || direction === "max" || direction === "maximize") ? b.value - a.value : a.value - b.value);
+  const sweepSummaryDir = path.join(cwd, ".researchloop", "scratchpad", "sweeps", sweepRunId);
+  ensureDir(sweepSummaryDir);
+  fs.writeFileSync(path.join(sweepSummaryDir, "summary.json"), `${JSON.stringify({
+    sweep: sweepName,
+    sweep_run_id: sweepRunId,
+    spec_path: path.relative(cwd, specFile),
+    queue_path: path.relative(cwd, sweepQueuePath(cwd, sweepName)),
+    metric: metricName,
+    direction: direction === "higher" || direction === "max" || direction === "maximize" ? "higher" : "lower",
+    workers: workerCount,
+    max_failures: Number.isFinite(maxFailures) ? maxFailures : null,
+    rows_total: total,
+    rows_done: finalBoard.counts.done,
+    rows_failed: finalBoard.counts.failed,
+    scored,
+    best: scored[0] || null,
+  }, null, 2)}\n`);
+
+  console.log("---");
+  console.log(`completed: ${finalBoard.counts.done + finalBoard.counts.failed}/${total}`);
+  console.log(`done: ${finalBoard.counts.done}`);
+  console.log(`failed: ${finalBoard.counts.failed}`);
+  console.log(`queued: ${finalBoard.counts.queued}`);
+  console.log(`running: ${finalBoard.counts.running}`);
+  if (scored.length) {
+    console.log(`best: ${scored[0].id} ${metricName}=${scored[0].value} params=${JSON.stringify(scored[0].params)}`);
+  }
+  console.log(`summary: ${path.relative(cwd, path.join(sweepSummaryDir, "summary.json"))}`);
+}
+
 async function cmdSweep() {
+  const subcommands = new Set(["generate", "status", "run"]);
+  const sub = args.find((arg, index) => index > 0 && !arg.startsWith("-") && subcommands.has(arg)) || null;
+  if (sub === "generate") {
+    await cmdSweepGenerate();
+    return;
+  }
+  if (sub === "status") {
+    await cmdSweepStatus();
+    return;
+  }
+  if (sub === "run") {
+    await cmdSweepRunQueue();
+    return;
+  }
+
   const cwd = targetDir();
   const subcommand = subcommandFor("sweep", ["validate", "preview", "create", "report"]);
   if (["validate", "preview", "create", "report"].includes(subcommand)) {
@@ -12296,7 +14782,7 @@ async function cmdSweep() {
     .map((r) => ({
       id: r.id,
       params: r.variant.params,
-      value: r.row && r.row.metrics ? Number(r.row.metrics[metricName]) : Number.NaN,
+      value: r.row && r.row.metrics ? metricNumber(r.row.metrics[metricName]) : Number.NaN,
     }))
     .filter((r) => Number.isFinite(r.value));
   scored.sort((a, b) => (preferHigher ? b.value - a.value : a.value - b.value));
@@ -12691,17 +15177,19 @@ Usage:
   autoresearch goal [TEXT] [--dir PATH] [--metric NAME] [--direction lower|higher] [--baseline CMD] [--evaluation CMD] [--allowed TEXT] [--forbidden TEXT]
   autoresearch inspect [--dir PATH]
   autoresearch idea [--dir PATH]
-  autoresearch propose [--n N] [--write] [--mode propose|novel|autonomous] [--focus hyperparameters|architecture|attention|data] [--dir PATH]
+  autoresearch propose [--n N] [--write] [--with-priors] [--prior-limit N] [--offline] [--cache-dir PATH] [--mode propose|novel|autonomous] [--focus hyperparameters|architecture|attention|data] [--dir PATH]
   autoresearch rank [--input PATH] [--write] [--dir PATH] [--goal TEXT] [--write]
+  autoresearch next-experiment [PROPOSAL_ID] [--proposal ID] [--input PATH] [--write] [--out FILE.md] [--script FILE.sh] [--run-id ID] [--format markdown|json] [--dir PATH]
   autoresearch prompt [--goal TEXT] [--focus hyperparameters|architecture|attention|training-ladder] [--agent NAME]
   autoresearch doctor [--dir PATH] [--python PATH] [--repair-plan]
   autoresearch infra-doctor [--dir PATH] [--python PATH] [--format text|json] [--write]
   autoresearch scaffold [--template python-benchmark|cpp-benchmark|cuda-basic|triton-operator|llm-serving] [--out PATH] [--agent NAME] [--force]
-  autoresearch replay [--dir PATH] [--id RUN_ID]
+  autoresearch replay [RUN_ID] [--id RUN_ID] [--n N] [--metric NAME] [--tolerance N] [--timeout SECONDS] [--allow-unsafe] [--dir PATH]
   autoresearch record [--dir PATH] [--id ID] [--status STATUS] [--metric key=value] [--note TEXT]    (manual escape hatch; prefer 'run')
   autoresearch run [--dir PATH] [--id ID] [--command CMD] [--metric NAME] [--regex PATTERN] [--timeout SECONDS] [--device auto|cpu|cuda|mps|directml] [--cuda-visible-devices LIST] [--tags TEXT] [--note TEXT] [--seeds N] [--allow-unsafe]
   autoresearch baseline [--dir PATH] [--id ID] [--command CMD] [--metric NAME] [--regex PATTERN] [--timeout SECONDS] [--device auto|cpu|cuda|mps|directml] [--cuda-visible-devices LIST] [--tags TEXT] [--note TEXT] [--allow-unsafe]
-  autoresearch sweep --spec FILE.json|yaml|csv [--metric NAME] [--seeds N] [--direction lower|higher] [--dry-run] [--allow-unsafe] [--dir PATH]
+  autoresearch sweep generate|status|run <name> [--dir PATH] [--metric NAME] [--direction lower|higher] [--workers N] [--max-failures K] [--format text|json] [--allow-unsafe]
+  autoresearch sweep --spec FILE.json|yaml|csv [--metric NAME] [--seeds N] [--direction lower|higher] [--dry-run] [--allow-unsafe] [--dir PATH] (legacy one-shot run)
   autoresearch sweep validate|preview|create --spec FILE.json|yaml|csv [--dir PATH] [--format text|json]
   autoresearch queue start|pause|resume|cancel|retry-failed|delete|clear|status|report --id QUEUE_ID [--dir PATH] [--max-parallel N] [--cuda-visible-devices LIST] [--format text|json]
   autoresearch sweep-report --id QUEUE_ID [--dir PATH] [--format text|json]
@@ -12709,11 +15197,13 @@ Usage:
   autoresearch anomalies [--id RUN_ID] [--format text|json] [--dir PATH]
   autoresearch verify --id <run-id> [--metric NAME] [--tolerance N] [--timeout SECONDS] [--allow-unsafe] [--dir PATH]
   autoresearch preflight [--command CMD] [--require-gpu] [--min-disk-gb N] [--min-mem-gb N] [--format text|json] [--dir PATH]
-  autoresearch resume [--id RUN_ID] [--command CMD] [--metric NAME] [--timeout SECONDS] [--allow-unsafe] [--dir PATH]
+  autoresearch resume [RUN_ID] [--id RUN_ID] [--command CMD] [--metric NAME] [--timeout SECONDS] [--dry-run] [--allow-unsafe] [--dir PATH]
   autoresearch scan-papers [--dir PATH] [--query TEXT] [--limit N] [--since YYYY-MM] [--cache-dir PATH] [--offline]
+  autoresearch eval [--run-id ID] [--command CMD] [--format text|json] [--allow-unsafe] [--dir PATH]
   autoresearch compare [--dir PATH] [--metric NAME] [--direction lower|higher]
   autoresearch metric-tiers init|show|score [--profile hpc_operator|model_inference|ai_infra_training] [--format text|json] [--dir PATH]
   autoresearch team [--dir PATH] [--workers N] [--goal TEXT] [--force]
+  autoresearch tasks add|claim|done|status [--dir PATH] [--agent NAME] [--lane worker|reviewer|orchestrator] [--depends TASK_ID] [--format text|json]
   autoresearch dashboard [--dir PATH] [--host HOST] [--port PORT]
   autoresearch report [--dir PATH] [--format text|markdown] [--out report.md] [--include-plots]
   autoresearch portfolio [--dir PATH] [--out FILE.md] [--python PATH] [--no-env]
@@ -12723,12 +15213,78 @@ Usage:
   autoresearch baseline --unlock [--dir PATH] [--format json]
   autoresearch failures [--top N] [--format json] [--dir PATH]
   autoresearch diff-runs --id-a <id> --id-b <id> [--format text|json|markdown] [--dir PATH]
+  autoresearch paper-read <paper-id> [--from arxiv|local] [--cache-dir PATH] [--write] [--dir PATH]
+  autoresearch paper-reread <paper-id> --against <run-id> [--write] [--format text|json|markdown] [--dir PATH]
+  autoresearch priors --proposal <id> [--limit N] [--offline] [--cache-dir PATH] [--input PATH] [--dir PATH]
+  autoresearch hypothesis [--from-papers] [--from-runs] [--paper-id ID] [--run-id ID] [--novel] [--write] [--dir PATH]
   autoresearch prune [--older-than Nd] [--status STATUS] [--dry-run] [--no-keep-promoted] [--dir PATH]
   autoresearch data-fingerprint [--dir PATH]
   autoresearch model-card --id <run-id> [--out FILE.md] [--dir PATH]
   autoresearch tag --id <run-id> [--add TAG] [--remove TAG] [--list] [--dir PATH]\n  autoresearch digest [--since DURATION] [--format text|json|markdown] [--dir PATH]\n  autoresearch param-importance [--metric METRIC] [--format table|json] [--dir PATH]\n  autoresearch suggest [--n N] [--metric METRIC] [--direction higher|lower] [--format text|json] [--dir PATH]
   autoresearch topic "<text>" [--mode propose|novel|autonomous] [--dir PATH] [--write]
   autoresearch query "<expression>" [--format jsonl|table] [--dir PATH]
+  autoresearch curves --id <run-id> [--format text|json|jsonl] [--dir PATH]
+  autoresearch promote --id <run-id> [--note TEXT] [--force] [--skip-review] [--dir PATH]
+  autoresearch review --id <run-id> [--format text|json|markdown] [--out FILE.md] [--dir PATH]
+  autoresearch significance <run-a> <run-b> [--metric NAME] [--alpha N] [--n-permutations N] [--seed N] [--direction lower|higher] [--format text|json] [--require-significant] [--dir PATH]
+  autoresearch determinism --command CMD [--n N] [--metric NAME] [--tolerance N] [--seed N] [--timeout SECONDS] [--format text|json] [--no-exit-code] [--allow-unsafe] [--dir PATH]
+  autoresearch power [--baseline-std N] [--detect-delta N] [--n N] [--alpha 0.05] [--power 0.8] [--metric NAME] [--format text|json] [--dir PATH]
+  autoresearch similar <run-id> [--k N] [--metric NAME] [--param-weight 0..1] [--format text|json] [--dir PATH]
+  autoresearch learn --id <run-id> [--lesson "TEXT"] [--list] [--search QUERY] [--export] [--out FILE] [--format text|json] [--dir PATH]
+  autoresearch archive --id <run-id> --reason "TEXT" [--mechanism TEXT] [--restore] [--list] [--format text|json] [--dir PATH]
+  autoresearch forecast --command CMD | --similar-to <run-id> [--k N] [--format text|json] [--dir PATH]
+  autoresearch pareto --metrics m1,m2[,...] [--direction m1=lower,m2=higher] [--format text|json] [--dir PATH]
+  autoresearch ablate <run-id> [--n N] [--write] [--out FILE.jsonl] [--format text|json] [--dir PATH]
+  autoresearch compute-budget [--params N] [--tokens N] [--flops N] [--gpu-days N] [--gpus N] [--tflops N] [--mfu 0.5] [--tokens-per-param 20] [--format text|json]
+  autoresearch mechanisms [--check "TEXT"] [--for <run-id>] [--metric NAME] [--format text|json] [--dir PATH]
+  autoresearch disk-check [--min-free-gb N] [--path PATH ...] [--format text|json] [--dir PATH]
+  autoresearch leaderboard [--metric NAME] [--direction lower|higher] [--top N] [--since 7d] [--include complete|all] [--format text|json] [--dir PATH]
+  autoresearch bibtex [--file report.md] [--all] [--out refs.bib] [--format text|json] [--dir PATH]
+  autoresearch seed [--set N] [--bump] [--clear] [--env] [--format text|json] [--dir PATH]
+  autoresearch pr-bundle <run-id> [--baseline-id ID] [--out FILE.md] [--dashboard-url URL] [--dir PATH]
+  autoresearch agent-memory [--metric NAME] [--direction lower|higher] [--out FILE.md] [--format text|json] [--dir PATH]
+  autoresearch story <run-id> [--format text|json] [--dir PATH]
+  autoresearch smoke --command CMD [--seconds N] [--metric NAME] [--id ID] [--allow-unsafe] [--dir PATH]
+  autoresearch share <run-id> [--out FILE.tar.gz] [--dir PATH]
+  autoresearch bench list | info <id> | add <id> [--dry-run] [--format text|json] [--dir PATH]
+  autoresearch slurm --command CMD [--partition NAME] [--gpus N] [--cpus N] [--mem 32G] [--time HH:MM:SS] [--nodes N] [--account NAME] [--constraint NAME] [--env-script PATH] [--modules m1,m2] [--exclusive] [--id ID] [--metric NAME] [--timeout SECONDS] [--allow-unsafe] [--out FILE.sbatch] [--dir PATH]
+  autoresearch retrospective [--since 7d] [--metric NAME] [--direction lower|higher] [--out FILE.md] [--format text|json] [--dir PATH]
+  autoresearch lit-diff <paper-a> <paper-b> [--unified] [--format text|json] [--dir PATH]
+  autoresearch budget [--set USD] [--clear] [--check] [--note TEXT] [--format text|json] [--dir PATH]
+  autoresearch fork <run-id> [--bump key=value ...] [--new-id ID] [--seeds N] [--out FILE.sh] [--dry-run] [--dir PATH]
+  autoresearch validate-config [--format text|json] [--dir PATH]
+  autoresearch eta <run-id> [--total-steps N] [--format text|json] [--dir PATH]
+  autoresearch summary [--metric NAME] [--direction lower|higher] [--format text|json] [--out FILE.md] [--dir PATH]
+  autoresearch hardware [--format text|json] [--dir PATH]
+  autoresearch hooks list | install <event> | remove <event> | test <event> | env-template [--into FILE] [--file PATH] [--dir PATH]
+  autoresearch data-sample --path FILE [--n N] [--seed N] [--label FIELD] [--format text|json] [--dir PATH]
+  autoresearch canary --eval EVAL.jsonl --train TRAIN.jsonl [--substring] [--min-len N] [--max-show N] [--format text|json] [--dir PATH]
+  autoresearch stale-locks [--clean] [--max-age MINUTES] [--format text|json] [--dir PATH]
+  autoresearch reset --id <run-id> [--force] [--no-archive] [--format text|json] [--dir PATH]
+  autoresearch question add "TEXT" [--run RUN_ID ...] | list [--open|--answered|--closed] | answer <id> "ANSWER" | close <id> [--format text|json] [--dir PATH]
+  autoresearch search "TEXT" [--include ledger,papers,...] [--context N] [--format text|json] [--dir PATH]
+  autoresearch tail <run-id> [--follow|-f] [--lines N] [--metrics] [--latest] [--dir PATH]
+  autoresearch container-snapshot --id <run-id> [--gpu] [--out DIR] [--dir PATH]
+  autoresearch warmstart <run-id> [--new-id ID] [--checkpoint PATH] [--command CMD] [--metric NAME] [--out FILE.sh] [--dry-run] [--dir PATH]
+  autoresearch gpu-report [--top N] [--format text|json] [--dir PATH]
+  autoresearch gpu-fit --params 7B | --layers N --d-model N [--d-ff N] [--vocab N] [--batch N] [--seq N] [--dtype bf16|fp16|fp32|fp8] [--optimizer adamw|sgd|adam8bit] [--grad-checkpoint] [--tp N] [--dp N] [--zero 0|1|2|3] [--format text|json]
+  autoresearch eval-diff --a runA/predictions.jsonl --b runB/predictions.jsonl [--field correct] [--id-key id] [--max-show N] [--format text|json]
+  autoresearch scaling-fit [--metric NAME] [--x compute|flops|params|tokens|wall_seconds] [--with-offset] [--target N] [--format text|json] [--dir PATH]
+  autoresearch sample-efficiency <run-id> [--metric NAME] [--direction lower|higher] [--vs BASELINE_ID] [--plateau-threshold 0.005] [--format text|json] [--dir PATH]
+  autoresearch rl-stats <run-id> | --file rewards.jsonl [--success-threshold N] [--vs BASELINE_ID] [--metric episode_return] [--bootstrap 1000] [--format text|json] [--dir PATH]
+  autoresearch sweep-projection --name <sweep> | --spec FILE.yaml | --n N [--seconds-per-run N] [--cost-per-run N] [--workers N] [--format text|json] [--dir PATH]
+  autoresearch headroom [--metric NAME] [--direction lower|higher] [--ceiling N] [--sota N] [--baseline N] [--current N] [--format text|json] [--dir PATH]
+  autoresearch mfu [RUN_ID] [--params 7B] [--layers N] [--d-model N] [--batch N] [--seq N] [--tokens N] [--gpu H100] [--tflops N] [--gpus N] [--format text|json] [--dir PATH]
+  autoresearch kv-cache --layers N --n-kv-heads N --head-dim N [--n-heads N] [--params 70B] [--context N] [--batch N] [--gpu H100] [--kv-dtype fp16|fp8|int8] [--weights-dtype fp16|int8|int4] [--format text|json]
+  autoresearch lr-finder --file lrtest.jsonl | --id <run-id> [--smoothing 0.05] [--format text|json] [--dir PATH]
+  autoresearch overfit-watch <run-id> [--train-metric train_loss] [--val-metric val_loss] [--direction lower|higher] [--gap-threshold 0.05] [--format text|json] [--dir PATH]
+  autoresearch shard-plan --params 70B --layers 80 --d-model 8192 [--d-ff N] [--vocab N] [--batch 1] [--seq 8192] [--dtype bf16|fp16|fp8] [--optimizer adamw|sgd|adam8bit] [--grad-checkpoint] [--zero 0|1|2|3] [--gpus N] [--gpu H100] [--vram-gb N] [--reserve-gb N] [--format text|json]
+  autoresearch elo --file wins.jsonl [--k 4] [--bootstrap 200] [--format text|json]
+  autoresearch api-budget --provider claude-opus-4-7 --prompts N --avg-input-tokens N --avg-output-tokens N | --file prompts.jsonl [--field prompt] [--input-price USD] [--output-price USD] [--tokens-per-char 0.25] [--list] [--format text|json]
+  autoresearch judge --candidates pairs.jsonl --mode pairwise|scalar|reference --judge MODEL [--out judge_prompts.jsonl] [--avg-output-tokens N] [--format text|json]
+  autoresearch judge --parse outputs.jsonl --prompts judge_prompts.jsonl --mode pairwise|scalar|reference [--out parsed.jsonl]
+  autoresearch grad-noise --norm-small N --batch-small N --norm-big N --batch-big N | --file grad_norms.jsonl | --id <run-id> [--batch N] [--format text|json] [--dir PATH]
+  autoresearch memorization --outputs gens.jsonl --train train.txt | --train-globs f1.txt,f2.txt [--n 50] [--report-threshold N] [--max-show N] [--format text|json]
   autoresearch --version
 
 Aliases:
@@ -12744,6 +15300,10 @@ async function main() {
     console.log(packageVersion());
     return;
   }
+  if (hasFlag("--list-commands") || command === "list-commands" || command === "commands") {
+    cmdListCommands();
+    return;
+  }
   if (hasFlag("--help") || command === "help") {
     cmdHelp();
   } else if (command === "init") {
@@ -12755,9 +15315,11 @@ async function main() {
   } else if (command === "idea") {
     cmdIdea();
   } else if (command === "propose") {
-    cmdPropose();
+    await cmdPropose();
   } else if (command === "rank") {
     cmdRank();
+  } else if (command === "next-experiment" || command === "next") {
+    cmdNextExperiment({ args, option, hasFlag, targetDir });
   } else if (command === "prompt") {
     cmdPrompt();
   } else if (command === "doctor") {
@@ -12767,7 +15329,7 @@ async function main() {
   } else if (command === "scaffold") {
     cmdScaffold();
   } else if (command === "replay") {
-    cmdReplay();
+    await cmdReplay();
   } else if (command === "record") {
     cmdRecord();
   } else if (command === "run") {
@@ -12787,12 +15349,22 @@ async function main() {
     }
   } else if (command === "scan-papers") {
     await cmdScanPapers();
+  } else if (command === "eval") {
+    await cmdEval();
+  } else if (command === "priors") {
+    await cmdPriors();
+  } else if (command === "paper-read") {
+    await cmdPaperRead({ args, option, hasFlag, positionalText, targetDir });
+  } else if (command === "paper-reread") {
+    await cmdPaperReread({ args, option, hasFlag, positionalText, targetDir });
   } else if (command === "compare") {
     cmdCompare();
   } else if (command === "metric-tiers") {
     cmdMetricTiers();
   } else if (command === "team") {
     cmdTeam();
+  } else if (command === "tasks") {
+    await cmdTasks({ args, option, optionsAll, hasFlag, targetDir });
   } else if (command === "dashboard") {
     cmdDashboard();
   } else if (command === "report") {
@@ -12823,6 +15395,8 @@ async function main() {
     cmdSuggest();
   } else if (command === "topic") {
     cmdTopic();
+  } else if (command === "hypothesis") {
+    cmdHypothesis({ args, option, hasFlag, targetDir });
   } else if (command === "query") {
     cmdQuery();
   } else if (command === "approvals") {
@@ -12843,6 +15417,128 @@ async function main() {
     cmdPreflight();
   } else if (command === "resume") {
     await cmdResume();
+  } else if (command === "curves" || command === "curve") {
+    cmdCurves();
+  } else if (command === "promote") {
+    cmdPromote();
+  } else if (command === "review") {
+    cmdReview();
+  } else if (command === "significance" || command === "sig") {
+    await cmdSignificance();
+  } else if (command === "determinism" || command === "det") {
+    await cmdDeterminism({ args, option, hasFlag, targetDir, appendRunRow });
+  } else if (command === "power") {
+    await cmdPower({ option, hasFlag, targetDir });
+  } else if (command === "similar") {
+    await cmdSimilar({ args, option, targetDir });
+  } else if (command === "learn") {
+    await cmdLearn({ option, hasFlag, targetDir });
+  } else if (command === "archive") {
+    await cmdArchive({ option, hasFlag, targetDir });
+  } else if (command === "forecast") {
+    await cmdForecast({ option, targetDir });
+  } else if (command === "pareto") {
+    await cmdPareto({ option, targetDir });
+  } else if (command === "ablate") {
+    await cmdAblate({ args, option, hasFlag, targetDir });
+  } else if (command === "compute-budget" || command === "compute") {
+    await cmdCompute({ option, targetDir });
+  } else if (command === "mechanisms" || command === "mechanism-dict") {
+    await cmdMechanisms({ args, option, hasFlag, targetDir });
+  } else if (command === "disk-check" || command === "disk") {
+    await cmdDiskCheck({ option, targetDir, optionsAll });
+  } else if (command === "leaderboard" || command === "top") {
+    await cmdLeaderboard({ option, targetDir });
+  } else if (command === "bibtex" || command === "bib") {
+    await cmdBibtex({ option, hasFlag, targetDir });
+  } else if (command === "seed") {
+    await cmdSeed({ option, hasFlag, targetDir });
+  } else if (command === "pr-bundle" || command === "pr") {
+    await cmdPrBundle({ args, option, targetDir });
+  } else if (command === "agent-memory" || command === "memory") {
+    await cmdAgentMemory({ option, targetDir });
+  } else if (command === "story") {
+    await cmdStory({ args, option, targetDir });
+  } else if (command === "smoke" || command === "smoke-test") {
+    await cmdSmoke({ option, hasFlag, targetDir });
+  } else if (command === "share") {
+    await cmdShare({ args, option, targetDir });
+  } else if (command === "bench" || command === "benchmark") {
+    await cmdBench({ args, option, hasFlag, targetDir });
+  } else if (command === "slurm" || command === "sbatch") {
+    await cmdSlurm({ option, hasFlag, targetDir });
+  } else if (command === "retrospective" || command === "retro") {
+    await cmdRetrospective({ option, targetDir });
+  } else if (command === "lit-diff" || command === "litdiff") {
+    await cmdLitDiff({ args, option, hasFlag, targetDir });
+  } else if (command === "budget") {
+    await cmdBudget({ option, hasFlag, targetDir });
+  } else if (command === "fork") {
+    await cmdFork({ args, option, hasFlag, targetDir, optionsAll });
+  } else if (command === "validate-config" || command === "validate") {
+    await cmdValidateConfig({ option, targetDir });
+  } else if (command === "eta") {
+    await cmdEta({ args, option, targetDir });
+  } else if (command === "summary" || command === "status") {
+    await cmdSummary({ option, targetDir });
+  } else if (command === "hardware" || command === "hw") {
+    await cmdHardware({ option, targetDir });
+  } else if (command === "hooks" || command === "hook") {
+    await cmdHooks({ args, option, hasFlag, targetDir });
+  } else if (command === "data-sample" || command === "sample-data") {
+    await cmdDataSample({ option, targetDir });
+  } else if (command === "canary") {
+    await cmdCanary({ option, hasFlag, targetDir });
+  } else if (command === "stale-locks" || command === "locks") {
+    await cmdStaleLocks({ option, hasFlag, targetDir });
+  } else if (command === "reset") {
+    await cmdReset({ option, hasFlag, targetDir });
+  } else if (command === "question" || command === "q") {
+    await cmdQuestion({ args, option, hasFlag, targetDir, optionsAll });
+  } else if (command === "search" || command === "grep") {
+    await cmdSearch({ args, option, hasFlag, targetDir });
+  } else if (command === "tail") {
+    await cmdTail({ args, option, hasFlag, targetDir });
+  } else if (command === "container-snapshot" || command === "container") {
+    await cmdContainerSnapshot({ option, hasFlag, targetDir });
+  } else if (command === "warmstart") {
+    await cmdWarmstart({ args, option, hasFlag, targetDir });
+  } else if (command === "gpu-report" || command === "gpu") {
+    await cmdGpuReport({ option, targetDir });
+  } else if (command === "gpu-fit" || command === "vram-fit" || command === "vram") {
+    await cmdGpuFit({ option, hasFlag });
+  } else if (command === "eval-diff" || command === "predictions-diff") {
+    await cmdEvalDiff({ option });
+  } else if (command === "scaling-fit" || command === "scaling") {
+    await cmdScalingFit({ option, hasFlag, targetDir });
+  } else if (command === "sample-efficiency" || command === "se") {
+    await cmdSampleEfficiency({ args, option, targetDir });
+  } else if (command === "rl-stats" || command === "rl") {
+    await cmdRlStats({ args, option, targetDir });
+  } else if (command === "sweep-projection" || command === "sweep-project" || command === "project-sweep") {
+    await cmdSweepProjection({ option, targetDir });
+  } else if (command === "headroom") {
+    await cmdHeadroom({ option, targetDir });
+  } else if (command === "mfu") {
+    await cmdMfu({ args, option, hasFlag, targetDir });
+  } else if (command === "kv-cache" || command === "kv") {
+    await cmdKvCache({ option });
+  } else if (command === "lr-finder" || command === "lrfinder" || command === "find-lr") {
+    await cmdLrFinder({ option, targetDir });
+  } else if (command === "overfit-watch" || command === "overfit") {
+    await cmdOverfitWatch({ args, option, targetDir });
+  } else if (command === "shard-plan" || command === "parallelism" || command === "shard") {
+    await cmdShardPlan({ option, hasFlag });
+  } else if (command === "elo" || command === "arena") {
+    await cmdElo({ option });
+  } else if (command === "api-budget" || command === "api-cost" || command === "tokens-cost") {
+    await cmdApiBudget({ option, hasFlag });
+  } else if (command === "judge") {
+    await cmdJudge({ option, hasFlag, targetDir });
+  } else if (command === "grad-noise" || command === "gns" || command === "gradient-noise") {
+    await cmdGradNoise({ option, targetDir });
+  } else if (command === "memorization" || command === "memo" || command === "verbatim-check") {
+    await cmdMemorization({ option });
   } else {
     console.error(`Unknown command: ${command}`);
     cmdHelp();

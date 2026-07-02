@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/autoresearch-banner.webp" alt="AutoResearch-AI 横幅" width="100%" />
+  <img src="./assets/autoresearch-banner.webp" alt="AutoResearch-AI banner" width="100%" />
 </p>
 
 [![CI](https://github.com/vukrosic/autoresearch-ai/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vukrosic/autoresearch-ai/actions/workflows/ci.yml)
@@ -9,33 +9,33 @@
 [![Node version](https://img.shields.io/node/v/autoresearch-ai.svg)](https://nodejs.org)
 [![Status: alpha](https://img.shields.io/badge/status-alpha-orange.svg)](#)
 
-AutoResearch-AI 是一个用于自主 AI 研究工作流的开源 npm 包，在 npm 上以 `autoresearch-ai` 发布。
+AutoResearch-AI is an open source npm package for autonomous AI research workflows, published on npm as `autoresearch-ai`.
 
-> **状态：alpha（pre-1.0）。** CLI 接口正在稳定，但小版本之间仍可能有破坏性变更。生产使用时请固定具体版本，升级前查看 [CHANGELOG.md](./CHANGELOG.md)。
+> **Status: alpha (pre-1.0).** The CLI surface is stabilizing but breaking changes are still possible between minor versions. Pin a specific version in production use and watch [CHANGELOG.md](./CHANGELOG.md) before upgrading.
 
-如果需要完整的分步使用和发布指南，请阅读 [docs/getting-started.md](./docs/getting-started.md)。
+If you want the full step-by-step usage and publish guide, read [docs/getting-started.md](./docs/getting-started.md).
 
-它会把一个持久的研究工作台安装到机器学习仓库里，让 Codex、Claude Code、Hermes、Cursor 以及类似工具可以检查代码、提出实验、运行小型检查、记录结果，并在不丢失上下文的情况下继续循环。
+It installs a durable research harness into a machine learning repo so agents like Codex, Claude Code, Hermes, Cursor, and similar tools can inspect the code, propose experiments, run small checks, log results, and continue the loop without losing context.
 
-## 给你的 Agent 使用的提示词
+## Give This Prompt To Your Agent
 
-把下面内容复制到 Codex、Claude Code、Hermes、Cursor 或其他代码 agent 中：
+Copy this into Codex, Claude Code, Hermes, Cursor, or another coding agent:
 
 ```text
-npm install -g autoresearch-ai。你现在是一个自动化 AI 研究员。这个包包含相关工具和提示词。遵循 `templates/prompts/first-contact.md` 和 `templates/prompts/topic-intake.md`：先只和我沟通，用简单语言解释我的系统/GPU/仓库，检查是否已有 baseline 以及记录在哪里，并在 init、training、baselines、sweeps 或 experiments 前等待我批准。当我给出研究主题时，如果已有 baseline 就使用它；如果没有，先建议记录 `.researchloop/baseline.md`。然后提供 propose、novel 或 autonomous 模式。
+npm install -g autoresearch-ai. Act as an automated AI researcher. This package contains the tools and prompts. Follow `templates/prompts/first-contact.md` and `templates/prompts/topic-intake.md`: only talk to me first, explain my system/GPU/repo in simple language, check whether a baseline exists and where it is documented, and wait for approval before init, training, baselines, sweeps, or experiments. When I give a research topic, use the existing baseline if it exists; if it does not, propose documenting `.researchloop/baseline.md` first. Then offer propose, novel, or autonomous mode.
 ```
 
 ---
 
-手动安装：
+Manual Installation:
 
 ```bash
 npm install -g autoresearch-ai
 ```
 
-包名是 `autoresearch-ai`；主要 CLI 命令是 `autoresearch`，`researchloop` 保留为旧别名。
+The package name is `autoresearch-ai`; the primary CLI command is `autoresearch`, with `researchloop` kept as a legacy alias.
 
-从当前 checkout 做本地开发：
+Local development from this checkout:
 
 ```bash
 git clone https://github.com/vukrosic/autoresearch-ai.git
@@ -44,7 +44,7 @@ npm link
 autoresearch --help
 ```
 
-## 快速开始
+## Quick Start
 
 ```bash
 autoresearch init --agent codex
@@ -52,9 +52,17 @@ autoresearch goal "lower validation loss" --metric val_loss --direction lower \
   --baseline "python train.py" --evaluation "python eval.py"
 autoresearch inspect
 autoresearch scan-papers --limit 10
+autoresearch paper-read 2503.12345v1 --write
+autoresearch hypothesis --from-papers --write
+autoresearch propose --n 5 --write --with-priors
+autoresearch rank --write
+autoresearch next-experiment --write
+autoresearch priors --proposal proposal-warmup-1
 autoresearch idea --write
 autoresearch prompt --agent codex
 autoresearch team --workers 8
+autoresearch tasks status
+autoresearch summary
 autoresearch baseline
 autoresearch run --id lr-3e-4 --command "python train.py --lr 3e-4"
 autoresearch compare --metric val_loss --direction lower
@@ -63,31 +71,13 @@ autoresearch dashboard
 autoresearch doctor
 ```
 
-然后把生成的提示词粘贴给代码 agent。第一次接触时，agent 应先用普通语言解释系统和仓库上下文，再请求批准运行任何内容。
+Then paste the generated prompt into the coding agent. On first contact, the agent should explain the system and repo context in plain language before asking for approval to run anything.
 
-## 科研面板一键启动
+## One-click Dashboard Launchers
 
-macOS 可以双击仓库内的中文启动脚本：
+macOS users can double-click `start-macos-dashboard.command` or `启动AutoResearch面板.command`. Windows users can double-click `start-windows-dashboard.cmd`. The launcher asks for the target research project, starts or reuses a local dashboard server, and prints the environment-specific localhost URL instead of assuming a fixed port.
 
-```bash
-./启动AutoResearch面板.command
-```
-
-也可以使用英文脚本名：
-
-```bash
-./start-macos-dashboard.command
-```
-
-Windows 可以双击：
-
-```cmd
-start-windows-dashboard.cmd
-```
-
-两个脚本都会提示选择测试项目文件夹，并启动本地面板。面板第六个模块支持自动识别入口、参数库、参数组合队列、按本机资源自动推荐 `max_parallel`、稳定复测 Top K 参数组合、多进程并发运行和批量运行后的指标对比；指标曲线区支持海量实验的连续趋势线和 best-so-far 折线。完整中文操作说明见 [docs/dashboard-usage-zh.md](./docs/dashboard-usage-zh.md)。
-
-## 它会创建什么
+## What It Creates
 
 ```text
 .researchloop/
@@ -104,31 +94,32 @@ start-windows-dashboard.cmd
     memory.md
     ideas/
     papers/
+    hypotheses/
     variants/
     sweeps/
 ```
 
-这个包并不声称能神奇地训练任何模型。它给 agent 提供严肃研究所需的操作系统：约束、baseline 优先行为、实验日志、idea 文件和可复现实验报告。
+The package does not claim to magically train every model. It gives an agent the operating system for serious research: constraints, baseline-first behavior, experiment logs, idea files, and reproducible reports.
 
-## 研究主题
+## Research Topics
 
-当你给 agent 一个类似 “query/key architectures” 的主题时，它不应该直接跳到训练想法。
+When you give the agent a topic like "query/key architectures", it should not jump straight into training ideas.
 
-预期流程是：
+The expected flow is:
 
-1. 检查是否已有可用 baseline，以及它记录在哪里。
-2. 如果没有清晰的 baseline markdown 说明，先建议创建或更新 `.researchloop/baseline.md`。
-3. baseline 明确后，提供三种模式：
+1. Check whether a usable baseline already exists and where it is documented.
+2. If no clear baseline markdown note exists, propose creating or updating `.researchloop/baseline.md` first.
+3. After the baseline is clear, offer three modes:
 
 ```text
-propose     建议 2-4 个有依据的实验，让我选择
-novel       推理真正不同的假设，而不只是调参数
-autonomous  在我批准后，在约定预算内运行循环
+propose     suggest 2-4 grounded experiments for me to choose from
+novel       reason about genuinely different hypotheses, not just parameter tweaks
+autonomous  after I approve it, run the loop within the agreed budget
 ```
 
-论文搜索是可选的。当它能改善决策时，agent 应该主动提出；在 autonomous 模式中有用时也可以使用，但第一个实验仍应保持小规模并围绕 baseline。
+Paper search is optional. The agent should offer it when it would improve the decision, and use it in autonomous mode when useful, but the first experiment should still stay small and baseline-aware.
 
-## 仓库结构
+## Repo Layout
 
 ```text
 bin/                  CLI entrypoint
@@ -144,178 +135,316 @@ examples/fixtures/    Minimal repo fixtures used by setup tests
 scripts/              Smoke tests for the npm package
 ```
 
-## 当前证据
+## Current Evidence
 
-已在这台 MacBook 上测试：
+Tested on this MacBook:
 
-- `autoresearch init`、`inspect`、`prompt`、`doctor` 和 `report` 可以在干净的临时仓库中通过。
-- `autoresearch inspect` 能正确把 `llm-research-kit` 检测为 `generic`、`pytorch`、`huggingface` 和 `llm-research-kit`。
-- `autoresearch doctor` 确认本地 torch 2.8.0、CUDA false、MPS true。
-- 一个很小的合成 LLM 训练运行已通过 `llm-research-kit` 在本地 MPS 上完成。
+- `autoresearch init`, `inspect`, `prompt`, `doctor`, and `report` pass in a clean temp repo.
+- `autoresearch inspect` correctly detects `llm-research-kit` as `generic`, `pytorch`, `huggingface`, and `llm-research-kit`.
+- `autoresearch doctor` confirms local torch 2.8.0, CUDA false, MPS true.
+- A tiny synthetic LLM training run completed locally through `llm-research-kit` on MPS.
 
-见 `docs/research/experiments/macbook-e2e-2026-05-15.md`。
+See `docs/research/experiments/macbook-e2e-2026-05-15.md`.
 
-## 产品论点
+## Product Thesis
 
-自主 AI 研究的瓶颈通常不在模型访问，而在研究纪律。多数仓库缺少一个稳定循环来处理：
+Autonomous AI research is bottlenecked less by model access than by research discipline. Most repos lack a stable loop for:
 
-- 清晰目标
-- baseline
-- 小实验
-- 运行日志
-- 对比
-- 剪枝
-- 延续
+- clear goals
+- baselines
+- small experiments
+- run logs
+- comparison
+- pruning
+- continuation
 
-AutoResearch-AI 把这个循环打包成一个开源 npm 工具。
+AutoResearch-AI packages that loop as an open source npm tool.
 
-## 用户
+## Users
 
-主要用户：
+Primary users:
 
-- 做消融实验的博士生
-- 小型 AI 实验室
-- 独立 AI 研究员
-- 有模型、prompt 或 eval 优化工作的公司
+- PhD students running ablations
+- small AI labs
+- independent AI researchers
+- companies with model, prompt, or eval optimization work
 
-创业计划在 `docs/startup/`。
+The startup plan is in `docs/startup/`.
 
-## 命令
+## Commands
 
-- `autoresearch init` 创建 `.researchloop/` 和 agent 指令文件。
-- `autoresearch goal` 把持久研究目标保存到 `.researchloop/goal.md`。
-- `autoresearch inspect` 写入 `.researchloop/repo-profile.json`。
-- `autoresearch scan-papers` 把相关 arXiv 摘要抓取到 `.researchloop/scratchpad/papers/`。
-- `autoresearch idea` 打开一个聊天优先的研究提示词，它会读取仓库历史，必要时询问时间预算，并可把提示词写入 idea 说明。
-- `autoresearch prompt` 打印一个可直接交给 agent 的自主研究提示词，并可附加 focus playbook。
-- `autoresearch team` 为 AutoResearch-AI 仓库或其他项目生成本地多 agent 开发看板。
-- `autoresearch baseline` 运行 baseline 命令，解析指标，并把它锁定到 `goal.md` 和 `plan.md`。
-- `autoresearch run` 执行训练或 eval 命令，流式输出日志，解析指标，并记录本次运行。可用 `--device cuda` 或面板里的 `CUDA / Python` 运行方式把 CUDA 后端传给子进程；`--cuda-visible-devices 0,1` 可限制 CUDA 设备。添加 `--seeds N` 可跨 N 个 seed 运行同一命令（把 `{seed}` 替换并导出为 `$RESEARCHLOOP_SEED`），并记录均值/标准差聚合行。
-- `autoresearch sweep --spec FILE.json` 通过 `run` 执行声明式 variant 队列（`variants` 列表或 `grid` 笛卡尔积），每个 variant 可选 `--seeds N`、`--dry-run`，并为每个 sweep 生成 `summary.json`。
-- `autoresearch loop --command CMD [--iters N]` 闭合 ratchet 循环，运行 N 次迭代，在 `loop_state.json` 中保留指标最好的结果，并可使用 `--patch-cmd`、`--revert-on-regression` 和 `--commit-on-win`。
-- `autoresearch anomalies [--id RUN_ID]` 扫描已记录的指标历史，查找发散（NaN/inf）、尖峰和平台期。
-- `autoresearch verify --id <run-id>` 从 ledger 重新运行已记录的 run，并根据指标差异报告 `deterministic` / `drifted`。容差通过 `--tolerance N` 设置。
-- `autoresearch preflight` 在 `run` 前检查命令、安全性、指标、磁盘、RAM、GPU 和 baseline。`--require-gpu`、`--min-disk-gb`、`--min-mem-gb` 可作为硬性门槛；`--format json` 便于脚本调用。
-- `autoresearch resume [--id RUN_ID]` 重新启动失败或超时的 run。它会把 `$RESEARCHLOOP_RESUME=1`、`$RESEARCHLOOP_RESUME_FROM=<source-id>` 和 `$RESEARCHLOOP_RESUME_DIR=<prior-run-dir>` 暴露给子进程，让训练脚本可以加载上一个 checkpoint。省略 `--id` 时会自动选择最新的可恢复 run。
-- `autoresearch inspect` 现在会在 `repo-profile.json` 中写入 `multi_gpu` 块，用来检测 torchrun、accelerate、deepspeed 和 pytorch-lightning 启动器，并输出建议的命令形态。
-- `autoresearch record` 向 `runs.jsonl` 追加结构化运行结果（用于手动记录）。
-- `autoresearch compare` 按选定指标对 run 排名，并在存在时报告 GPU-hours 和峰值显存。
-- `autoresearch report` 汇总 run ledger；如果配置了 `.researchloop/cost.yaml`，还会包含总 wall time 和估算成本。使用 `--format markdown --out report.md --include-plots` 可写出带 SVG 图表的可分享实验报告。
-- `autoresearch audit <file.md>` 检查 markdown 报告中的数字指标声明是否能在 `runs.jsonl` 中匹配，若不匹配则以非零状态退出。
-- `autoresearch dashboard` 启动一个本地 localhost 实验跟踪 dashboard。
-- `autoresearch doctor` 检查基础本地工具链。
-- `autoresearch infra-doctor --write` 生成 AI Infra/HPC 本机环境体检报告，覆盖 Python、C++ 构建工具、Apple MPS、本地 CUDA、Profiler 和远程 GPU 配置状态。
-- `autoresearch scaffold --template python-benchmark --out demo` 生成可直接在 Mac 上运行的 benchmark 项目；也支持 `cpp-benchmark`、`cuda-basic`、`triton-operator` 和 `llm-serving` 骨架。
+- `autoresearch init` creates `.researchloop/` and agent instruction files.
+- `autoresearch goal` saves a durable research objective in `.researchloop/goal.md`.
+- `autoresearch inspect` writes `.researchloop/repo-profile.json`.
+- `autoresearch scan-papers` fetches relevant arXiv abstracts into `.researchloop/scratchpad/papers/`.
+- `autoresearch priors --proposal <id>` attaches arXiv priors to one existing proposal, deduped by arXiv id, and writes any missing paper notes under `.researchloop/scratchpad/papers/`.
+- `autoresearch next-experiment [PROPOSAL_ID]` turns the top ranked proposal, or one explicit proposal, into a concrete markdown runbook under `.researchloop/scratchpad/experiments/` with preflight, smoke, run, compare, story, and promote commands. Add `--script FILE.sh` when you want a reviewable shell wrapper.
+- `autoresearch paper-read <paper-id>` turns a paper note into structured claim / mechanism / limits / port / baseline-relevance sections.
+- `autoresearch paper-reread <paper-id> --against <run-id>` compares a paper note against a finished run and writes the takeaway into `.researchloop/scratchpad/paper-rereads/`.
+- `autoresearch hypothesis --from-papers|--from-runs|--paper-id ID|--run-id ID|--novel` writes mechanism-first hypotheses into `.researchloop/scratchpad/hypotheses/`.
+- `autoresearch idea` opens a chat-first research prompt that reads the repo history, asks for the time budget if needed, and can write the prompt into an idea note.
+- `autoresearch prompt` prints an agent-ready autonomous research prompt, with optional focus playbooks.
+- `autoresearch team` generates a local multi-agent development board for the AutoResearch-AI repo or another project.
+- `autoresearch tasks` manages a claimable multi-agent queue in `.researchloop/tasks.jsonl` so parallel agents do not step on each other.
+- `autoresearch baseline` runs the baseline command, parses the metric, and locks it into `goal.md` and `plan.md`.
+- `autoresearch run` executes a training or eval command, streams the log, parses the metric, and records the run. Add `--seeds N` to run the same command across N seeds (substituted as `{seed}` and exported as `$RESEARCHLOOP_SEED`) and record a mean/std aggregator row.
+- `autoresearch eval --run-id <run-id>` runs the configured eval command for one recorded run, parses declared metrics from stdout or a file, and updates that ledger row. If `eval.yaml` declares `metrics` and `eval_command`, `run` and `baseline` call it automatically after the training command finishes.
+- `autoresearch sweep generate|status|run <name>` manages queue-based sweeps from `.researchloop/sweeps/<name>.yaml` (`grid`, `list`, or `random` strategies). Use `generate` to write `.queue.jsonl`, `status` to inspect queued/running/done/failed rows, and `run` to execute the queue with bounded workers. The legacy `--spec FILE.json` one-shot path still works for simple ad hoc sweeps.
+- `autoresearch loop --command CMD [--iters N]` closes the ratchet — runs N iterations, keeps the best by metric in `loop_state.json`, with optional `--patch-cmd`, `--revert-on-regression`, and `--commit-on-win`.
+- `autoresearch anomalies [--id RUN_ID]` scans recorded metric history for divergence (NaN/inf), spikes, and plateaus.
+- `autoresearch verify --id <run-id>` re-runs a recorded run from the ledger and reports `deterministic` / `drifted` based on the metric delta. Tolerance via `--tolerance N`; refuses to launch when the source metric is missing or invalid.
+- `autoresearch replay [RUN_ID] [--n N]` re-executes a recorded run, appends fresh `replay_of` rows to the ledger, and prints a metric diff table. Exits non-zero when the primary metric drifts beyond `--tolerance`; refuses to launch when the source metric is missing or replay arguments are invalid.
+- `autoresearch significance <run-a> <run-b>` runs a permutation test plus bootstrap CI on the metric delta between two runs. `--direction lower|higher`, `--require-significant`, and `--format json` are supported; alias: `sig`.
+- `autoresearch determinism --command CMD [--n N]` re-runs the same command multiple times and reports whether the metric stays within tolerance. Useful when you want to catch flaky training or nondeterministic evals early; alias: `det`.
+- `autoresearch preflight` checks command/safety/metric/disk/RAM/GPU/baseline before you `run`. `--require-gpu`, `--min-disk-gb`, `--min-mem-gb` for hard gates; `--format json` for scripting.
+- `autoresearch resume [RUN_ID] [--dry-run]` re-launches a failed or timed-out run. Exposes `$RESEARCHLOOP_RESUME=1`, `$RESEARCHLOOP_RESUME_FROM=<source-id>`, `$RESEARCHLOOP_RESUME_DIR=<prior-run-dir>`, and, when configured, `$RESEARCHLOOP_RESUME_CHECKPOINT(_REL)` so your training script can load its last checkpoint. With `checkpoint_glob` + `resume_flag_template` in `eval.yaml`, it appends the resume flag to the original command and prints the exact command before running. Auto-picks the latest resumable run when no id is provided.
+- `autoresearch inspect` now writes a `multi_gpu` block into `repo-profile.json` that detects torchrun, accelerate, deepspeed, and pytorch-lightning launchers and emits suggested command shapes.
+- `autoresearch record` appends a structured run result to `runs.jsonl` (use for manual rows).
+- `autoresearch compare` ranks runs by a chosen metric and reports GPU-hours and peak memory when present.
+- `autoresearch report` summarizes the run ledger, including total wall time and estimated cost when `.researchloop/cost.yaml` is configured. Use `--format markdown --out report.md --include-plots` to write a shareable experiment report with SVG plots.
+- `autoresearch audit <file.md>` checks numeric metric claims in a markdown report against `runs.jsonl` and exits non-zero on unmatched claims.
+- `autoresearch curves --id <run-id>` prints the streamed metric series as a unicode sparkline plus min/max/final stats. `--format json|jsonl` for scripting. Curves are now written live to `metrics.jsonl` during the run; the dashboard exposes them at `/api/curves?run=<id>`.
+- `autoresearch promote --id <run-id> [--note TEXT]` copies a winning run's artifacts (env, config, metrics, code diff, log) into `.researchloop/winners/<id>/`, snapshots `goal.md`, writes `PROMOTION.md` + `review.md`, and flips the row's `status` to `promoted`. Refuses to promote a `failed | timeout | killed_by_*` row unless `--force`. Auto-runs the same checks as `autoresearch review` and blocks on failure unless `--force` or `--skip-review`.
+- `autoresearch review --id <run-id>` runs programmatic checks against a recorded run (status healthy, primary metric finite, env captured, working tree not explicitly dirty, curve present, artifact bundle intact). `--format text|json|markdown`, `--out FILE.md` to persist. Exits non-zero on failure. Used as the gate inside `promote`.
+- `autoresearch dashboard` starts a local localhost dashboard for experiment tracking. The dashboard now shows a run scatter, curve overlay, `/lineage` and `/api/lineage` for the parent-child run chain created by `replay`, `resume`, and `verify`, and `/diff?a=<id>&b=<id>` for side-by-side run comparisons.
+- `autoresearch doctor` checks basic local tooling.
+- `autoresearch doctor --repair-plan` prints an ordered checklist of likely fixes without changing anything.
 
-当存在 `nvidia-smi` 时，每次运行都会自动采集 GPU 统计：`gpu_util_max_pct`、`gpu_util_mean_pct`、`gpu_memory_peak_mb`、`gpu_memory_total_mb` 和 `gpu_hours` 会写入 ledger 行。非 GPU 主机上这些字段也会存在（值为 null），以保持 schema 稳定。
+### Evaluation rules (`.researchloop/eval.yaml`)
 
-每次 `run` 和 `baseline` 都会自动记录运行时间：`started_at`、`ended_at` 和 `wall_seconds` 会写入 `runs.jsonl`。若要估算成本，请添加 `.researchloop/cost.yaml`：
+The minimal eval surface is active today: `metrics` and `eval_command` are the core contract, and `run` / `baseline` call `eval` automatically after training when they are present. The remaining sections are optional and owned by later goals.
+
+```yaml
+# Parse metrics after training or from a separate eval script.
+metrics:
+  - {name: val_loss, direction: lower, regex_or_jsonpath: 'val_loss=([0-9.]+)', source: stdout}
+  - {name: val_acc, direction: higher, regex_or_jsonpath: '$.val_acc', source: file, file: eval.json}
+
+eval_command: "python eval.py"
+
+# Kill a diverged run before it burns the full timeout.
+early_stop:
+  - {metric: train_loss, rule: nan_or_inf, action: kill}
+  - {metric: val_loss,   rule: ">10x_baseline_after_step_500", action: kill}
+
+# Auto-flip each run's status after it ends.
+gates:
+  - {metric: val_loss, op: "<", value: "{baseline}-0.02", action: promote}
+  - {metric: val_loss, op: ">", value: "{baseline}",      action: discard}
+
+# Auto-mutate the command and re-launch on matching errors (OOM, etc.).
+retry:
+  - {match: "CUDA out of memory|RuntimeError: out of memory",
+     transform: "halve:batch_size", max_retries: 2}
+
+# Record newest checkpoints during a run and build the resume command from it.
+checkpoint_glob: "checkpoints/*.pt"
+resume_flag_template: "--resume {path}"
+```
+
+Runs that trigger an early-stop rule end with `status: "killed_by_rule"` and a `kill_reason` field on the row. Runs that match a gate end with `status: promoted | kept | discarded` and `gate_reasons`. Runs with `checkpoint_glob` record `last_checkpoint`; `autoresearch resume --dry-run` is the safe way to inspect the exact checkpoint restart command before spending GPU time.
+
+GPU stats are captured automatically per run when `nvidia-smi` is present: `gpu_util_max_pct`, `gpu_util_mean_pct`, `gpu_memory_peak_mb`, `gpu_memory_total_mb`, and `gpu_hours` are written into the ledger row. The fields exist (null) on non-GPU hosts so the schema stays stable.
+
+Run timing is captured automatically for every `run` and `baseline`: `started_at`, `ended_at`, and `wall_seconds` are written to `runs.jsonl`. To estimate cost, add `.researchloop/cost.yaml`:
 
 ```yaml
 gpu: H100
 hourly_usd: 2.50
 ```
 
-新的 run 行会包含 `est_cost_usd`，计算方式为 `wall_seconds / 3600 * hourly_usd`。
+New run rows then include `est_cost_usd`, computed as `wall_seconds / 3600 * hourly_usd`.
 
-### 提案和分析
+### Proposal and analysis
 
-- `autoresearch propose` 会在 `propose`、`novel` 或 `autonomous` 模式下提出 N 个有依据的实验，并可选择 focus（`hyperparameters`、`architecture`、`attention`、`data`）。
-- `autoresearch rank` 根据目标对一组实验提案排序。
-- `autoresearch suggest` 基于现有 run ledger 建议下一批实验。
-- `autoresearch topic "<text>"` 对研究主题执行 baseline-aware intake。
-- `autoresearch query "<expression>"` 查询 run ledger，并以 `jsonl` 或 `table` 打印。
-- `autoresearch failures` 汇总各 run 中最常见的失败模式。
-- `autoresearch diff-runs --id-a <id> --id-b <id>` 对两个 run 的配置和指标做 diff，支持 text / json / markdown。
-- `autoresearch param-importance` 排名哪些参数对指标影响最大。
+- `autoresearch propose` proposes N grounded experiments in `propose`, `novel`, or `autonomous` mode, with optional focus (`hyperparameters`, `architecture`, `attention`, `data`); it reads the goal/baseline, repo profile, runs, paper notes, and hypothesis notes, and writes `.researchloop/scratchpad/proposals.jsonl`. Add `--with-priors` to attach arXiv evidence and write missing paper notes while proposals are generated.
+- `autoresearch rank` scores those proposals with explainable `impact`, `cost`, `risk`, `novelty_vs_runs`, and `evidence` values, then writes `.researchloop/scratchpad/ranked-proposals.jsonl` plus a `ranked-proposals.md` summary when `--write` is set.
+- `autoresearch suggest` suggests next experiments based on the existing run ledger.
+- `autoresearch topic "<text>"` runs the baseline-aware intake for a research topic and surfaces the nearest paper notes or run ledger rows with exact follow-up commands.
+- `autoresearch summary` / `autoresearch status` prints the one-screen project state, best completed experiment, and next concrete command to run; add `--out summary.md` to save it.
+- `autoresearch query "<expression>"` queries the run ledger and prints `jsonl` or `table`.
+- `autoresearch failures` surfaces the top failure patterns across runs.
+- `autoresearch diff-runs --id-a <id> --id-b <id>` diffs two runs across config and metrics, in text / json / markdown.
+- `autoresearch param-importance` ranks which params moved the metric most.
 
-### Run 生命周期和 ledger 卫生
+### Run lifecycle and ledger hygiene
 
-- `autoresearch baseline-status` 显示当前 baseline 锁定状态。
-- `autoresearch baseline --lock` / `--unlock` 锁定或解锁 baseline。
-- `autoresearch replay --id <run-id>` 重放已记录的 run。
-- `autoresearch prune` 按年龄或状态清理 run，支持 `--dry-run` 和 `--no-keep-promoted`。
-- `autoresearch tag --id <run-id> --add/--remove/--list` 管理 run 上的标签。
+- `autoresearch baseline-status` shows the current baseline lock state.
+- `autoresearch baseline --lock` / `--unlock` locks or unlocks the baseline.
+- `autoresearch replay --id <run-id>` replays a recorded run and records replay rows.
+- `autoresearch prune` prunes runs by age or status, with `--dry-run` and `--no-keep-promoted`.
+- `autoresearch tag --id <run-id> --add/--remove/--list` manages tags on a run.
 
-### 可复现性和报告
+### Reproducibility and reporting
 
-- `autoresearch data-fingerprint` 对输入数据做哈希以支持可复现性。
-- `autoresearch model-card --id <run-id>` 为某个 run 输出 model-card markdown。
-- `autoresearch digest --since <duration>` 以 text / json / markdown 汇总近期活动。
-- `autoresearch report --format markdown --out report.md --include-plots` 写出适合实验记录的报告，包含 Goal、Baseline、Best run、Sweep summary、Loss curves、Discarded results、Open questions 以及 run id 附录。
-- `autoresearch audit report.md` 验证 loss/accuracy/perplexity/F1 风格的数字声明是否能对应到 ledger 指标或指标差异。
+- `autoresearch data-fingerprint` hashes input data for reproducibility.
+- `autoresearch model-card --id <run-id>` emits a model-card markdown for a run.
+- `autoresearch digest --since <duration>` summarizes recent activity in text / json / markdown.
+- `autoresearch report --format markdown --out report.md --include-plots` writes a lab-note-ready experiment report with Goal, Baseline, Best run, Sweep summary, Loss curves, Discarded results, Open questions, and an Appendix of run ids. Includes auto-generated MFU and Overfit-Watch tables when the underlying fields are populated.
+- `autoresearch audit report.md` verifies that numeric loss/accuracy/perplexity/F1-style claims resolve to ledger metrics or metric deltas.
 
-### 测试
+### Resource planning & hardware
 
-- `npm test` 按顺序运行下面所有快速检查。CI 会在每次 push 和 PR 时，针对 ubuntu 和 macos 上的 Node 18 / 20 / 22 运行它。
-- `npm run test:release` 在 `npm test` 之上增加 packed-tarball 安装检查。发布前请运行它。
-- `npm run test:setup` 运行空仓库和最小 fixture 的 setup 检查。
-- `npm run test:compare` 检查几个已记录 run 的对比输出。
-- `npm run test:run` 用确定性 shell 命令检查 `run` 和 `baseline`，包括一个 noisy-log 场景。
-- `npm run test:scan-papers` 使用录制的 XML fixture 检查 arXiv scan 路径（无网络）。
-- `npm run test:goal` 检查 goal 保存和 prompt 交接。
-- `npm run test:idea` 检查聊天优先 idea prompt，覆盖空仓库、形似 llm-research-kit 的仓库，以及带论文的仓库。
-- `npm run test:team` 检查多 agent 开发看板和 worker 文件。
-- `npm run test:dashboard` 检查本地 dashboard server 和 API。
-- `npm run test:prompts` 检查 prompt 模板是否出现 placeholder 漂移。
-- `npm run test:focus-prompts` 检查 hyperparameter、architecture 和 attention playbook。
-- `npm run test:site` 检查公开 landing page 文案（直接读取文件，无需 server）。
-- `npm run test:adapters` 检查 repo-shape adapter 在负例中的检测结果。
-- `npm run test:packed` 打包 tarball，安装到隔离 npm prefix，并端到端运行 harness。
-- `npm run test:sweep` 检查 sweep 命令的 `variants` 和 `grid` spec，包括 dry-run。
-- `npm run test:seeds` 检查 `--seeds N`、`{seed}` 替换，以及均值/标准差聚合行。
-- `npm run test:anomalies` 检查 text 和 JSON 输出中的尖峰、平台期和发散检测。
-- `npm run test:loop` 检查 ratchet loop 是否跨迭代追踪 running-best 并持久化 `loop_state.json`。
-- `npm run test:gpu-ledger` 检查非 GPU 主机上 GPU 字段存在且为 null，并确认 `compare` 跳过 GPU 行。
-- `npm run test:cost` 检查 `started_at`、`ended_at`、`wall_seconds`、`est_cost_usd` 运算和报告成本合计。
-- `npm run test:query` 检查 `autoresearch query` 的过滤、排序、limit、嵌套字段、JSONL 输出、空结果和语法错误。
-- `npm run test:report` 检查 markdown 报告生成、必需章节、run-id 引用和 SVG 图表资产。
-- `npm run test:audit` 检查受支持声明能通过，伪造声明会失败，生成报告的 audit 是干净的。
-- `npm run test:verify` 检查 `verify --id` 能复现确定性 run，并在记录指标不匹配时报告 drift。
-- `npm run test:preflight` 检查 preflight 门槛（命令、安全性、指标、磁盘、内存、GPU、baseline）的 text 和 JSON 输出。
-- `npm run test:multi-gpu-detect` 检查 `inspect` 能检测 torchrun / accelerate / deepspeed / pytorch-lightning 启动器。
-- `npm run test:resume` 检查 resume 命令能找到最新失败 run，将 resume 环境变量暴露给子进程，并记录 `resume_of` 指针。
+Pre-flight every run so OOMs and "this is going to take four days" surface before the GPU spins.
 
-## 贡献
+- `autoresearch gpu-fit --params 7B [--gpu H100]` (alias `vram-fit`, `vram`) — VRAM breakdown per GPU SKU, with `--zero`, `--tp`, `--dp`, `--grad-checkpoint`, and Korthikanti activation accounting. Auto-runs inside `preflight` when arch hints are present.
+- `autoresearch kv-cache --params 7B --batch 32 --context 8192 [--gpu H100]` (alias `kv`) — inference VRAM estimator with explicit GQA via `--n-kv-heads`; reports max batch, max context, and weights/KV split.
+- `autoresearch mfu [--id <run>]` — Model FLOPs Utilization per ledger row with verdicts (< 20% likely dataloader-bound; ≥ 45% well-tuned).
+- `autoresearch compute-budget --params 7B [--gpus N]` — Chinchilla-style tokens/FLOPs/gpu-days calculator across H100 BF16 × 50% MFU.
+- `autoresearch shard-plan --params 7B --gpus 64 --layers L` (alias `shard`, `parallelism`) — recommends `(TP, PP, DP)` against feasibility, NVLink domain, and PP-bubble cost.
+- `autoresearch sweep-projection --name <sweep>` (alias `sweep-project`) — projects sweep wall time and cost from the local ledger; warns at > $100 or > 1 day.
+- `autoresearch headroom` — gap-to-perfect / gap-to-SoTA reality check, σ-units when seed variance is known.
+- `autoresearch gpu-report` (alias `gpu`) — aggregates per-run `system.jsonl` load and memory pressure samples.
+- `autoresearch hardware` (alias `hw`) — distributions of GPU model / CUDA / Python / Torch across the ledger; warns when more than one GPU model or CUDA version appears in a single sweep.
+- `autoresearch disk-check [--path P --min-free-gb N]` (alias `disk`) — exits non-zero when free space is below the threshold.
+- `autoresearch eta <run-id>` — best-effort time-to-completion off the streamed metrics.
+- `autoresearch ablate <run-id>` — turns a winning config into `halve` / `double` / `remove` / `flip` ablation proposals; `--write` persists them into the same backlog `rank` reads.
+- `autoresearch container-snapshot --id <run-id>` (alias `container`) — Dockerfile + `requirements.lock` repro kit under the run dir.
 
-AutoResearch-AI 由人类和 AI 代码 agent 并行公开构建。
+### Statistical rigor
 
-每个可发布工作单元都是 [GOALS.md](./GOALS.md) 中的编号目标，大小适合一个 agent 独立处理，并带有验收标准、测试计划、文件所有权和明确依赖。贡献流程：
+Honest claims about wins, instead of single-seed point estimates.
 
-1. 阅读 [AGENTS.md](./AGENTS.md) 和 [CONTRIBUTING.md](./CONTRIBUTING.md)。
-2. 从 [GOALS.md](./GOALS.md) 选择一个没有开放 issue / PR、且其 `Depends on` 目标已合并的 `G##` 目标。
-3. 打开一个 [Contribute-a-Goal issue](./.github/ISSUE_TEMPLATE/contribute-goal.yml) 来认领它。
-4. 创建分支、实现、运行 `npm test`，并使用 [PR template](./.github/PULL_REQUEST_TEMPLATE.md) 打开 PR。
+- `autoresearch significance <run-a> <run-b>` (alias `sig`) — permutation test + bootstrap 95% CI on the metric delta. Multi-seed aggregate rows feed every seed; scalars contribute one point. `--require-significant` exits non-zero so it can gate promotion. Auto-fires inside `compare` whenever at least two finite-metric runs differ.
+- `autoresearch determinism --command CMD --n N` (alias `det`) — re-runs the same command and reports whether the metric stays within tolerance.
+- `autoresearch power --detect-delta D` — required sample size for a given effect size.
+- `autoresearch sample-efficiency <run-id>` (alias `se`) — step at which a run hit 50/75/90/95/99% of its total improvement; `--vs <baseline>` reports speedup ratio.
+- `autoresearch rl-stats <run-id>` (alias `rl`) — Agarwal-2021 robust aggregator (mean, IQM, median + stratified bootstrap CIs) for episode returns.
+- `autoresearch scaling-fit` (alias `scaling`) — fits a Kaplan/Chinchilla power law on the ledger; `--with-offset` for the Hoffmann form; `--target N` projects forward.
+- `autoresearch grad-noise` (alias `gns`, `gradient-noise`) — McCandlish-2018 critical-batch estimator, both two-batch exact and sample-variance proxy.
+- `autoresearch overfit-watch <run-id>` (alias `overfit`) — val-min step, divergence point, and wasted-compute fraction. Auto-fires inside `run`/`baseline`; surfaces a one-line summary post-run.
+- `autoresearch memorization` (alias `memo`, `verbatim-check`) — verbatim training-data leakage check on model outputs (Carlini family); flags > 5% aggregate.
+- `autoresearch canary --eval EVAL.jsonl --train TRAIN.jsonl` — data-leak detector across eval/train; exits 2 on any overlap.
 
-欢迎全部或部分由 AI 代码 agent 编写的 PR。请在 PR 描述中注明 agent 名称，让 reviewer 知道需要什么样的审查。
+### API / LLM evals
 
-另见：[CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md)、[SECURITY.md](./SECURITY.md)、[GOVERNANCE.md](./GOVERNANCE.md)、[SUPPORT.md](./SUPPORT.md)、[RELEASING.md](./RELEASING.md)。
+Plan and price eval runs before paying for them.
 
-## 引用
+- `autoresearch api-budget` (alias `api-cost`, `tokens-cost`) — projects $ cost across a baked-in pricing registry (Anthropic Opus/Sonnet/Haiku, GPT-5/4o/o3, Gemini Pro/Flash, DeepSeek V3, Together). Cross-checks `.researchloop/budget.json`.
+- `autoresearch judge --candidates pairs.jsonl --mode pairwise|scalar|reference --judge MODEL` — LLM-as-judge harness. Generates judge prompts you can ship to any provider; `--parse outputs.jsonl` reads the answers back into ratings.
+- `autoresearch elo --file wins.jsonl` (alias `arena`) — pairwise model ratings (online Elo + Bradley-Terry MLE with bootstrap 95% CIs); accepts both per-match and count rows.
+- `autoresearch eval-diff --a runA/predictions.jsonl --b runB/predictions.jsonl` (alias `predictions-diff`) — flip analysis between two predictions files; surfaces the "same metric, different behavior" case.
+- `autoresearch lr-finder` (alias `lrfinder`, `find-lr`) — analyzes a Smith-style LR range test and reports the elbow + suggested `max_lr`.
 
-如果你在论文、消融研究或实验记录中使用 AutoResearch-AI，请通过 [CITATION.cff](./CITATION.cff) 引用它（GitHub 会在侧边栏显示 “Cite this repository” 按钮）。
+### Run lifecycle add-ons
 
-## 并行 Agent 工具
+The unglamorous-but-essential drawer: inspect, fork, share, schedule, tag.
 
-用于在同一仓库中并行运行多个代码 agent 的本地辅助工具：
+- `autoresearch search "TEXT"` (alias `grep`) — full-text grep across papers, hypotheses, proposals, learnings, archive, winners, goal/plan, optionally the ledger.
+- `autoresearch tail <run-id> [--follow] [--metrics]` — wraps `tail -f` on the run log or streams parsed metrics.
+- `autoresearch story <run-id>` — narrates a run's ancestry, config diff vs parent, descendants, lesson, and kill reason.
+- `autoresearch fork <run-id> --bump key=value` — emits a ready-to-modify `run` snippet from a known-good config.
+- `autoresearch warmstart <run-id>` — generates a launch snippet that uses the run's final checkpoint as starting weights for a new experiment.
+- `autoresearch smoke --command CMD` — actually-run smoke test (distinct from static `preflight`) with a tight 60s budget; lands in the ledger.
+- `autoresearch share <run-id>` — packages a run as a portable `.tar.gz` with full reproduction instructions.
+- `autoresearch pr-bundle <run-id>` (alias `pr`) — renders a PR-ready markdown body; pipes to `gh pr create --body-file -`.
+- `autoresearch seed --set N | --bump | --env` — single source of truth for "what seed are we running today," with a Python/NumPy/PyTorch seeding-ritual snippet.
+- `autoresearch bibtex` (alias `bib`) — extracts BibTeX from paper notes; `--file report.md` filters to cited entries.
+- `autoresearch agent-memory` (alias `memory`) — distills the project into a CLAUDE.md-sized fragment so a fresh agent walks in informed.
+- `autoresearch hooks` (alias `hook`) — manages `pre_run` / `post_run` / `on_promote` / `on_failure` / `on_archive` shell hooks under `.researchloop/hooks/`.
+- `autoresearch retrospective --since 7d` (alias `retro`) — weekly synthesis: counts, top runs, lessons, dead ends, mechanisms, spend.
+- `autoresearch lit-diff <paper-a> <paper-b>` (alias `litdiff`) — section-by-section diff of two paper notes with Jaccard similarity per section.
+- `autoresearch slurm --command CMD` (alias `sbatch`) — generates a `.sbatch` wrapping `autoresearch run`; post-run hook patches `slurm_job_id` back into the ledger.
+- `autoresearch similar --id <run-id>` — finds the most-similar runs by config and metric proximity.
+- `autoresearch validate-config` (alias `validate`) — schema lint for `.researchloop/*.yaml` (`eval`, `safety`, `cost`, `review`, `notify`).
+- `autoresearch mechanisms` — collects every distinct mechanism string across the ledger and hypothesis notes; `--check "TEXT"` is the dedup gate for `propose --novel`.
+- `autoresearch leaderboard` (alias `top`) — status-update-shaped top-N table with deltas, status, wall time, and USD.
+- `autoresearch paper-reread <paper-id> --against <run-id>` — compares a paper note against a finished run and writes the takeaway.
+- `autoresearch archive <run-id> --reason "…"` — marks a dead-end with a reason so future agents don't re-walk it.
+- `autoresearch learn <run-id> "lesson"` — captures a transferable lesson off a run.
+- `autoresearch reset --id <run-id>` — removes a row from `runs.jsonl` and side-archives the run dir for the session.
+- `autoresearch question add|list|answer|close` (alias `q`) — open-research-questions parking lot at `.researchloop/questions.jsonl`.
+- `autoresearch stale-locks [--clean]` (alias `locks`) — finds and removes zombie sweep/task lock files from dead workers.
+- `autoresearch budget --set USD | --check` — cost guardrail. `--check` exits 2 over-budget so a pre-run hook can short-circuit experiments that would blow the spend cap.
+- `autoresearch data-sample --path FILE` (alias `sample-data`) — autodetects JSONL/CSV/TSV/text, reservoir-samples N rows, reports length percentiles and class balance.
+- `autoresearch bench list|info|add` (alias `benchmark`) — registry of MMLU / HumanEval / GSM8K / ARC / TruthfulQA / HellaSwag / MBPP / BBH presets; `add` patches the metric stanza into `eval.yaml`.
+- `autoresearch forecast` — projects metric trajectory forward from the ledger.
+- `autoresearch pareto` — Pareto-front view across two competing metrics (e.g. quality vs cost).
+
+### Tests
+
+- `npm test` runs every fast check below in sequence. CI runs this on Node 18 / 20 / 22 against ubuntu and macos for every push and PR.
+- `npm run test:release` adds the packed-tarball install check on top of `npm test`. Run this before publishing.
+- `npm run test:setup` runs the blank-repo and minimal-fixture setup checks.
+- `npm run test:baseline-status` checks missing, partial, complete, and JSON baseline summaries.
+- `npm run test:baseline-lock` checks locking, drift detection, unlock, and baseline status output.
+- `npm run test:doctor-repair` checks the repair-plan output for missing repo health signals and the normal doctor path.
+- `npm run test:compare` checks comparison output for a few recorded runs.
+- `npm run test:run` checks `run` and `baseline` against deterministic shell commands, including a noisy-log case.
+- `npm run test:scan-papers` checks the arXiv scan path against a recorded XML fixture (no network).
+- `npm run test:goal` checks goal saving and prompt handoff.
+- `npm run test:idea` checks the chat-first idea prompt for a blank repo, an llm-research-kit-shaped repo, and a paper-augmented repo.
+- `npm run test:team` checks the multi-agent development board and worker files.
+- `npm run test:tasks` checks the claimable task queue, dependency blocking, and handoff flow.
+- `npm run test:summary` checks the project snapshot, next-action logic, JSON output, alias, and `--out`.
+- `npm run test:dashboard` checks the local dashboard server and now covers the lineage route and API.
+- `npm run test:prompts` checks prompt templates for placeholder drift.
+- `npm run test:focus-prompts` checks the hyperparameter, architecture, and attention playbooks.
+- `npm run test:site` checks the public landing page copy (reads the file directly; no server needed).
+- `npm run test:adapters` checks repo-shape adapter detection against negative cases.
+- `npm run test:packed` packs the tarball, installs into an isolated npm prefix, and runs the harness end-to-end.
+- `npm run test:sweep` checks sweep queue generation for grid, random+seed, and list fixtures.
+- `npm run test:sweep-run` checks the parallel sweep runner, no-op reruns, and the max-failure stop gate.
+- `npm run test:seeds` checks `--seeds N`, `{seed}` substitution, and the mean/std aggregator row.
+- `npm run test:anomalies` checks spike, plateau, and divergence detection in text and JSON output.
+- `npm run test:loop` checks the ratchet loop tracks running-best across iterations and persists `loop_state.json`.
+- `npm run test:gpu-ledger` checks the GPU fields are present (and null) on non-GPU hosts and that `compare` skips GPU lines.
+- `npm run test:cost` checks `started_at`, `ended_at`, `wall_seconds`, `est_cost_usd` arithmetic, and report cost totals.
+- `npm run test:query` checks `autoresearch query` filtering, sorting, limits, nested fields, JSONL output, empty results, and syntax errors.
+- `npm run test:report` checks markdown report generation, required sections, run-id references, and SVG plot assets.
+- `npm run test:audit` checks supported claims pass, fabricated claims fail, and generated reports audit cleanly.
+- `npm run test:verify` checks `verify --id` reproduces deterministic runs and reports drift when the recorded metric does not match.
+- `npm run test:replay` checks `replay` records `replay_of` rows, supports `--n`, and exits non-zero on metric drift.
+- `npm run test:preflight` checks preflight gates (command, safety, metric, disk, memory, GPU, baseline) in both text and JSON outputs.
+- `npm run test:multi-gpu-detect` checks torchrun / accelerate / deepspeed / pytorch-lightning launchers are detected in `inspect`.
+- `npm run test:resume` checks the resume command finds the latest failed run, exposes the resume env vars to the child, records the `resume_of` pointer, captures `last_checkpoint`, prints checkpoint restart commands under `--dry-run`, and fails clearly when no configured checkpoint exists.
+- `npm run test:early-stop` checks that `nan_or_inf` and `>Nx_baseline_after_step_K` early-stop rules kill the child process group within seconds, record `killed_by_rule` + `kill_reason`, and stream `metrics.jsonl` before the kill.
+- `npm run test:gates` checks promotion gates flip `status` to `promoted | kept | discarded` and write `gate_reasons` for each rule.
+- `npm run test:curves` checks `autoresearch curves --id <id>` reads the streamed series, prints a sparkline and summary, and emits JSON/JSONL.
+- `npm run test:promote` checks `autoresearch promote --id <id>` copies the run artifacts into `winners/`, flips the row to `promoted`, refuses bad statuses without `--force`, and errors on missing/unknown ids.
+- `npm run test:retry` checks the eval.yaml `retry:` rules: an OOM error on attempt 1 triggers `halve:batch_size`, attempt 2 succeeds with `retry_of` pointing at the original id; `max_retries: 0` disables retries; no rules means no retry.
+- `npm run test:review` checks `autoresearch review` passes a good run, fails a failed run, supports text/json/markdown output, writes `--out` to file, and that `promote` runs the review automatically and writes `winners/<id>/review.md` (or skips it under `--skip-review`).
+
+## Contributing
+
+AutoResearch-AI is built in the open by humans and AI coding agents working in parallel.
+
+Every shippable unit of work is a numbered goal in [GOALS.md](./GOALS.md) — sized so one agent can pick it up independently, with acceptance criteria, a test plan, file ownership, and explicit dependencies. To contribute:
+
+1. Read [AGENTS.md](./AGENTS.md) and [CONTRIBUTING.md](./CONTRIBUTING.md).
+2. Pick a `G##` goal from [GOALS.md](./GOALS.md) that has no open issue / PR against it and whose `Depends on` goals are already merged.
+3. Open a [Contribute-a-Goal issue](./.github/ISSUE_TEMPLATE/contribute-goal.yml) to claim it.
+4. Branch, implement, run `npm test`, open a PR using the [PR template](./.github/PULL_REQUEST_TEMPLATE.md).
+
+PRs written wholly or partly by AI coding agents are welcome — name the agent in the PR description so reviewers know what kind of review the change needs.
+
+See also: [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md), [SECURITY.md](./SECURITY.md), [GOVERNANCE.md](./GOVERNANCE.md), [SUPPORT.md](./SUPPORT.md), [RELEASING.md](./RELEASING.md).
+
+## Citing
+
+If you use AutoResearch-AI in a paper, ablation study, or experiment writeup, please cite it via [CITATION.cff](./CITATION.cff) (GitHub renders a "Cite this repository" button in the sidebar).
+
+## Parallel Agent Tooling
+
+Local helper for running many coding agents in parallel against the same repo:
 
 ```bash
 ./researchloop-dev/tools/codex-swarm.sh           # opens a 3x2 grid of Terminal.app windows, each running `codex`
 ```
 
-完整选项和模式见 [researchloop-dev/tools/README.md](./researchloop-dev/tools/README.md)。目前仅支持 macOS。
+Full options and patterns: [researchloop-dev/tools/README.md](./researchloop-dev/tools/README.md). macOS only today.
 
-## 开源
+## Open Source
 
-AutoResearch-AI 的核心应保持开源。npm 包、提示词、adapter 和 run ledger 格式都应该可检查、可 fork。
+AutoResearch-AI should stay open source at the core. The npm package, prompts, adapters, and run ledger format should be inspectable and forkable.
 
-这个包还会在 `skills/` 下发布可选 skill pack，让团队可以把同一套研究规则复制到 Codex、Claude Code 或其他 agent 专用目录中。
+The package also ships optional skill packs under `skills/` so teams can copy the same research rules into Codex, Claude Code, or other agent-specific folders.
 
-未来可能的付费层：
+Possible paid layers later:
 
-- 托管 dashboard
-- 团队 run 历史
-- 托管 GPU runner
-- 私有实验室模板
-- 合规/导出支持
-- 面向实验室和公司的优先支持
+- hosted dashboard
+- team run history
+- managed GPU runners
+- private lab templates
+- compliance/export support
+- priority support for labs and companies

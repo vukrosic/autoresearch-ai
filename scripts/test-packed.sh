@@ -62,6 +62,20 @@ grep -q "^$local_version$" /tmp/researchloop-packed-version.log
 "$bin" --help >/tmp/researchloop-packed-help.log
 grep -q "AutoResearch-AI" /tmp/researchloop-packed-help.log
 grep -q "autoresearch init" /tmp/researchloop-packed-help.log
+grep -q "autoresearch baseline-status" /tmp/researchloop-packed-help.log
+grep -q "autoresearch baseline --lock" /tmp/researchloop-packed-help.log
+grep -q "autoresearch paper-read" /tmp/researchloop-packed-help.log
+grep -q "autoresearch eval" /tmp/researchloop-packed-help.log
+grep -q "autoresearch priors" /tmp/researchloop-packed-help.log
+grep -q "autoresearch propose" /tmp/researchloop-packed-help.log
+grep -q "autoresearch rank" /tmp/researchloop-packed-help.log
+grep -q "autoresearch next-experiment" /tmp/researchloop-packed-help.log
+grep -q "autoresearch topic" /tmp/researchloop-packed-help.log
+grep -q "autoresearch hypothesis" /tmp/researchloop-packed-help.log
+grep -q "autoresearch sweep generate|status|run" /tmp/researchloop-packed-help.log
+grep -q "autoresearch tasks" /tmp/researchloop-packed-help.log
+grep -q "autoresearch summary" /tmp/researchloop-packed-help.log
+grep -q "repair-plan" /tmp/researchloop-packed-help.log
 grep -q "researchloop    legacy alias" /tmp/researchloop-packed-help.log
 
 "$bin" init --agent codex --dir "$lab" >/tmp/researchloop-packed-init.log

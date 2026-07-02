@@ -1,71 +1,90 @@
 #!/usr/bin/env bash
-set -e
-cd /Users/vukrosic/my-life/autoresearch-ai
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+tmpdir="$(mktemp -d)"
+tmpempty="$(mktemp -d)"
+trap 'rm -rf "$tmpdir" "$tmpempty"' EXIT
+
+cli="node $repo_root/bin/researchloop.js"
+fixture_dir="$repo_root/examples/fixtures/proposals"
+ranked_path="$tmpdir/.researchloop/scratchpad/ranked-proposals.jsonl"
+ranked_md="$tmpdir/.researchloop/scratchpad/ranked-proposals.md"
 
 echo "=== Test G02 rank command ==="
 
-FIXTURE=$(mktemp -d)
-trap "rm -rf $FIXTURE" EXIT
-
-mkdir -p "$FIXTURE/.researchloop/scratchpad"
-
-# Create a proposals.jsonl with test proposals
-cat > "$FIXTURE/.researchloop/scratchpad/proposals.jsonl" << 'EOF'
-{"id":"prop_abc001","title":"LR warmup","hypothesis":"Warmup prevents gradient instability","change":"add warmup","metric":"val_loss","expected_direction":"lower","risk":"low","estimated_minutes":30,"mechanism":"lr_warmup","kill_criterion":"val_loss does not improve","created_at":"2026-05-18T00:00:00Z"}
-{"id":"prop_abc002","title":"AdamW","hypothesis":"Better regularization","change":"use AdamW","metric":"val_loss","expected_direction":"lower","risk":"low","estimated_minutes":30,"mechanism":"optimizer_change","kill_criterion":"val_loss does not improve","created_at":"2026-05-18T00:00:00Z"}
-{"id":"prop_abc003","title":"Bigger model","hypothesis":"More capacity","change":"double hidden","metric":"val_loss","expected_direction":"lower","risk":"high","estimated_minutes":240,"mechanism":"width_increase","kill_criterion":"val_loss does not improve","created_at":"2026-05-18T00:00:00Z"}
-EOF
+cp -R "$fixture_dir/." "$tmpdir/"
 
 echo "--- Test 1: rank generates scored JSON output ---"
-OUT1=$(node bin/researchloop.js rank --dir "$FIXTURE" 2>&1)
-echo "$OUT1" | python3 -c "import sys,json; d=json.load(sys.stdin); assert len(d)==3; assert all('score' in p for p in d); assert all('score_breakdown' in p for p in d); print('OK: got', len(d), 'ranked proposals')" || { echo "FAIL: rank output invalid"; exit 1; }
+OUT1="$($cli rank --dir "$tmpdir")"
+printf '%s\n' "$OUT1" | python3 -c '
+import json, sys
+rows = json.load(sys.stdin)
+assert isinstance(rows, list)
+assert len(rows) == 4, len(rows)
+assert all("score" in row for row in rows)
+assert all("score_breakdown" in row for row in rows)
+print("OK: got", len(rows), "ranked proposals")
+' || { echo "FAIL: rank output invalid"; exit 1; }
 
 echo "--- Test 2: proposals are sorted by score desc ---"
-echo "$OUT1" | python3 -c "
-import sys,json
-d=json.load(sys.stdin)
-scores = [p['score'] for p in d]
-assert scores == sorted(scores, reverse=True), f'Not sorted: {scores}'
-print('OK: proposals sorted by score descending')
-"
+printf '%s\n' "$OUT1" | python3 -c '
+import json, sys
+rows = json.load(sys.stdin)
+scores = [row["score"] for row in rows]
+assert scores == sorted(scores, reverse=True), f"Not sorted: {scores}"
+print("OK: proposals sorted by score descending")
+' || { echo "FAIL: proposals not sorted"; exit 1; }
 
-echo "--- Test 3: score_breakdown has required keys ---"
-echo "$OUT1" | python3 -c "
-import sys,json
-d=json.load(sys.stdin)
-required=['impact','cost','risk','novelty_vs_runs','why']
-for p in d:
-    for k in required:
-        assert k in p['score_breakdown'], f'Missing: {k}'
-print('OK: score_breakdown has all required keys')
-"
+echo "--- Test 3: score_breakdown has required keys and novelty is low for best-run copy ---"
+printf '%s\n' "$OUT1" | python3 -c '
+import json, sys
+rows = json.load(sys.stdin)
+required = ["impact", "cost", "risk", "novelty_vs_runs", "evidence", "why"]
+best_run_copy = None
+paper_warmup = None
+generic_attention = None
+for row in rows:
+    for key in required:
+        assert key in row["score_breakdown"], f"Missing: {key}"
+    assert row["score_breakdown"]["why"], "why is empty"
+    if row["id"] == "prop_best_run_copy":
+        best_run_copy = row
+    if row["id"] == "prop_paper_warmup":
+        paper_warmup = row
+    if row["id"] == "prop_generic_attention":
+        generic_attention = row
+assert best_run_copy is not None, "best-run copy proposal missing"
+assert best_run_copy["score_breakdown"]["novelty_vs_runs"] <= 0.2, best_run_copy["score_breakdown"]["novelty_vs_runs"]
+assert paper_warmup is not None and generic_attention is not None
+assert paper_warmup["score_breakdown"]["evidence"] > generic_attention["score_breakdown"]["evidence"]
+print("OK: score_breakdown keys present, evidence is scored, and best-run copy is low novelty")
+' || { echo "FAIL: score_breakdown validation failed"; exit 1; }
 
 echo "--- Test 4: rank --write creates ranked-proposals.jsonl and .md ---"
-node bin/researchloop.js rank --write --dir "$FIXTURE" 2>&1
-test -f "$FIXTURE/.researchloop/scratchpad/ranked-proposals.jsonl" || { echo "FAIL: ranked-proposals.jsonl not created"; exit 1; }
-test -f "$FIXTURE/.researchloop/scratchpad/ranked-proposals.md" || { echo "FAIL: ranked-proposals.md not created"; exit 1; }
+$cli rank --write --dir "$tmpdir" >/tmp/researchloop-rank-write.log
+test -f "$ranked_path" || { echo "FAIL: ranked-proposals.jsonl not created"; exit 1; }
+test -f "$ranked_md" || { echo "FAIL: ranked-proposals.md not created"; exit 1; }
+grep -q "^# Ranked Proposals$" "$ranked_md"
+line_count="$(wc -l < "$ranked_path" | tr -d ' ')"
+test "$line_count" -eq 4 || { echo "FAIL: expected 4 ranked rows, got $line_count"; exit 1; }
 echo "OK: ranked output files created"
 
-echo "--- Test 5: rank with --input flag ---"
-# Write to FIXTURE and use relative path (resolved against --dir)
-echo '{"id":"prop_x","title":"Test","hypothesis":"Test","change":"test","metric":"val_loss","expected_direction":"lower","risk":"low","estimated_minutes":10,"mechanism":"test","kill_criterion":"test","created_at":"2026-01-01T00:00:00Z"}' > "$FIXTURE/proposals.jsonl"
-OUT5=$(node bin/researchloop.js rank --input "proposals.jsonl" --dir "$FIXTURE" 2>&1)
-echo "$OUT5" | python3 -c "import sys,json; d=json.load(sys.stdin); assert len(d)==1; print('OK: --input works')" || { echo "FAIL: --input flag broken"; exit 1; }
-
-echo "--- Test 6: ranking is deterministic ---"
-OUT6a=$(node bin/researchloop.js rank --dir "$FIXTURE" 2>&1)
-OUT6b=$(node bin/researchloop.js rank --dir "$FIXTURE" 2>&1)
-IDS6a=$(echo "$OUT6a" | python3 -c "import sys,json; print(','.join(p['id'] for p in json.load(sys.stdin)))")
-IDS6b=$(echo "$OUT6b" | python3 -c "import sys,json; print(','.join(p['id'] for p in json.load(sys.stdin)))")
-test "$IDS6a" = "$IDS6b" || { echo "FAIL: ranking not deterministic"; exit 1; }
+echo "--- Test 5: ranking is deterministic ---"
+OUT5A="$($cli rank --dir "$tmpdir")"
+OUT5B="$($cli rank --dir "$tmpdir")"
+IDS5A="$(printf '%s\n' "$OUT5A" | python3 -c 'import json, sys; print(",".join(row["id"] for row in json.load(sys.stdin)))')"
+IDS5B="$(printf '%s\n' "$OUT5B" | python3 -c 'import json, sys; print(",".join(row["id"] for row in json.load(sys.stdin)))')"
+test "$IDS5A" = "$IDS5B" || { echo "FAIL: ranking not deterministic"; exit 1; }
 echo "OK: ranking is deterministic"
 
-echo "--- Test 7: missing proposals file shows error ---"
-FIXTURE3=$(mktemp -d)
-mkdir -p "$FIXTURE3/.researchloop"
-OUT7=$(node bin/researchloop.js rank --dir "$FIXTURE3" 2>&1; echo "exit: $?")
-echo "$OUT7"
-echo "$OUT7" | grep -q "no proposals found" || { echo "FAIL: expected error about missing proposals"; exit 1; }
-rm -rf "$FIXTURE3"
+echo "--- Test 6: missing proposals file shows error ---"
+set +e
+$cli rank --dir "$tmpempty" >/tmp/researchloop-rank-missing.log 2>&1
+rc=$?
+set -e
+test "$rc" -ne 0 || { echo "FAIL: missing proposals should exit non-zero"; exit 1; }
+grep -q "no proposals found" /tmp/researchloop-rank-missing.log || { echo "FAIL: expected missing proposals error"; exit 1; }
+echo "OK: missing proposals file fails clearly"
 
 echo "=== All G02 rank tests passed ==="

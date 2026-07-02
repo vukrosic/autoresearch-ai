@@ -1,0 +1,12 @@
+name: demo-run
+base_command: "sh -lc 'if [ \"{fail}\" = \"1\" ]; then exit 1; else printf \"val_loss={val}\n\"; fi'"
+strategy: list
+metric: val_loss
+direction: lower
+variants:
+  - {fail: 0, val: 0.60}
+  - {fail: 0, val: 0.55}
+  - {fail: 1, val: 0.50}
+  - {fail: 0, val: 0.45}
+  - {fail: 1, val: 0.40}
+  - {fail: 0, val: 0.35}

@@ -23,7 +23,7 @@ git -C "$tmpdir" commit -q -m "seed"
 "${cli[@]}" init --agent codex --dir "$tmpdir" >/tmp/researchloop-env-init.log
 git -C "$tmpdir" add -A
 git -C "$tmpdir" commit -q -m "add researchloop harness"
-"${cli[@]}" run --dir "$tmpdir" --id clean-run --command "true" >/tmp/researchloop-env-clean.log
+"${cli[@]}" run --dir "$tmpdir" --id clean-run --command "printf 'val_loss=0.42\n'" >/tmp/researchloop-env-clean.log
 
 node --input-type=module - "$tmpdir" <<'NODE'
 import fs from "node:fs";
@@ -98,7 +98,7 @@ grep -q "WARNING: doctor env mismatch git_dirty" "$doctor_log"
 "${cli[@]}" replay --dir "$tmpdir" --id clean-run >"$replay_log" 2>&1
 grep -q "WARNING: replay env mismatch git_dirty" "$replay_log"
 
-"${cli[@]}" run --dir "$tmpdir" --id dirty-run --command "true" >/tmp/researchloop-env-dirty.log
+"${cli[@]}" run --dir "$tmpdir" --id dirty-run --command "printf 'val_loss=0.42\n'" >/tmp/researchloop-env-dirty.log
 
 node --input-type=module - "$tmpdir" <<'NODE'
 import fs from "node:fs";

@@ -1,0 +1,9 @@
+name: example-sweep
+base_command: "python train.py --lr {lr} --batch_size {batch_size}"
+strategy: grid
+budget: 4
+metric: val_loss
+direction: lower
+params:
+  lr: {type: choice, values: [0.0001, 0.001]}
+  batch_size: {type: choice, values: [32, 64]}
